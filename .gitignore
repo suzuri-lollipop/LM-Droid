@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+**/build/
+
+# Local configuration (contains local SDK path, must not be committed)
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Kotlin
+.kotlin/
+
+# Note: app/schemas/ (Room schema history) is intentionally NOT ignored —
+# those JSON files are committed for migration tracking.
+
+# Log/OS files
+*.log
+.DS_Store
+Thumbs.db

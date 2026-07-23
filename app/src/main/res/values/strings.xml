@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LM Droid</string>
+
+    <string name="chat_title">LM Droid</string>
+    <string name="chat_input_placeholder">メッセージを入力</string>
+    <string name="chat_send">送信</string>
+    <string name="chat_api_key_missing_message">OpenAI APIキーが未登録です。設定画面から登録してください。</string>
+    <string name="chat_go_to_settings">設定を開く</string>
+
+    <string name="settings_title">設定</string>
+    <string name="settings_api_key_label">OpenAI APIキー</string>
+    <string name="settings_api_key_placeholder">sk-...</string>
+    <string name="settings_model_label">モデル名</string>
+    <string name="settings_save">保存</string>
+    <string name="settings_test_connection">接続テスト</string>
+    <string name="settings_test_success">接続に成功しました</string>
+    <string name="settings_saved">保存しました</string>
+</resources>
