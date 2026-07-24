@@ -11,7 +11,8 @@ plugins {
 
 android {
     namespace = "com.suzuri.lmdroid"
-    compileSdk = 36
+    // multiplatform-markdown-renderer 0.43.0's AAR metadata requires compiling against API 37+.
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.suzuri.lmdroid"
@@ -86,6 +87,8 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.androidx.datastore.preferences)
+
+    implementation(libs.markdown.renderer.m3)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,6 +41,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
+import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownColor
+import com.mikepenz.markdown.model.markdownPadding
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.db.MessageRole
 import com.suzuri.lmdroid.ui.chat.MessageUiModel
@@ -67,11 +71,29 @@ fun MessageBubble(
 
         val hasFinalContent = message.content.isNotBlank() || message.reasoningContent.isNullOrBlank()
         if (hasFinalContent) {
-            Text(
-                text = message.content.ifBlank { "…" },
-                color = if (message.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
-            )
+            when {
+                message.isError -> Text(
+                    text = message.content.ifBlank { "…" },
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
+                )
+                message.content.isBlank() -> Text(
+                    text = "…",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
+                )
+                // Renders headings/lists/links/**bold** etc. and gives fenced code blocks a
+                // monospace font + distinct background with horizontal scroll for long lines,
+                // instead of dumping raw markdown syntax as flat text.
+                else -> Markdown(
+                    content = message.content,
+                    colors = markdownColor(text = MaterialTheme.colorScheme.onSurface),
+                    padding = chatMarkdownPadding(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 2.dp, vertical = 4.dp),
+                )
+            }
         }
         if (message.content.isNotBlank()) {
             Row {
@@ -148,7 +170,19 @@ private fun UserBubble(
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                Text(text = message.content, color = MaterialTheme.colorScheme.onPrimary)
+                // No modifier size overrides here: Markdown() defaults its own modifier to
+                // fillMaxSize(), which would force this bubble to the full 320.dp cap for every
+                // message. Passing the bare Modifier keeps it sized to content, like Text did.
+                Markdown(
+                    content = message.content,
+                    colors = markdownColor(
+                        text = MaterialTheme.colorScheme.onPrimary,
+                        codeBackground = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
+                        inlineCodeBackground = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
+                    ),
+                    padding = chatMarkdownPadding(),
+                    modifier = Modifier,
+                )
             }
             Row {
                 IconButton(onClick = { isEditing = true }, modifier = Modifier.size(32.dp)) {
@@ -164,6 +198,17 @@ private fun UserBubble(
         }
     }
 }
+
+/**
+ * The library's own default spacing (2.dp between paragraphs/headings) reads as one dense wall
+ * of text for multi-paragraph LLM answers, so this widens the gaps between block elements.
+ */
+@Composable
+private fun chatMarkdownPadding() = markdownPadding(
+    block = 10.dp,
+    listItemBottom = 6.dp,
+    codeBlock = PaddingValues(12.dp),
+)
 
 @Composable
 private fun CopyIconButton(text: String) {
