@@ -16,9 +16,8 @@ data class ChatCompletionRequest(
     val messages: List<ChatMessageDto>,
     val stream: Boolean = true,
     // Caps worst-case generation length so a model that falls into a repetition loop (no
-    // natural stop token) can't hang the request indefinitely. Kept low for now while
-    // diagnosing a hang possibly caused by prompt_tokens + max_tokens exceeding n_ctx.
-    @SerialName("max_tokens") val maxTokens: Int = 256,
+    // natural stop token) can't hang the request indefinitely.
+    @SerialName("max_tokens") val maxTokens: Int = 4096,
 )
 
 @Serializable
@@ -35,6 +34,10 @@ data class ChunkChoice(
 @Serializable
 data class Delta(
     val content: String? = null,
+    // Some models (e.g. reasoning/"thinking" models like Gemma's reasoning variants or
+    // DeepSeek-R1-style models) stream their chain-of-thought under this separate field
+    // instead of "content" while they're still "thinking".
+    @SerialName("reasoning_content") val reasoningContent: String? = null,
 )
 
 @Serializable

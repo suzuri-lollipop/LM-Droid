@@ -9,7 +9,6 @@ import com.suzuri.lmdroid.data.repository.ConversationRepository
 import com.suzuri.lmdroid.data.settings.ApiKeyCipher
 import com.suzuri.lmdroid.data.settings.SettingsRepository
 import kotlinx.serialization.json.Json
-import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import java.util.concurrent.TimeUnit
@@ -24,6 +23,10 @@ class AppContainer(context: Context) {
 
     private val json = Json {
         ignoreUnknownKeys = true
+        // kotlinx.serialization defaults to omitting fields whose value equals the Kotlin
+        // default (e.g. "stream": true, "max_tokens": 256) — which silently dropped "stream"
+        // from every request since it's always passed as true, disabling server-side streaming.
+        encodeDefaults = true
     }
 
     private val loggingInterceptor = HttpLoggingInterceptor { message -> Log.d("OkHttpWire", message) }
@@ -39,11 +42,6 @@ class AppContainer(context: Context) {
         // Increased to 5 minutes to accommodate extremely slow/non-streaming local LLM servers.
         .readTimeout(5, TimeUnit.MINUTES)
         .callTimeout(0, TimeUnit.MILLISECONDS)
-        // The local server advertises `Keep-Alive: timeout=5` (seconds), but OkHttp's pool
-        // doesn't read that header — it was reusing a connection the server had already closed
-        // on its end, silently swallowing the new request. Evicting idle connections almost
-        // immediately forces every request onto a fresh connection instead.
-        .connectionPool(ConnectionPool(5, 1, TimeUnit.SECONDS))
         // A network interceptor (not an application interceptor) so this shows the request
         // exactly as it goes over the wire, including headers OkHttp adds automatically
         // (Content-Length, Host, Accept-Encoding, etc.) — useful for diffing against curl.

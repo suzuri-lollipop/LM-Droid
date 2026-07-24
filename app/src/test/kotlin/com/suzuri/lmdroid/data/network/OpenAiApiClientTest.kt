@@ -24,7 +24,11 @@ class OpenAiApiClientTest {
         server.start()
         client = OpenAiApiClient(
             okHttpClient = OkHttpClient.Builder().build(),
-            json = Json { ignoreUnknownKeys = true },
+            // Must mirror AppContainer's Json config exactly: encodeDefaults = true is what
+            // keeps "stream" and "max_tokens" in the outgoing JSON (see the regression test
+            // below) — kotlinx.serialization silently drops fields that equal their Kotlin
+            // default otherwise, which is what disabled server-side streaming in production.
+            json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
         )
         baseUrl = server.url("/v1").toString().trimEnd('/')
     }
@@ -32,6 +36,26 @@ class OpenAiApiClientTest {
     @After
     fun tearDown() {
         server.shutdown()
+    }
+
+    @Test
+    fun `streamChatCompletion sends stream=true in the request body`() = runTest {
+        // Regression test: "stream" defaults to true and was therefore being silently omitted
+        // from the JSON (kotlinx.serialization's encodeDefaults defaults to false), so the
+        // server never saw it, fell back to non-streaming, and buffered the whole response.
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
+            awaitItem() // Done
+            awaitComplete()
+        }
+
+        val recordedRequest = server.takeRequest()
+        assertTrue(recordedRequest.body.readUtf8().contains("\"stream\":true"))
     }
 
     @Test
@@ -49,6 +73,30 @@ class OpenAiApiClientTest {
         client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
             assertEquals(StreamEvent.Delta("Hel"), awaitItem())
             assertEquals(StreamEvent.Delta("lo"), awaitItem())
+            assertEquals(StreamEvent.Done, awaitItem())
+            awaitComplete()
+        }
+    }
+
+    @Test
+    fun `streamChatCompletion falls back to reasoning_content when content is absent`() = runTest {
+        // Reasoning/"thinking" models (e.g. Gemma reasoning variants, DeepSeek-R1-style models)
+        // stream their chain-of-thought under "reasoning_content" instead of "content" while
+        // they're still "thinking" — this must still show up as visible streaming activity
+        // rather than silently parsing to null.
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"Hmm\"}}]}\n\n" +
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"Answer\"}}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
+            assertEquals(StreamEvent.Delta("Hmm"), awaitItem())
+            assertEquals(StreamEvent.Delta("Answer"), awaitItem())
             assertEquals(StreamEvent.Done, awaitItem())
             awaitComplete()
         }

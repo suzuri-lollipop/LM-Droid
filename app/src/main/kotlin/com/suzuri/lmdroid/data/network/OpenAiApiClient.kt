@@ -44,8 +44,6 @@ class OpenAiApiClient(
             ChatCompletionRequest.serializer(),
             ChatCompletionRequest(model = model, messages = messages, stream = true),
         )
-        Log.d(TAG, "Request: $requestJson")
-        Log.i(TAG, "!!! LM-DROID-DEBUG !!! Request Body: $requestJson")
         val requestBody = requestJson.toRequestBody(jsonMediaType)
 
         val builderWithUrl = try {
@@ -70,16 +68,13 @@ class OpenAiApiClient(
         launch {
             try {
                 call.execute().use { response ->
-                    Log.i(TAG, "!!! LM-DROID-DEBUG !!! Response Code: ${response.code}")
-                    Log.i(TAG, "!!! LM-DROID-DEBUG !!! Response Content-Type: ${response.header("Content-Type")}")
-
                     if (!response.isSuccessful) {
                         val bodyString = try {
                             response.body?.string()
                         } catch (e: IOException) {
                             null
                         }
-                        Log.e(TAG, "Error Response (${response.code}): $bodyString")
+                        Log.w(TAG, "Error response ${response.code}: $bodyString")
                         close(mapToException(null, response.code, bodyString))
                         return@use
                     }
@@ -95,9 +90,6 @@ class OpenAiApiClient(
                         val line = rawLine.trim()
                         if (line.isEmpty()) continue
 
-                        Log.d(TAG, "SSE line: $line")
-                        Log.i(TAG, "!!! LM-DROID-DEBUG !!! SSE Line: $line")
-
                         val data = if (line.startsWith("data:")) {
                             line.removePrefix("data:").trim()
                         } else {
@@ -105,7 +97,6 @@ class OpenAiApiClient(
                         }
 
                         if (data == "[DONE]") {
-                            Log.i(TAG, "!!! LM-DROID-DEBUG !!! Received [DONE]")
                             trySend(StreamEvent.Done)
                             break
                         }
@@ -113,14 +104,16 @@ class OpenAiApiClient(
                             json.decodeFromString(ChatCompletionChunk.serializer(), data)
                         }.onFailure { e ->
                             Log.w(TAG, "Failed to parse SSE chunk: $data", e)
-                            Log.i(TAG, "!!! LM-DROID-DEBUG !!! Failed to parse JSON: $data")
                         }.getOrNull()
                         val choice = chunk?.choices?.firstOrNull()
-                        val delta = choice?.delta?.content ?: choice?.message?.content
-                        Log.i(TAG, "!!! LM-DROID-DEBUG !!! Parsed delta: $delta")
+                        // Reasoning/"thinking" models (e.g. Gemma reasoning variants, DeepSeek-R1
+                        // style models) stream their chain-of-thought under reasoningContent
+                        // instead of content while they're still "thinking".
+                        val delta = choice?.delta?.content
+                            ?: choice?.delta?.reasoningContent
+                            ?: choice?.message?.content
                         if (!delta.isNullOrEmpty()) {
-                            val result = trySend(StreamEvent.Delta(delta))
-                            Log.i(TAG, "!!! LM-DROID-DEBUG !!! trySend result: $result")
+                            trySend(StreamEvent.Delta(delta))
                         }
                     }
                     close()

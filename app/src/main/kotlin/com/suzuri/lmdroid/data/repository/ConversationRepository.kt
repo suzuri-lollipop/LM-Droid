@@ -84,17 +84,12 @@ class ConversationRepository(
             history.add(ChatMessageDto(role = currentRole.toApiRole(), content = currentContent.toString()))
         }
 
-        // OpenAI requirement: History should generally end with a user message for the best 
-        // chance of triggering a streaming response. Since we just inserted a user message, 
-        // it should already be the last one, but let's be explicit if needed in future logic.
-
         val accumulated = StringBuilder()
         var lastFlushAt = 0L
         var streamError: OpenAiException? = null
 
         try {
             openAiApiClient.streamChatCompletion(apiKey, settings.model, history, settings.baseUrl).collect { event ->
-                Log.i("ConversationRepository", "!!! LM-DROID-DEBUG !!! Received event: $event")
                 when (event) {
                     is StreamEvent.Delta -> {
                         accumulated.append(event.text)
@@ -104,16 +99,14 @@ class ConversationRepository(
                             lastFlushAt = now
                         }
                     }
-                    StreamEvent.Done -> {
-                        Log.i("ConversationRepository", "!!! LM-DROID-DEBUG !!! Stream Done. Final length: ${accumulated.length}")
-                    }
+                    StreamEvent.Done -> Unit
                 }
             }
         } catch (e: OpenAiException) {
-            Log.i("ConversationRepository", "!!! LM-DROID-DEBUG !!! OpenAiException: ${e.userMessage}")
+            Log.w(TAG, "sendUserMessage failed: ${e.userMessage}", e)
             streamError = e
         } catch (e: Exception) {
-            Log.i("ConversationRepository", "!!! LM-DROID-DEBUG !!! Unknown Exception: ${e.message}")
+            Log.w(TAG, "sendUserMessage failed with an unexpected exception", e)
             streamError = OpenAiException.Unknown(e)
         }
 
@@ -144,6 +137,7 @@ class ConversationRepository(
     }
 
     private companion object {
+        const val TAG = "ConversationRepository"
         const val FLUSH_INTERVAL_MS = 150L
     }
 }
