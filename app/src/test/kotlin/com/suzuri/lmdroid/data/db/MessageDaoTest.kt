@@ -80,6 +80,23 @@ class MessageDaoTest {
     }
 
     @Test
+    fun `deleteMessage removes only the targeted row`() = runTest {
+        val conversationId = conversationDao.insert(ConversationEntity(title = "t", createdAt = 0, updatedAt = 0))
+        val keptId = messageDao.insert(
+            MessageEntity(conversationId = conversationId, role = MessageRole.USER, content = "keep", createdAt = 100),
+        )
+        val droppedId = messageDao.insert(
+            MessageEntity(conversationId = conversationId, role = MessageRole.ASSISTANT, content = "drop", createdAt = 200),
+        )
+
+        messageDao.deleteMessage(droppedId)
+
+        val remaining = messageDao.getMessages(conversationId)
+        assertEquals(1, remaining.size)
+        assertEquals(keptId, remaining[0].id)
+    }
+
+    @Test
     fun `deleteMessagesAfter removes only messages with a greater id in the same conversation`() = runTest {
         val conversationId = conversationDao.insert(ConversationEntity(title = "t", createdAt = 0, updatedAt = 0))
         val otherConversationId = conversationDao.insert(ConversationEntity(title = "u", createdAt = 0, updatedAt = 0))

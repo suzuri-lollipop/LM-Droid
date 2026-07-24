@@ -48,6 +48,7 @@ import com.suzuri.lmdroid.ui.chat.MessageUiModel
 fun MessageBubble(
     message: MessageUiModel,
     onEditMessage: (Long, String) -> Unit,
+    onRegenerate: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (message.role == MessageRole.USER) {
@@ -73,7 +74,17 @@ fun MessageBubble(
             )
         }
         if (message.content.isNotBlank()) {
-            CopyIconButton(text = message.content)
+            Row {
+                CopyIconButton(text = message.content)
+                IconButton(onClick = { onRegenerate(message.id) }, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = stringResource(R.string.chat_regenerate),
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }

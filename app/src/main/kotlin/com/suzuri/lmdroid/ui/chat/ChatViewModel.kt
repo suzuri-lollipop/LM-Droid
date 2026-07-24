@@ -79,6 +79,18 @@ class ChatViewModel(
         launchGeneration { conversationRepository.editMessageAndRegenerate(currentConversationId, messageId, trimmed) }
     }
 
+    /**
+     * Regenerates an assistant reply without needing to edit the user's message first (a plain
+     * "retry" affordance shown directly on the generated text).
+     */
+    fun onRegenerateResponse(messageId: Long) {
+        val currentConversationId = conversationId.value ?: return
+
+        sendJob?.cancel()
+        _uiState.update { it.copy(errorMessage = null) }
+        launchGeneration { conversationRepository.regenerateResponse(currentConversationId, messageId) }
+    }
+
     fun onStopGeneration() {
         sendJob?.cancel()
     }

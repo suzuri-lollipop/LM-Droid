@@ -106,6 +106,28 @@ class ConversationRepository(
         return generateAssistantReply(conversationId, apiKey, settings, isFirstMessage, newText)
     }
 
+    /**
+     * Regenerates an assistant reply in place: discards that reply (and anything after it, in
+     * case it wasn't the last message) and re-asks using the same prompt history, without
+     * requiring the user to edit their own message first.
+     */
+    suspend fun regenerateResponse(conversationId: Long, assistantMessageId: Long): SendResult {
+        val settings = settingsRepository.currentSettings()
+        val apiKey = settings.apiKey
+        if (apiKey.isNullOrBlank()) {
+            return SendResult.ApiKeyMissing
+        }
+
+        messageDao.deleteMessagesAfter(conversationId, assistantMessageId)
+        messageDao.deleteMessage(assistantMessageId)
+
+        val remaining = messageDao.getMessages(conversationId)
+        val isFirstMessage = remaining.size == 1
+        val latestUserText = remaining.lastOrNull { it.role == MessageRole.USER }?.content.orEmpty()
+
+        return generateAssistantReply(conversationId, apiKey, settings, isFirstMessage, latestUserText)
+    }
+
     private suspend fun generateAssistantReply(
         conversationId: Long,
         apiKey: String,

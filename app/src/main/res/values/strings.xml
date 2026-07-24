@@ -13,6 +13,7 @@
     <string name="chat_edit_message">編集</string>
     <string name="chat_edit_cancel">キャンセル</string>
     <string name="chat_edit_regenerate">この内容で再生成</string>
+    <string name="chat_regenerate">再生成</string>
 
     <string name="settings_title">設定</string>
     <string name="settings_api_key_label">OpenAI APIキー</string>

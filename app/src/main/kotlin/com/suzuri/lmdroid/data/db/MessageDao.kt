@@ -28,4 +28,8 @@ interface MessageDao {
      */
     @Query("DELETE FROM messages WHERE conversationId = :conversationId AND id > :afterMessageId")
     suspend fun deleteMessagesAfter(conversationId: Long, afterMessageId: Long)
+
+    /** Used when regenerating an assistant reply in place, to discard the old one before re-asking. */
+    @Query("DELETE FROM messages WHERE id = :messageId")
+    suspend fun deleteMessage(messageId: Long)
 }
