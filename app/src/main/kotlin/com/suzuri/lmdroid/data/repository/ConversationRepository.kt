@@ -11,13 +11,17 @@ import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.network.OpenAiException
 import com.suzuri.lmdroid.data.network.StreamEvent
 import com.suzuri.lmdroid.data.settings.SettingsRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.withContext
 
 /**
- * Orchestrates Room persistence, OpenAI streaming, and the current settings for a single
- * ongoing conversation. There is intentionally no multi-conversation/thread-list support in v1 —
- * see the "conversationId" plumbing below, which is the seam a future thread-list feature would use.
+ * Orchestrates Room persistence, OpenAI streaming, and the current settings for chat
+ * conversations. Supports multiple conversations (a lightweight "history") — [observeConversations]
+ * lists them, [createNewConversation] starts a fresh one, and each is auto-titled from its first
+ * user message.
  */
 class ConversationRepository(
     private val conversationDao: ConversationDao,
@@ -33,9 +37,19 @@ class ConversationRepository(
 
     suspend fun getOrCreateDefaultConversation(): Long {
         conversationDao.getMostRecent()?.let { return it.id }
-        val now = System.currentTimeMillis()
-        return conversationDao.insert(ConversationEntity(title = "Chat", createdAt = now, updatedAt = now))
+        return createNewConversation()
     }
+
+    suspend fun createNewConversation(): Long {
+        val now = System.currentTimeMillis()
+        return conversationDao.insert(ConversationEntity(title = DEFAULT_TITLE, createdAt = now, updatedAt = now))
+    }
+
+    suspend fun deleteConversation(conversationId: Long) {
+        conversationDao.delete(conversationId)
+    }
+
+    fun observeConversations(): Flow<List<ConversationEntity>> = conversationDao.observeAll()
 
     fun observeMessages(conversationId: Long): Flow<List<MessageEntity>> =
         messageDao.observeMessages(conversationId)
@@ -47,11 +61,16 @@ class ConversationRepository(
             return SendResult.ApiKeyMissing
         }
 
+        val isFirstMessage = messageDao.getMessages(conversationId).isEmpty()
+
         val sentAt = System.currentTimeMillis()
         messageDao.insert(
             MessageEntity(conversationId = conversationId, role = MessageRole.USER, content = userText, createdAt = sentAt),
         )
         conversationDao.touch(conversationId, sentAt)
+        if (isFirstMessage) {
+            conversationDao.updateTitle(conversationId, userText.take(TITLE_MAX_LENGTH))
+        }
 
         val placeholderId = messageDao.insert(
             MessageEntity(
@@ -111,6 +130,16 @@ class ConversationRepository(
                     StreamEvent.Done -> Unit
                 }
             }
+        } catch (e: CancellationException) {
+            // The user tapped "stop". The Job is already cancelled at this point, so the cleanup
+            // writes below need NonCancellable or they'd themselves throw immediately — then
+            // rethrow so cancellation keeps propagating; it must never be swallowed as a regular
+            // error.
+            withContext(NonCancellable) {
+                messageDao.updateContent(placeholderId, accumulated.toString(), accumulatedReasoning.toString().ifBlank { null })
+                conversationDao.touch(conversationId, System.currentTimeMillis())
+            }
+            throw e
         } catch (e: OpenAiException) {
             Log.w(TAG, "sendUserMessage failed: ${e.userMessage}", e)
             streamError = e
@@ -149,5 +178,7 @@ class ConversationRepository(
     private companion object {
         const val TAG = "ConversationRepository"
         const val FLUSH_INTERVAL_MS = 150L
+        const val TITLE_MAX_LENGTH = 40
+        const val DEFAULT_TITLE = "新しい会話"
     }
 }

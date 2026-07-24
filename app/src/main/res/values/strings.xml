@@ -5,6 +5,7 @@
     <string name="chat_title">LM Droid</string>
     <string name="chat_input_placeholder">メッセージを入力</string>
     <string name="chat_send">送信</string>
+    <string name="chat_stop">生成を停止</string>
     <string name="chat_api_key_missing_message">OpenAI APIキーが未登録です。設定画面から登録してください。</string>
     <string name="chat_go_to_settings">設定を開く</string>
 
@@ -17,4 +18,9 @@
     <string name="settings_test_connection">接続テスト</string>
     <string name="settings_test_success">接続に成功しました</string>
     <string name="settings_saved">保存しました</string>
+
+    <string name="history_title">履歴</string>
+    <string name="history_new_conversation">新しい会話</string>
+    <string name="history_empty_message">まだ会話がありません</string>
+    <string name="history_delete_conversation">この会話を削除</string>
 </resources>

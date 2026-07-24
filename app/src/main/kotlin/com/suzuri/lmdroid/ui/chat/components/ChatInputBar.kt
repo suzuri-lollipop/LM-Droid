@@ -1,11 +1,13 @@
 package com.suzuri.lmdroid.ui.chat.components
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -25,6 +27,7 @@ fun ChatInputBar(
     isStreaming: Boolean,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
+    onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -43,7 +46,17 @@ fun ChatInputBar(
             enabled = !isStreaming,
         )
         if (isStreaming) {
-            CircularProgressIndicator(modifier = Modifier.size(32.dp))
+            Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 2.dp)
+                IconButton(onClick = onStop) {
+                    Icon(
+                        imageVector = Icons.Filled.Stop,
+                        contentDescription = stringResource(R.string.chat_stop),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
         } else {
             IconButton(onClick = onSend, enabled = input.isNotBlank()) {
                 Icon(

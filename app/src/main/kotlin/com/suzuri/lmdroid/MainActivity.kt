@@ -7,6 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -27,6 +29,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.suzuri.lmdroid.ui.ViewModelFactory
 import com.suzuri.lmdroid.ui.chat.ChatScreen
 import com.suzuri.lmdroid.ui.chat.ChatViewModel
+import com.suzuri.lmdroid.ui.history.HistoryScreen
+import com.suzuri.lmdroid.ui.history.HistoryViewModel
 import com.suzuri.lmdroid.ui.navigation.Screen
 import com.suzuri.lmdroid.ui.settings.SettingsScreen
 import com.suzuri.lmdroid.ui.settings.SettingsViewModel
@@ -55,30 +59,65 @@ class MainActivity : ComponentActivity() {
 private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     var currentScreen by rememberSaveable { mutableStateOf(Screen.Chat) }
 
+    // Hoisted here (not inside the Scaffold content lambda) so the top bar's actions can also
+    // reach them — e.g. tapping "new chat" from the History screen's top bar.
+    val chatViewModel: ChatViewModel = viewModel(factory = viewModelFactory)
+    val settingsViewModel: SettingsViewModel = viewModel(factory = viewModelFactory)
+    val historyViewModel: HistoryViewModel = viewModel(factory = viewModelFactory)
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        if (currentScreen == Screen.Chat) {
-                            stringResource(R.string.chat_title)
-                        } else {
-                            stringResource(R.string.settings_title)
+                        when (currentScreen) {
+                            Screen.Chat -> stringResource(R.string.chat_title)
+                            Screen.Settings -> stringResource(R.string.settings_title)
+                            Screen.History -> stringResource(R.string.history_title)
                         },
                     )
                 },
                 navigationIcon = {
-                    if (currentScreen == Screen.Settings) {
-                        IconButton(onClick = { currentScreen = Screen.Chat }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    when (currentScreen) {
+                        Screen.Chat -> {
+                            IconButton(onClick = { currentScreen = Screen.History }) {
+                                Icon(Icons.Filled.History, contentDescription = stringResource(R.string.history_title))
+                            }
+                        }
+                        Screen.Settings, Screen.History -> {
+                            IconButton(onClick = { currentScreen = Screen.Chat }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                            }
                         }
                     }
                 },
                 actions = {
-                    if (currentScreen == Screen.Chat) {
-                        IconButton(onClick = { currentScreen = Screen.Settings }) {
-                            Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings_title))
+                    when (currentScreen) {
+                        Screen.Chat -> {
+                            IconButton(onClick = { chatViewModel.startNewConversation() }) {
+                                Icon(
+                                    Icons.Filled.Add,
+                                    contentDescription = stringResource(R.string.history_new_conversation),
+                                )
+                            }
+                            IconButton(onClick = { currentScreen = Screen.Settings }) {
+                                Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings_title))
+                            }
                         }
+                        Screen.History -> {
+                            IconButton(
+                                onClick = {
+                                    chatViewModel.startNewConversation()
+                                    currentScreen = Screen.Chat
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Filled.Add,
+                                    contentDescription = stringResource(R.string.history_new_conversation),
+                                )
+                            }
+                        }
+                        Screen.Settings -> Unit
                     }
                 },
             )
@@ -86,7 +125,6 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     ) { innerPadding ->
         when (currentScreen) {
             Screen.Chat -> {
-                val chatViewModel: ChatViewModel = viewModel(factory = viewModelFactory)
                 ChatScreen(
                     viewModel = chatViewModel,
                     onNavigateToSettings = { currentScreen = Screen.Settings },
@@ -94,9 +132,28 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                 )
             }
             Screen.Settings -> {
-                val settingsViewModel: SettingsViewModel = viewModel(factory = viewModelFactory)
                 SettingsScreen(
                     viewModel = settingsViewModel,
+                    modifier = Modifier.padding(innerPadding),
+                )
+            }
+            Screen.History -> {
+                HistoryScreen(
+                    viewModel = historyViewModel,
+                    onSelectConversation = { id ->
+                        chatViewModel.switchToConversation(id)
+                        currentScreen = Screen.Chat
+                    },
+                    onDeleteConversation = { id ->
+                        // If the deleted conversation is the one ChatViewModel currently has
+                        // open, redirect it to a fresh conversation first — otherwise sending a
+                        // message there would try to insert against a now-nonexistent
+                        // conversationId and violate the messages table's foreign key.
+                        if (chatViewModel.currentConversationId() == id) {
+                            chatViewModel.startNewConversation()
+                        }
+                        historyViewModel.onDeleteConversation(id)
+                    },
                     modifier = Modifier.padding(innerPadding),
                 )
             }

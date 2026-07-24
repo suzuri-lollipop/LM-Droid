@@ -88,6 +88,7 @@ fun ChatScreen(
                 isStreaming = uiState.isStreaming,
                 onInputChange = viewModel::onInputChange,
                 onSend = viewModel::onSend,
+                onStop = viewModel::onStopGeneration,
             )
         }
 
