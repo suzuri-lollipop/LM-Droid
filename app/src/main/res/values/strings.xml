@@ -8,6 +8,11 @@
     <string name="chat_stop">生成を停止</string>
     <string name="chat_api_key_missing_message">OpenAI APIキーが未登録です。設定画面から登録してください。</string>
     <string name="chat_go_to_settings">設定を開く</string>
+    <string name="chat_copy">コピー</string>
+    <string name="chat_copied">コピーしました</string>
+    <string name="chat_edit_message">編集</string>
+    <string name="chat_edit_cancel">キャンセル</string>
+    <string name="chat_edit_regenerate">この内容で再生成</string>
 
     <string name="settings_title">設定</string>
     <string name="settings_api_key_label">OpenAI APIキー</string>

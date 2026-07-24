@@ -249,6 +249,70 @@ class OpenAiApiClientTest {
     }
 
     @Test
+    fun `generateTitle sends stream=false and returns the trimmed model reply`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                "{\"choices\":[{\"message\":{\"content\":\"\\\"Trip Planning Help\\\"\"}}]}",
+            ),
+        )
+
+        val result = client.generateTitle(
+            apiKey = "test-key",
+            model = "gpt-4o-mini",
+            userMessage = "京都旅行のプランを考えて",
+            assistantMessage = "まず観光したいエリアを教えてください",
+            baseUrl = baseUrl,
+        )
+
+        assertTrue(result.isSuccess)
+        assertEquals("Trip Planning Help", result.getOrNull())
+
+        val recordedRequest = server.takeRequest()
+        val requestBody = recordedRequest.body.readUtf8()
+        assertTrue(requestBody.contains("\"stream\":false"))
+        assertTrue(requestBody.contains("京都旅行"))
+        assertTrue(requestBody.contains("観光したいエリア"))
+    }
+
+    @Test
+    fun `generateTitle omits the assistant message when it is null`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                "{\"choices\":[{\"message\":{\"content\":\"Quick Question\"}}]}",
+            ),
+        )
+
+        val result = client.generateTitle(
+            apiKey = "test-key",
+            model = "gpt-4o-mini",
+            userMessage = "hi",
+            assistantMessage = null,
+            baseUrl = baseUrl,
+        )
+
+        assertTrue(result.isSuccess)
+        val requestBody = server.takeRequest().body.readUtf8()
+        assertTrue(requestBody.contains("\"role\":\"user\""))
+        assertTrue(!requestBody.contains("\"role\":\"assistant\""))
+    }
+
+    @Test
+    fun `generateTitle fails when the server errors`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(500).setBody("model not loaded"))
+
+        val result = client.generateTitle(
+            apiKey = "test-key",
+            model = "gpt-4o-mini",
+            userMessage = "hi",
+            assistantMessage = null,
+            baseUrl = baseUrl,
+        )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is OpenAiException.ServerError)
+    }
+
+    @Test
     fun `normalizeBaseUrl defaults a missing scheme to http and trims whitespace and slashes`() {
         assertEquals("http://example.com/v1", OpenAiApiClient.normalizeBaseUrl("example.com/v1"))
         assertEquals("http://example.com/v1", OpenAiApiClient.normalizeBaseUrl("example.com/v1/"))

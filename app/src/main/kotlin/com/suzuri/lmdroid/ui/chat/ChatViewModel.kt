@@ -60,10 +60,34 @@ class ChatViewModel(
         val currentConversationId = conversationId.value ?: return
         if (text.isEmpty() || _uiState.value.isStreaming) return
 
-        _uiState.update { it.copy(input = "", isStreaming = true, errorMessage = null) }
+        _uiState.update { it.copy(input = "", errorMessage = null) }
+        launchGeneration { conversationRepository.sendUserMessage(currentConversationId, text) }
+    }
+
+    /**
+     * Edits a previously-sent user message and regenerates the reply from that point (ChatGPT/
+     * Claude-style "edit and regenerate"). Cancels any in-progress generation first, since editing
+     * implies the user wants a redo rather than the response currently streaming in.
+     */
+    fun onEditMessage(messageId: Long, newText: String) {
+        val trimmed = newText.trim()
+        val currentConversationId = conversationId.value ?: return
+        if (trimmed.isEmpty()) return
+
+        sendJob?.cancel()
+        _uiState.update { it.copy(errorMessage = null) }
+        launchGeneration { conversationRepository.editMessageAndRegenerate(currentConversationId, messageId, trimmed) }
+    }
+
+    fun onStopGeneration() {
+        sendJob?.cancel()
+    }
+
+    private fun launchGeneration(block: suspend () -> ConversationRepository.SendResult) {
+        _uiState.update { it.copy(isStreaming = true) }
         sendJob = viewModelScope.launch {
             try {
-                when (val result = conversationRepository.sendUserMessage(currentConversationId, text)) {
+                when (val result = block()) {
                     is ConversationRepository.SendResult.Success -> Unit
                     is ConversationRepository.SendResult.ApiKeyMissing ->
                         _uiState.update { it.copy(apiKeyMissing = true) }
@@ -71,16 +95,12 @@ class ChatViewModel(
                         _uiState.update { it.copy(errorMessage = result.message) }
                 }
             } finally {
-                // Runs on normal completion, on error, and on cancellation (from onStopGeneration)
-                // alike — MutableStateFlow.update isn't a suspend call, so it's safe here even
-                // though the job may already be cancelled.
+                // Runs on normal completion, on error, and on cancellation (from onStopGeneration
+                // or onEditMessage) alike — MutableStateFlow.update isn't a suspend call, so it's
+                // safe here even though the job may already be cancelled.
                 _uiState.update { it.copy(isStreaming = false) }
             }
         }
-    }
-
-    fun onStopGeneration() {
-        sendJob?.cancel()
     }
 
     /**

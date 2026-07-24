@@ -80,6 +80,32 @@ class MessageDaoTest {
     }
 
     @Test
+    fun `deleteMessagesAfter removes only messages with a greater id in the same conversation`() = runTest {
+        val conversationId = conversationDao.insert(ConversationEntity(title = "t", createdAt = 0, updatedAt = 0))
+        val otherConversationId = conversationDao.insert(ConversationEntity(title = "u", createdAt = 0, updatedAt = 0))
+
+        val keptId = messageDao.insert(
+            MessageEntity(conversationId = conversationId, role = MessageRole.USER, content = "keep", createdAt = 100),
+        )
+        messageDao.insert(
+            MessageEntity(conversationId = conversationId, role = MessageRole.ASSISTANT, content = "drop", createdAt = 200),
+        )
+        val otherConversationMessageId = messageDao.insert(
+            MessageEntity(conversationId = otherConversationId, role = MessageRole.USER, content = "unrelated", createdAt = 300),
+        )
+
+        messageDao.deleteMessagesAfter(conversationId, keptId)
+
+        val remaining = messageDao.getMessages(conversationId)
+        assertEquals(1, remaining.size)
+        assertEquals(keptId, remaining[0].id)
+        // A message in a different conversation with a larger id must survive — the query is
+        // scoped by conversationId, not just id.
+        assertEquals(1, messageDao.getMessages(otherConversationId).size)
+        assertEquals(otherConversationMessageId, messageDao.getMessages(otherConversationId)[0].id)
+    }
+
+    @Test
     fun `observeMessages emits a new list when a row is inserted`() = runTest {
         val conversationId = conversationDao.insert(ConversationEntity(title = "t", createdAt = 0, updatedAt = 0))
         messageDao.insert(

@@ -160,6 +160,66 @@ class OpenAiApiClient(
             }
         }
 
+    /**
+     * A short, non-streaming completion used purely to auto-title a conversation from its first
+     * exchange — best-effort, so callers should treat failure as "keep whatever title we already
+     * have" rather than surface it to the user.
+     */
+    suspend fun generateTitle(
+        apiKey: String,
+        model: String,
+        userMessage: String,
+        assistantMessage: String?,
+        baseUrl: String = DEFAULT_BASE_URL,
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val messages = buildList {
+            add(ChatMessageDto(role = "system", content = TITLE_SYSTEM_PROMPT))
+            add(ChatMessageDto(role = "user", content = userMessage.take(2000)))
+            if (!assistantMessage.isNullOrBlank()) {
+                add(ChatMessageDto(role = "assistant", content = assistantMessage.take(2000)))
+            }
+        }
+        val requestJson = json.encodeToString(
+            ChatCompletionRequest.serializer(),
+            ChatCompletionRequest(model = model, messages = messages, stream = false, maxTokens = 20),
+        )
+
+        val builderWithUrl = try {
+            Request.Builder().url("${normalizeBaseUrl(baseUrl)}/chat/completions")
+        } catch (e: IllegalArgumentException) {
+            return@withContext Result.failure(e)
+        }
+
+        val request = try {
+            builderWithUrl
+                .addHeader("Authorization", "Bearer $apiKey")
+                .post(requestJson.toRequestBody(jsonMediaType))
+                .build()
+        } catch (e: IllegalArgumentException) {
+            return@withContext Result.failure(e)
+        }
+
+        try {
+            okHttpClient.newCall(request).execute().use { response ->
+                val bodyString = response.body?.string()
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(mapToException(null, response.code, bodyString))
+                }
+                val title = bodyString?.let {
+                    runCatching { json.decodeFromString(ChatCompletionChunk.serializer(), it) }
+                        .getOrNull()?.choices?.firstOrNull()?.message?.content
+                }?.trim()?.trim('"', '「', '」', '『', '』', '.', '。')
+                if (title.isNullOrBlank()) {
+                    Result.failure(OpenAiException.Unknown(null))
+                } else {
+                    Result.success(title)
+                }
+            }
+        } catch (e: IOException) {
+            Result.failure(OpenAiException.NetworkError(e))
+        }
+    }
+
     private fun mapToException(cause: Throwable?, httpCode: Int?, bodyString: String?): OpenAiException {
         if (httpCode == null) {
             return when (cause) {
@@ -193,6 +253,10 @@ class OpenAiApiClient(
     companion object {
         private const val TAG = "OpenAiApiClient"
         const val DEFAULT_BASE_URL = "https://api.openai.com/v1"
+        private const val TITLE_SYSTEM_PROMPT =
+            "Reply with only a short conversation title (3 to 6 words, no quotes, no trailing " +
+                "punctuation) summarizing the topic of the following exchange, in the same " +
+                "language the user is writing in."
 
         /**
          * Users commonly type a bare host (e.g. "100.97.208.27:721/v1") for a self-hosted

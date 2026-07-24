@@ -21,4 +21,11 @@ interface MessageDao {
 
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC, id ASC")
     suspend fun getMessages(conversationId: Long): List<MessageEntity>
+
+    /**
+     * Used when editing a past user message: discards everything that came after it so the
+     * reply can be regenerated from that point.
+     */
+    @Query("DELETE FROM messages WHERE conversationId = :conversationId AND id > :afterMessageId")
+    suspend fun deleteMessagesAfter(conversationId: Long, afterMessageId: Long)
 }

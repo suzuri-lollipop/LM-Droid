@@ -66,7 +66,7 @@ fun ChatScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(uiState.messages.asReversed(), key = { it.id }) { message ->
-                MessageBubble(message = message)
+                MessageBubble(message = message, onEditMessage = viewModel::onEditMessage)
             }
         }
 
