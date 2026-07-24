@@ -7,6 +7,7 @@ data class MessageUiModel(
     val role: MessageRole,
     val content: String,
     val isError: Boolean,
+    val reasoningContent: String? = null,
 )
 
 data class ChatUiState(

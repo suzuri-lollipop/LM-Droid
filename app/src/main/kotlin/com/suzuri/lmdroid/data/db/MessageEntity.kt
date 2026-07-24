@@ -25,4 +25,7 @@ data class MessageEntity(
     val content: String,
     val createdAt: Long,
     val isError: Boolean = false,
+    // The model's chain-of-thought, shown separately in a collapsible "thinking" section —
+    // null for messages that never had a reasoning phase (e.g. the user's own messages).
+    val reasoningContent: String? = null,
 )

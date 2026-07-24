@@ -107,11 +107,14 @@ class OpenAiApiClient(
                         }.getOrNull()
                         val choice = chunk?.choices?.firstOrNull()
                         // Reasoning/"thinking" models (e.g. Gemma reasoning variants, DeepSeek-R1
-                        // style models) stream their chain-of-thought under reasoningContent
-                        // instead of content while they're still "thinking".
-                        val delta = choice?.delta?.content
-                            ?: choice?.delta?.reasoningContent
-                            ?: choice?.message?.content
+                        // style models) stream their chain-of-thought under reasoningContent as a
+                        // separate event so the UI can show it in a collapsible "thinking" section
+                        // rather than mixing it into the final answer.
+                        val reasoningDelta = choice?.delta?.reasoningContent
+                        if (!reasoningDelta.isNullOrEmpty()) {
+                            trySend(StreamEvent.ReasoningDelta(reasoningDelta))
+                        }
+                        val delta = choice?.delta?.content ?: choice?.message?.content
                         if (!delta.isNullOrEmpty()) {
                             trySend(StreamEvent.Delta(delta))
                         }

@@ -66,6 +66,20 @@ class MessageDaoTest {
     }
 
     @Test
+    fun `updateContent stores reasoningContent separately from content`() = runTest {
+        val conversationId = conversationDao.insert(ConversationEntity(title = "t", createdAt = 0, updatedAt = 0))
+        val placeholderId = messageDao.insert(
+            MessageEntity(conversationId = conversationId, role = MessageRole.ASSISTANT, content = "", createdAt = 100),
+        )
+
+        messageDao.updateContent(placeholderId, content = "final answer", reasoningContent = "hmm, thinking...")
+
+        val messages = messageDao.getMessages(conversationId)
+        assertEquals("final answer", messages[0].content)
+        assertEquals("hmm, thinking...", messages[0].reasoningContent)
+    }
+
+    @Test
     fun `observeMessages emits a new list when a row is inserted`() = runTest {
         val conversationId = conversationDao.insert(ConversationEntity(title = "t", createdAt = 0, updatedAt = 0))
         messageDao.insert(

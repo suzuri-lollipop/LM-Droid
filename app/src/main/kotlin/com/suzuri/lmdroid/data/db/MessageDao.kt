@@ -10,8 +10,11 @@ interface MessageDao {
     @Insert
     suspend fun insert(message: MessageEntity): Long
 
-    @Query("UPDATE messages SET content = :content, isError = :isError WHERE id = :id")
-    suspend fun updateContent(id: Long, content: String, isError: Boolean = false)
+    @Query(
+        "UPDATE messages SET content = :content, reasoningContent = :reasoningContent, isError = :isError " +
+            "WHERE id = :id",
+    )
+    suspend fun updateContent(id: Long, content: String, reasoningContent: String? = null, isError: Boolean = false)
 
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC, id ASC")
     fun observeMessages(conversationId: Long): Flow<List<MessageEntity>>

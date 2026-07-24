@@ -49,6 +49,10 @@ class AppContainer(context: Context) {
         .build()
 
     private val database = Room.databaseBuilder(appContext, AppDatabase::class.java, AppDatabase.DATABASE_NAME)
+        // No migrations written yet (still early/local development) — just recreate the DB on
+        // a schema version bump rather than crash. This wipes locally stored chat history once
+        // per schema change, which is an acceptable tradeoff at this stage.
+        .fallbackToDestructiveMigration(dropAllTables = true)
         .build()
 
     private val apiKeyCipher = ApiKeyCipher()

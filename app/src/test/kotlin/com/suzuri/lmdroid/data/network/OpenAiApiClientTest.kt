@@ -79,11 +79,11 @@ class OpenAiApiClientTest {
     }
 
     @Test
-    fun `streamChatCompletion falls back to reasoning_content when content is absent`() = runTest {
+    fun `streamChatCompletion emits reasoning_content as a separate ReasoningDelta event`() = runTest {
         // Reasoning/"thinking" models (e.g. Gemma reasoning variants, DeepSeek-R1-style models)
         // stream their chain-of-thought under "reasoning_content" instead of "content" while
-        // they're still "thinking" — this must still show up as visible streaming activity
-        // rather than silently parsing to null.
+        // they're still "thinking" — surfaced as a distinct event so the UI can show it in a
+        // collapsible "thinking" section separate from the final answer.
         server.enqueue(
             MockResponse()
                 .setHeader("Content-Type", "text/event-stream")
@@ -95,7 +95,7 @@ class OpenAiApiClientTest {
         )
 
         client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
-            assertEquals(StreamEvent.Delta("Hmm"), awaitItem())
+            assertEquals(StreamEvent.ReasoningDelta("Hmm"), awaitItem())
             assertEquals(StreamEvent.Delta("Answer"), awaitItem())
             assertEquals(StreamEvent.Done, awaitItem())
             awaitComplete()

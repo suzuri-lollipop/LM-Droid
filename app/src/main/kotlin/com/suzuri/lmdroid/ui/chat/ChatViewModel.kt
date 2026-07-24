@@ -70,5 +70,6 @@ class ChatViewModel(
         role = role,
         content = content,
         isError = isError,
+        reasoningContent = reasoningContent,
     )
 }

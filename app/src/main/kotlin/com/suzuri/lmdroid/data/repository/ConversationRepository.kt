@@ -85,19 +85,28 @@ class ConversationRepository(
         }
 
         val accumulated = StringBuilder()
+        val accumulatedReasoning = StringBuilder()
         var lastFlushAt = 0L
         var streamError: OpenAiException? = null
+
+        suspend fun flushIfDue() {
+            val now = System.currentTimeMillis()
+            if (now - lastFlushAt >= FLUSH_INTERVAL_MS) {
+                messageDao.updateContent(placeholderId, accumulated.toString(), accumulatedReasoning.toString().ifBlank { null })
+                lastFlushAt = now
+            }
+        }
 
         try {
             openAiApiClient.streamChatCompletion(apiKey, settings.model, history, settings.baseUrl).collect { event ->
                 when (event) {
                     is StreamEvent.Delta -> {
                         accumulated.append(event.text)
-                        val now = System.currentTimeMillis()
-                        if (now - lastFlushAt >= FLUSH_INTERVAL_MS) {
-                            messageDao.updateContent(placeholderId, accumulated.toString())
-                            lastFlushAt = now
-                        }
+                        flushIfDue()
+                    }
+                    is StreamEvent.ReasoningDelta -> {
+                        accumulatedReasoning.append(event.text)
+                        flushIfDue()
                     }
                     StreamEvent.Done -> Unit
                 }
@@ -110,20 +119,21 @@ class ConversationRepository(
             streamError = OpenAiException.Unknown(e)
         }
 
+        val finalReasoning = accumulatedReasoning.toString().ifBlank { null }
         val error = streamError
         return if (error != null) {
-            if (accumulated.isEmpty()) {
-                messageDao.updateContent(placeholderId, error.userMessage, isError = true)
+            if (accumulated.isEmpty() && finalReasoning == null) {
+                messageDao.updateContent(placeholderId, error.userMessage, null, isError = true)
             } else {
-                messageDao.updateContent(placeholderId, accumulated.toString(), isError = false)
+                messageDao.updateContent(placeholderId, accumulated.toString(), finalReasoning, isError = false)
             }
             SendResult.Error(error.userMessage)
         } else {
             val finalContent = accumulated.toString()
-            if (finalContent.isEmpty()) {
-                messageDao.updateContent(placeholderId, "（サーバーからの返答がありませんでした）", isError = true)
+            if (finalContent.isEmpty() && finalReasoning == null) {
+                messageDao.updateContent(placeholderId, "（サーバーからの返答がありませんでした）", null, isError = true)
             } else {
-                messageDao.updateContent(placeholderId, finalContent)
+                messageDao.updateContent(placeholderId, finalContent, finalReasoning)
             }
             conversationDao.touch(conversationId, System.currentTimeMillis())
             SendResult.Success
