@@ -37,9 +37,16 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(uiState.messages.size, uiState.messages.lastOrNull()?.content) {
+    LaunchedEffect(
+        uiState.messages.size,
+        uiState.messages.lastOrNull()?.content,
+        uiState.messages.lastOrNull()?.reasoningContent,
+    ) {
+        // With reverseLayout = true below, index 0 is the newest message and sits at the bottom
+        // of the viewport, so this single call keeps the growing tail pinned in place — no need
+        // to reason about the pixel height of a message that's taller than the screen.
         if (uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.size - 1)
+            listState.scrollToItem(0)
         }
     }
 
@@ -53,11 +60,12 @@ fun ChatScreen(
     Column(modifier = modifier.fillMaxSize().imePadding()) {
         LazyColumn(
             state = listState,
+            reverseLayout = true,
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(uiState.messages, key = { it.id }) { message ->
+            items(uiState.messages.asReversed(), key = { it.id }) { message ->
                 MessageBubble(message = message)
             }
         }

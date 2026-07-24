@@ -81,23 +81,19 @@ private fun UserBubble(message: MessageUiModel, modifier: Modifier) {
 
 /**
  * A tappable, collapsible "thinking" block, similar to how Claude/ChatGPT show a model's
- * chain-of-thought: expanded automatically while the model is still thinking (no final answer
- * yet), then collapsing to a small summary once the real answer starts — but a manual tap always
- * wins over that automatic behavior, remembered for the lifetime of this message.
+ * chain-of-thought: collapsed by default (just a small header), the user taps it to reveal the
+ * raw reasoning text. The header label reflects whether the model is still thinking or done.
  */
 @Composable
 private fun ReasoningSection(messageId: Long, reasoning: String, isStillThinking: Boolean) {
-    var manualOverride by rememberSaveable(messageId) { mutableStateOf<Boolean?>(null) }
-    val expanded = manualOverride ?: isStillThinking
+    var expanded by rememberSaveable(messageId) { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-            .clickable { manualOverride = !expanded }
+            .clickable { expanded = !expanded }
             .animateContentSize()
-            .padding(10.dp),
+            .padding(vertical = 6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
