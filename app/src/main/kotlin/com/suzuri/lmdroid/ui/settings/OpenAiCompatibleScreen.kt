@@ -31,8 +31,9 @@ import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.settings.AppSettings
 
+/** LLM設定 → OpenAI Compatible: the API key/model/base URL form for an OpenAI-compatible endpoint. */
 @Composable
-fun SettingsScreen(
+fun OpenAiCompatibleScreen(
     viewModel: SettingsViewModel,
     modifier: Modifier = Modifier,
 ) {

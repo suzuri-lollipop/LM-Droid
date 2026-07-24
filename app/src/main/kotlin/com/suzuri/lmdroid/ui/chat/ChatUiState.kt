@@ -16,4 +16,5 @@ data class ChatUiState(
     val isStreaming: Boolean = false,
     val apiKeyMissing: Boolean = false,
     val errorMessage: String? = null,
+    val markdownEnabled: Boolean = true,
 )

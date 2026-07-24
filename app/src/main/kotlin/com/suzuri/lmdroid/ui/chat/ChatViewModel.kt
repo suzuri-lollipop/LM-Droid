@@ -46,7 +46,9 @@ class ChatViewModel(
 
         viewModelScope.launch {
             settingsRepository.settings.collect { settings ->
-                _uiState.update { state -> state.copy(apiKeyMissing = settings.apiKey.isNullOrBlank()) }
+                _uiState.update { state ->
+                    state.copy(apiKeyMissing = settings.apiKey.isNullOrBlank(), markdownEnabled = settings.markdownEnabled)
+                }
             }
         }
     }
@@ -93,6 +95,15 @@ class ChatViewModel(
 
     fun onStopGeneration() {
         sendJob?.cancel()
+    }
+
+    /**
+     * Updates immediately (rather than waiting for the settings Flow to round-trip through
+     * DataStore) so the switch feels instant, and persists it so it's remembered next launch.
+     */
+    fun onMarkdownEnabledChange(enabled: Boolean) {
+        _uiState.update { it.copy(markdownEnabled = enabled) }
+        viewModelScope.launch { settingsRepository.saveMarkdownEnabled(enabled) }
     }
 
     private fun launchGeneration(block: suspend () -> ConversationRepository.SendResult) {

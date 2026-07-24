@@ -2,6 +2,7 @@ package com.suzuri.lmdroid
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
@@ -32,8 +33,12 @@ import com.suzuri.lmdroid.ui.chat.ChatViewModel
 import com.suzuri.lmdroid.ui.history.HistoryScreen
 import com.suzuri.lmdroid.ui.history.HistoryViewModel
 import com.suzuri.lmdroid.ui.navigation.Screen
-import com.suzuri.lmdroid.ui.settings.SettingsScreen
+import com.suzuri.lmdroid.ui.settings.LlmSettingsScreen
+import com.suzuri.lmdroid.ui.settings.OpenAiCompatibleScreen
+import com.suzuri.lmdroid.ui.settings.SettingsRoute
+import com.suzuri.lmdroid.ui.settings.SettingsRootScreen
 import com.suzuri.lmdroid.ui.settings.SettingsViewModel
+import com.suzuri.lmdroid.ui.settings.parent
 import com.suzuri.lmdroid.ui.theme.LmDroidTheme
 
 class MainActivity : ComponentActivity() {
@@ -58,12 +63,27 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     var currentScreen by rememberSaveable { mutableStateOf(Screen.Chat) }
+    // Which level of the Settings drill-down is showing (Root → LlmSettings → OpenAiCompatible).
+    // Tracked separately from currentScreen so leaving and re-entering History/Chat doesn't
+    // reset how deep the user was in Settings.
+    var settingsRoute by rememberSaveable { mutableStateOf(SettingsRoute.Root) }
 
     // Hoisted here (not inside the Scaffold content lambda) so the top bar's actions can also
     // reach them — e.g. tapping "new chat" from the History screen's top bar.
     val chatViewModel: ChatViewModel = viewModel(factory = viewModelFactory)
     val settingsViewModel: SettingsViewModel = viewModel(factory = viewModelFactory)
     val historyViewModel: HistoryViewModel = viewModel(factory = viewModelFactory)
+
+    // Makes the system/gesture back button pop one level of the Settings drill-down (like the
+    // Android Settings app) instead of leaving the tab or exiting the app.
+    BackHandler(enabled = currentScreen == Screen.Settings) {
+        val parentRoute = settingsRoute.parent()
+        if (parentRoute != null) {
+            settingsRoute = parentRoute
+        } else {
+            currentScreen = Screen.Chat
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -72,7 +92,11 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                     Text(
                         when (currentScreen) {
                             Screen.Chat -> stringResource(R.string.chat_title)
-                            Screen.Settings -> stringResource(R.string.settings_title)
+                            Screen.Settings -> when (settingsRoute) {
+                                SettingsRoute.Root -> stringResource(R.string.settings_title)
+                                SettingsRoute.LlmSettings -> stringResource(R.string.settings_llm_category_title)
+                                SettingsRoute.OpenAiCompatible -> stringResource(R.string.settings_openai_compatible_title)
+                            }
                             Screen.History -> stringResource(R.string.history_title)
                         },
                     )
@@ -84,7 +108,21 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 Icon(Icons.Filled.History, contentDescription = stringResource(R.string.history_title))
                             }
                         }
-                        Screen.Settings, Screen.History -> {
+                        Screen.Settings -> {
+                            IconButton(
+                                onClick = {
+                                    val parentRoute = settingsRoute.parent()
+                                    if (parentRoute != null) {
+                                        settingsRoute = parentRoute
+                                    } else {
+                                        currentScreen = Screen.Chat
+                                    }
+                                },
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                            }
+                        }
+                        Screen.History -> {
                             IconButton(onClick = { currentScreen = Screen.Chat }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                             }
@@ -100,7 +138,12 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     contentDescription = stringResource(R.string.history_new_conversation),
                                 )
                             }
-                            IconButton(onClick = { currentScreen = Screen.Settings }) {
+                            IconButton(
+                                onClick = {
+                                    settingsRoute = SettingsRoute.Root
+                                    currentScreen = Screen.Settings
+                                },
+                            ) {
                                 Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings_title))
                             }
                         }
@@ -127,15 +170,36 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
             Screen.Chat -> {
                 ChatScreen(
                     viewModel = chatViewModel,
-                    onNavigateToSettings = { currentScreen = Screen.Settings },
+                    onNavigateToSettings = {
+                        // Deep-links straight to the form instead of the browse menu — the user
+                        // tapped this specifically to fix a missing API key, not to explore.
+                        settingsRoute = SettingsRoute.OpenAiCompatible
+                        currentScreen = Screen.Settings
+                    },
                     modifier = Modifier.padding(innerPadding),
                 )
             }
             Screen.Settings -> {
-                SettingsScreen(
-                    viewModel = settingsViewModel,
-                    modifier = Modifier.padding(innerPadding),
-                )
+                when (settingsRoute) {
+                    SettingsRoute.Root -> {
+                        SettingsRootScreen(
+                            onNavigateToLlmSettings = { settingsRoute = SettingsRoute.LlmSettings },
+                            modifier = Modifier.padding(innerPadding),
+                        )
+                    }
+                    SettingsRoute.LlmSettings -> {
+                        LlmSettingsScreen(
+                            onNavigateToOpenAiCompatible = { settingsRoute = SettingsRoute.OpenAiCompatible },
+                            modifier = Modifier.padding(innerPadding),
+                        )
+                    }
+                    SettingsRoute.OpenAiCompatible -> {
+                        OpenAiCompatibleScreen(
+                            viewModel = settingsViewModel,
+                            modifier = Modifier.padding(innerPadding),
+                        )
+                    }
+                }
             }
             Screen.History -> {
                 HistoryScreen(

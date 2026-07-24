@@ -1,6 +1,7 @@
 package com.suzuri.lmdroid.data.settings
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -26,6 +27,7 @@ class SettingsRepository(
             apiKey = apiKey,
             model = prefs[KEY_MODEL] ?: AppSettings.DEFAULT_MODEL,
             baseUrl = prefs[KEY_BASE_URL] ?: AppSettings.DEFAULT_BASE_URL,
+            markdownEnabled = prefs[KEY_MARKDOWN_ENABLED] ?: true,
         )
     }
 
@@ -58,10 +60,17 @@ class SettingsRepository(
         }
     }
 
+    suspend fun saveMarkdownEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[KEY_MARKDOWN_ENABLED] = enabled
+        }
+    }
+
     private companion object {
         val KEY_API_KEY_CIPHERTEXT = stringPreferencesKey("api_key_ciphertext")
         val KEY_API_KEY_IV = stringPreferencesKey("api_key_iv")
         val KEY_MODEL = stringPreferencesKey("model_name")
         val KEY_BASE_URL = stringPreferencesKey("base_url")
+        val KEY_MARKDOWN_ENABLED = booleanPreferencesKey("markdown_enabled")
     }
 }

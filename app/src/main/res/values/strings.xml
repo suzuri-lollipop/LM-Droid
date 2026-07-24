@@ -14,8 +14,11 @@
     <string name="chat_edit_cancel">キャンセル</string>
     <string name="chat_edit_regenerate">この内容で再生成</string>
     <string name="chat_regenerate">再生成</string>
+    <string name="chat_markdown_toggle_label">マークダウン表示</string>
 
     <string name="settings_title">設定</string>
+    <string name="settings_llm_category_title">LLM設定</string>
+    <string name="settings_openai_compatible_title">OpenAI Compatible</string>
     <string name="settings_api_key_label">OpenAI APIキー</string>
     <string name="settings_api_key_placeholder">sk-...</string>
     <string name="settings_model_label">モデル名</string>

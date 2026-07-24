@@ -4,6 +4,7 @@ data class AppSettings(
     val apiKey: String?,
     val model: String,
     val baseUrl: String,
+    val markdownEnabled: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_MODEL = "gpt-4o-mini"

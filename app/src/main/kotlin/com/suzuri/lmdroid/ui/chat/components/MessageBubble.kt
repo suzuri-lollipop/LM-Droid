@@ -53,10 +53,11 @@ fun MessageBubble(
     message: MessageUiModel,
     onEditMessage: (Long, String) -> Unit,
     onRegenerate: (Long) -> Unit,
+    markdownEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
     if (message.role == MessageRole.USER) {
-        UserBubble(message, onEditMessage, modifier)
+        UserBubble(message, onEditMessage, markdownEnabled, modifier)
         return
     }
 
@@ -85,13 +86,18 @@ fun MessageBubble(
                 // Renders headings/lists/links/**bold** etc. and gives fenced code blocks a
                 // monospace font + distinct background with horizontal scroll for long lines,
                 // instead of dumping raw markdown syntax as flat text.
-                else -> Markdown(
+                markdownEnabled -> Markdown(
                     content = message.content,
                     colors = markdownColor(text = MaterialTheme.colorScheme.onSurface),
                     padding = chatMarkdownPadding(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 2.dp, vertical = 4.dp),
+                )
+                else -> Text(
+                    text = message.content,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
                 )
             }
         }
@@ -116,6 +122,7 @@ fun MessageBubble(
 private fun UserBubble(
     message: MessageUiModel,
     onEditMessage: (Long, String) -> Unit,
+    markdownEnabled: Boolean,
     modifier: Modifier,
 ) {
     var isEditing by rememberSaveable(message.id) { mutableStateOf(false) }
@@ -170,19 +177,24 @@ private fun UserBubble(
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                // No modifier size overrides here: Markdown() defaults its own modifier to
-                // fillMaxSize(), which would force this bubble to the full 320.dp cap for every
-                // message. Passing the bare Modifier keeps it sized to content, like Text did.
-                Markdown(
-                    content = message.content,
-                    colors = markdownColor(
-                        text = MaterialTheme.colorScheme.onPrimary,
-                        codeBackground = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
-                        inlineCodeBackground = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
-                    ),
-                    padding = chatMarkdownPadding(),
-                    modifier = Modifier,
-                )
+                if (markdownEnabled) {
+                    // No modifier size overrides here: Markdown() defaults its own modifier to
+                    // fillMaxSize(), which would force this bubble to the full 320.dp cap for
+                    // every message. Passing the bare Modifier keeps it sized to content, like
+                    // Text did.
+                    Markdown(
+                        content = message.content,
+                        colors = markdownColor(
+                            text = MaterialTheme.colorScheme.onPrimary,
+                            codeBackground = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
+                            inlineCodeBackground = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
+                        ),
+                        padding = chatMarkdownPadding(),
+                        modifier = Modifier,
+                    )
+                } else {
+                    Text(text = message.content, color = MaterialTheme.colorScheme.onPrimary)
+                }
             }
             Row {
                 IconButton(onClick = { isEditing = true }, modifier = Modifier.size(32.dp)) {
