@@ -23,7 +23,9 @@ class SettingsViewModel(
     init {
         viewModelScope.launch {
             val settings = settingsRepository.currentSettings()
-            _uiState.update { it.copy(apiKey = settings.apiKey.orEmpty(), model = settings.model) }
+            _uiState.update {
+                it.copy(apiKey = settings.apiKey.orEmpty(), model = settings.model, baseUrl = settings.baseUrl)
+            }
         }
     }
 
@@ -35,6 +37,10 @@ class SettingsViewModel(
         _uiState.update { it.copy(model = value, saved = false) }
     }
 
+    fun onBaseUrlChange(value: String) {
+        _uiState.update { it.copy(baseUrl = value, saved = false, testState = TestConnectionState.Idle) }
+    }
+
     fun onToggleKeyVisibility() {
         _uiState.update { it.copy(isKeyVisible = !it.isKeyVisible) }
     }
@@ -44,8 +50,13 @@ class SettingsViewModel(
         viewModelScope.launch {
             if (state.apiKey.isNotBlank()) {
                 settingsRepository.saveApiKey(state.apiKey)
+            } else {
+                // The field was intentionally cleared — actually forget the previously saved
+                // key rather than silently keeping it, otherwise there is no way to reset it.
+                settingsRepository.clearApiKey()
             }
             settingsRepository.saveModel(state.model.ifBlank { AppSettings.DEFAULT_MODEL })
+            settingsRepository.saveBaseUrl(state.baseUrl.ifBlank { AppSettings.DEFAULT_BASE_URL })
             _uiState.update { it.copy(saved = true) }
         }
     }
@@ -57,8 +68,9 @@ class SettingsViewModel(
             return
         }
         _uiState.update { it.copy(testState = TestConnectionState.Testing) }
+        val baseUrl = _uiState.value.baseUrl.ifBlank { AppSettings.DEFAULT_BASE_URL }
         viewModelScope.launch {
-            val result = openAiApiClient.testApiKey(apiKey)
+            val result = openAiApiClient.testApiKey(apiKey, baseUrl)
             _uiState.update {
                 it.copy(
                     testState = result.fold(

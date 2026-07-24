@@ -25,6 +25,7 @@ class SettingsRepository(
         AppSettings(
             apiKey = apiKey,
             model = prefs[KEY_MODEL] ?: AppSettings.DEFAULT_MODEL,
+            baseUrl = prefs[KEY_BASE_URL] ?: AppSettings.DEFAULT_BASE_URL,
         )
     }
 
@@ -38,9 +39,22 @@ class SettingsRepository(
         }
     }
 
+    suspend fun clearApiKey() {
+        context.settingsDataStore.edit { prefs ->
+            prefs.remove(KEY_API_KEY_CIPHERTEXT)
+            prefs.remove(KEY_API_KEY_IV)
+        }
+    }
+
     suspend fun saveModel(model: String) {
         context.settingsDataStore.edit { prefs ->
             prefs[KEY_MODEL] = model
+        }
+    }
+
+    suspend fun saveBaseUrl(baseUrl: String) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[KEY_BASE_URL] = baseUrl
         }
     }
 
@@ -48,5 +62,6 @@ class SettingsRepository(
         val KEY_API_KEY_CIPHERTEXT = stringPreferencesKey("api_key_ciphertext")
         val KEY_API_KEY_IV = stringPreferencesKey("api_key_iv")
         val KEY_MODEL = stringPreferencesKey("model_name")
+        val KEY_BASE_URL = stringPreferencesKey("base_url")
     }
 }

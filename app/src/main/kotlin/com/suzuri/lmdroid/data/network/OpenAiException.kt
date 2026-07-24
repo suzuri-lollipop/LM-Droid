@@ -16,7 +16,12 @@ sealed class OpenAiException(val userMessage: String, cause: Throwable? = null) 
 
     data class BadRequest(val serverMessage: String) : OpenAiException(serverMessage)
 
-    data class ServerError(val code: Int) : OpenAiException("サーバーエラーが発生しました (HTTP $code)。しばらくしてからもう一度お試しください。")
+    data class ServerError(val code: Int, val serverMessage: String?) : OpenAiException(
+        buildString {
+            append("サーバーエラーが発生しました (HTTP $code)。")
+            if (serverMessage != null) append(" $serverMessage") else append("しばらくしてからもう一度お試しください。")
+        },
+    )
 
     data class NetworkError(val originalCause: Throwable) :
         OpenAiException("ネットワークエラーが発生しました。通信状況を確認してください。", originalCause)

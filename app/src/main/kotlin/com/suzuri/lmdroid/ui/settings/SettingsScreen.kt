@@ -4,8 +4,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -26,6 +29,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
+import com.suzuri.lmdroid.data.settings.AppSettings
 
 @Composable
 fun SettingsScreen(
@@ -37,6 +41,8 @@ fun SettingsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .imePadding()
             .padding(16.dp),
     ) {
         OutlinedTextField(
@@ -64,6 +70,17 @@ fun SettingsScreen(
                 .fillMaxWidth()
                 .padding(top = 16.dp),
             label = { Text(stringResource(R.string.settings_model_label)) },
+            singleLine = true,
+        )
+
+        OutlinedTextField(
+            value = uiState.baseUrl,
+            onValueChange = viewModel::onBaseUrlChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            label = { Text(stringResource(R.string.settings_base_url_label)) },
+            placeholder = { Text(AppSettings.DEFAULT_BASE_URL) },
             singleLine = true,
         )
 

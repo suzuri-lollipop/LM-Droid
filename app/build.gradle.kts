@@ -2,6 +2,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
+    // org.jetbrains.kotlin.android is deliberately NOT applied: AGP 9's built-in Kotlin support
+    // (enabled by default) replaces it, and actually errors if it's also applied explicitly.
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -78,7 +80,7 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     implementation(libs.okhttp)
-    implementation(libs.okhttp.sse)
+    implementation(libs.okhttp.logging.interceptor)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)

@@ -16,6 +16,7 @@ class OpenAiApiClientTest {
 
     private lateinit var server: MockWebServer
     private lateinit var client: OpenAiApiClient
+    private lateinit var baseUrl: String
 
     @Before
     fun setUp() {
@@ -24,8 +25,8 @@ class OpenAiApiClientTest {
         client = OpenAiApiClient(
             okHttpClient = OkHttpClient.Builder().build(),
             json = Json { ignoreUnknownKeys = true },
-            baseUrl = server.url("/v1").toString().trimEnd('/'),
         )
+        baseUrl = server.url("/v1").toString().trimEnd('/')
     }
 
     @After
@@ -45,7 +46,7 @@ class OpenAiApiClientTest {
                 ),
         )
 
-        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi"))).test {
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
             assertEquals(StreamEvent.Delta("Hel"), awaitItem())
             assertEquals(StreamEvent.Delta("lo"), awaitItem())
             assertEquals(StreamEvent.Done, awaitItem())
@@ -65,8 +66,30 @@ class OpenAiApiClientTest {
                 ),
         )
 
-        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi"))).test {
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
             assertEquals(StreamEvent.Delta("ok"), awaitItem())
+            assertEquals(StreamEvent.Done, awaitItem())
+            awaitComplete()
+        }
+    }
+
+    @Test
+    fun `streamChatCompletion works even when Content-Type is not exactly text-event-stream`() = runTest {
+        // Regression test: some self-hosted OpenAI-compatible servers send a correctly-formatted
+        // SSE body without the exact "text/event-stream" Content-Type. The previous okhttp-sse
+        // based implementation rejected these outright with an opaque "unknown error", even
+        // though the API key and URL were both valid — this must now parse successfully.
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/plain")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
+            assertEquals(StreamEvent.Delta("Hi"), awaitItem())
             assertEquals(StreamEvent.Done, awaitItem())
             awaitComplete()
         }
@@ -78,9 +101,22 @@ class OpenAiApiClientTest {
             MockResponse().setResponseCode(401).setBody("{\"error\":{\"message\":\"invalid\"}}"),
         )
 
-        client.streamChatCompletion("bad-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi"))).test {
+        client.streamChatCompletion("bad-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
             val error = awaitError()
             assertTrue(error is OpenAiException.InvalidApiKey)
+        }
+    }
+
+    @Test
+    fun `streamChatCompletion maps malformed baseUrl to BadRequest`() = runTest {
+        client.streamChatCompletion(
+            apiKey = "test-key",
+            model = "gpt-4o-mini",
+            messages = listOf(ChatMessageDto("user", "hi")),
+            baseUrl = "not a url",
+        ).test {
+            val error = awaitError()
+            assertTrue(error is OpenAiException.BadRequest)
         }
     }
 
@@ -88,7 +124,7 @@ class OpenAiApiClientTest {
     fun `testApiKey succeeds on 200`() = runTest {
         server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
 
-        val result = client.testApiKey("test-key")
+        val result = client.testApiKey("test-key", baseUrl)
 
         assertTrue(result.isSuccess)
     }
@@ -99,17 +135,76 @@ class OpenAiApiClientTest {
             MockResponse().setResponseCode(429).setBody("{\"error\":{\"message\":\"rate limited\"}}"),
         )
 
-        val result = client.testApiKey("test-key")
+        val result = client.testApiKey("test-key", baseUrl)
 
         assertTrue(result.exceptionOrNull() is OpenAiException.RateLimited)
     }
 
     @Test
-    fun `testApiKey maps 500 to ServerError`() = runTest {
-        server.enqueue(MockResponse().setResponseCode(500).setBody("internal error"))
+    fun `testApiKey maps 500 to ServerError and surfaces the raw body`() = runTest {
+        // Not every OpenAI-compatible server replies with OpenAI's {"error":{"message":...}}
+        // shape on failure — the raw body must still reach the user so they can diagnose it.
+        server.enqueue(MockResponse().setResponseCode(500).setBody("internal error: model not loaded"))
 
-        val result = client.testApiKey("test-key")
+        val result = client.testApiKey("test-key", baseUrl)
 
-        assertTrue(result.exceptionOrNull() is OpenAiException.ServerError)
+        val error = result.exceptionOrNull()
+        assertTrue(error is OpenAiException.ServerError)
+        assertTrue((error as OpenAiException.ServerError).serverMessage?.contains("model not loaded") == true)
+    }
+
+    @Test
+    fun `testApiKey maps malformed baseUrl to BadRequest`() = runTest {
+        val result = client.testApiKey("test-key", "not a url")
+
+        assertTrue(result.exceptionOrNull() is OpenAiException.BadRequest)
+    }
+
+    @Test
+    fun `streamChatCompletion reports the apiKey, not the URL, when the key has invalid header characters`() =
+        runTest {
+            // Regression test: a non-ASCII apiKey (e.g. stray IME input) used to be misreported
+            // as an invalid URL, because both failures surfaced as IllegalArgumentException from
+            // the same Request.Builder call chain.
+            client.streamChatCompletion(
+                apiKey = "あいうえお",
+                model = "gpt-4o-mini",
+                messages = listOf(ChatMessageDto("user", "hi")),
+                baseUrl = baseUrl,
+            ).test {
+                val error = awaitError()
+                assertTrue(error is OpenAiException.BadRequest)
+                assertTrue((error as OpenAiException.BadRequest).serverMessage.contains("APIキー"))
+            }
+        }
+
+    @Test
+    fun `testApiKey reports the apiKey, not the URL, when the key has invalid header characters`() = runTest {
+        val result = client.testApiKey("あいうえお", baseUrl)
+
+        val error = result.exceptionOrNull()
+        assertTrue(error is OpenAiException.BadRequest)
+        assertTrue((error as OpenAiException.BadRequest).serverMessage.contains("APIキー"))
+    }
+
+    @Test
+    fun `testApiKey succeeds when baseUrl is missing a scheme`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+
+        // Users commonly paste a bare "host:port/path" for a self-hosted server and forget
+        // the scheme — normalizeBaseUrl should default it to http rather than fail outright.
+        val bareHostBaseUrl = baseUrl.removePrefix("http://")
+
+        val result = client.testApiKey("test-key", bareHostBaseUrl)
+
+        assertTrue(result.isSuccess)
+    }
+
+    @Test
+    fun `normalizeBaseUrl defaults a missing scheme to http and trims whitespace and slashes`() {
+        assertEquals("http://example.com/v1", OpenAiApiClient.normalizeBaseUrl("example.com/v1"))
+        assertEquals("http://example.com/v1", OpenAiApiClient.normalizeBaseUrl("example.com/v1/"))
+        assertEquals("http://example.com/v1", OpenAiApiClient.normalizeBaseUrl("  example.com/v1  "))
+        assertEquals("https://example.com/v1", OpenAiApiClient.normalizeBaseUrl("https://example.com/v1"))
     }
 }

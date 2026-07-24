@@ -1,5 +1,6 @@
 package com.suzuri.lmdroid.data.repository
 
+import android.util.Log
 import com.suzuri.lmdroid.data.db.ConversationDao
 import com.suzuri.lmdroid.data.db.ConversationEntity
 import com.suzuri.lmdroid.data.db.MessageDao
@@ -61,16 +62,39 @@ class ConversationRepository(
             ),
         )
 
-        val history = messageDao.getMessages(conversationId).map {
-            ChatMessageDto(role = it.role.toApiRole(), content = it.content)
+        val allMessages = messageDao.getMessages(conversationId)
+            .filter { it.content.isNotBlank() && !it.isError }
+
+        val history = mutableListOf<ChatMessageDto>()
+        if (allMessages.isNotEmpty()) {
+            var currentRole = allMessages[0].role
+            val currentContent = StringBuilder(allMessages[0].content)
+
+            for (i in 1 until allMessages.size) {
+                val msg = allMessages[i]
+                if (msg.role == currentRole) {
+                    currentContent.append("\n\n").append(msg.content)
+                } else {
+                    history.add(ChatMessageDto(role = currentRole.toApiRole(), content = currentContent.toString()))
+                    currentRole = msg.role
+                    currentContent.setLength(0)
+                    currentContent.append(msg.content)
+                }
+            }
+            history.add(ChatMessageDto(role = currentRole.toApiRole(), content = currentContent.toString()))
         }
+
+        // OpenAI requirement: History should generally end with a user message for the best 
+        // chance of triggering a streaming response. Since we just inserted a user message, 
+        // it should already be the last one, but let's be explicit if needed in future logic.
 
         val accumulated = StringBuilder()
         var lastFlushAt = 0L
         var streamError: OpenAiException? = null
 
         try {
-            openAiApiClient.streamChatCompletion(apiKey, settings.model, history).collect { event ->
+            openAiApiClient.streamChatCompletion(apiKey, settings.model, history, settings.baseUrl).collect { event ->
+                Log.i("ConversationRepository", "!!! LM-DROID-DEBUG !!! Received event: $event")
                 when (event) {
                     is StreamEvent.Delta -> {
                         accumulated.append(event.text)
@@ -80,12 +104,16 @@ class ConversationRepository(
                             lastFlushAt = now
                         }
                     }
-                    StreamEvent.Done -> Unit
+                    StreamEvent.Done -> {
+                        Log.i("ConversationRepository", "!!! LM-DROID-DEBUG !!! Stream Done. Final length: ${accumulated.length}")
+                    }
                 }
             }
         } catch (e: OpenAiException) {
+            Log.i("ConversationRepository", "!!! LM-DROID-DEBUG !!! OpenAiException: ${e.userMessage}")
             streamError = e
         } catch (e: Exception) {
+            Log.i("ConversationRepository", "!!! LM-DROID-DEBUG !!! Unknown Exception: ${e.message}")
             streamError = OpenAiException.Unknown(e)
         }
 
@@ -98,7 +126,12 @@ class ConversationRepository(
             }
             SendResult.Error(error.userMessage)
         } else {
-            messageDao.updateContent(placeholderId, accumulated.toString())
+            val finalContent = accumulated.toString()
+            if (finalContent.isEmpty()) {
+                messageDao.updateContent(placeholderId, "（サーバーからの返答がありませんでした）", isError = true)
+            } else {
+                messageDao.updateContent(placeholderId, finalContent)
+            }
             conversationDao.touch(conversationId, System.currentTimeMillis())
             SendResult.Success
         }

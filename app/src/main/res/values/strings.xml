@@ -12,6 +12,7 @@
     <string name="settings_api_key_label">OpenAI APIキー</string>
     <string name="settings_api_key_placeholder">sk-...</string>
     <string name="settings_model_label">モデル名</string>
+    <string name="settings_base_url_label">APIのURL</string>
     <string name="settings_save">保存</string>
     <string name="settings_test_connection">接続テスト</string>
     <string name="settings_test_success">接続に成功しました</string>

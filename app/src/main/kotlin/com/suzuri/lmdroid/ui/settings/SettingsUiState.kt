@@ -12,6 +12,7 @@ sealed class TestConnectionState {
 data class SettingsUiState(
     val apiKey: String = "",
     val model: String = AppSettings.DEFAULT_MODEL,
+    val baseUrl: String = AppSettings.DEFAULT_BASE_URL,
     val isKeyVisible: Boolean = false,
     val testState: TestConnectionState = TestConnectionState.Idle,
     val saved: Boolean = false,
