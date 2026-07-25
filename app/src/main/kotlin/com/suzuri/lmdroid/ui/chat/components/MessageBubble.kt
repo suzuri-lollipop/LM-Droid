@@ -62,11 +62,12 @@ fun MessageBubble(
     message: MessageUiModel,
     onEditMessage: (Long, String) -> Unit,
     onRegenerate: (Long) -> Unit,
+    onPreviewAttachment: (String) -> Unit,
     markdownEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
     if (message.role == MessageRole.USER) {
-        UserBubble(message, onEditMessage, markdownEnabled, modifier)
+        UserBubble(message, onEditMessage, onPreviewAttachment, markdownEnabled, modifier)
         return
     }
 
@@ -136,6 +137,7 @@ fun MessageBubble(
 private fun UserBubble(
     message: MessageUiModel,
     onEditMessage: (Long, String) -> Unit,
+    onPreviewAttachment: (String) -> Unit,
     markdownEnabled: Boolean,
     modifier: Modifier,
 ) {
@@ -152,7 +154,7 @@ private fun UserBubble(
                 modifier = Modifier.padding(bottom = 6.dp),
             ) {
                 message.attachmentPaths.forEach { path ->
-                    AttachmentThumbnail(filePath = path, size = 96.dp)
+                    AttachmentThumbnail(filePath = path, size = 96.dp, onClick = { onPreviewAttachment(path) })
                 }
             }
         }

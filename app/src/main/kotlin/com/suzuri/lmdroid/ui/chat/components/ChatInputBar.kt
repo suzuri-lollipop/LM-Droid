@@ -56,6 +56,7 @@ fun ChatInputBar(
     pendingAttachments: List<PendingAttachmentUiModel>,
     onAttachFile: () -> Unit,
     onRemoveAttachment: (String) -> Unit,
+    onPreviewAttachment: (String) -> Unit,
     onVoiceInput: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -161,6 +162,7 @@ fun ChatInputBar(
                             filePath = attachment.filePath,
                             size = 56.dp,
                             onRemove = { onRemoveAttachment(attachment.id) },
+                            onClick = { onPreviewAttachment(attachment.filePath) },
                         )
                     }
                 }

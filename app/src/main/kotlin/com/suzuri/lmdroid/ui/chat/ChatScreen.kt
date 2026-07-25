@@ -29,8 +29,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -39,6 +42,7 @@ import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.ui.chat.components.ChatInputBar
 import com.suzuri.lmdroid.ui.chat.components.EmptyConversationGreeting
 import com.suzuri.lmdroid.ui.chat.components.EmptyConversationSuggestions
+import com.suzuri.lmdroid.ui.chat.components.ImagePreviewDialog
 import com.suzuri.lmdroid.ui.chat.components.MessageBubble
 import kotlinx.coroutines.launch
 
@@ -63,6 +67,12 @@ fun ChatScreen(
         uri?.let { viewModel.onFileAttached(it) }
     }
     val onAttachFile: () -> Unit = { imagePickerLauncher.launch("image/*") }
+
+    // Tapping any attachment thumbnail (staged or already sent) opens it full-screen — see
+    // ImagePreviewDialog, rendered once at the bottom of this screen regardless of which
+    // thumbnail triggered it.
+    var previewImagePath by rememberSaveable { mutableStateOf<String?>(null) }
+    val onPreviewAttachment: (String) -> Unit = { path -> previewImagePath = path }
 
     LaunchedEffect(
         uiState.messages.size,
@@ -140,6 +150,7 @@ fun ChatScreen(
                                     pendingAttachments = uiState.pendingAttachments,
                                     onAttachFile = onAttachFile,
                                     onRemoveAttachment = viewModel::onRemovePendingAttachment,
+                                    onPreviewAttachment = onPreviewAttachment,
                                     onVoiceInput = onVoiceInput,
                                     modifier = inputBarModifier.fillMaxWidth(),
                                 )
@@ -164,6 +175,7 @@ fun ChatScreen(
                                         message = message,
                                         onEditMessage = viewModel::onEditMessage,
                                         onRegenerate = viewModel::onRegenerateResponse,
+                                        onPreviewAttachment = onPreviewAttachment,
                                         markdownEnabled = uiState.markdownEnabled,
                                     )
                                 }
@@ -214,6 +226,7 @@ fun ChatScreen(
                                     pendingAttachments = uiState.pendingAttachments,
                                     onAttachFile = onAttachFile,
                                     onRemoveAttachment = viewModel::onRemovePendingAttachment,
+                                    onPreviewAttachment = onPreviewAttachment,
                                     onVoiceInput = onVoiceInput,
                                     modifier = inputBarModifier,
                                 )
@@ -225,5 +238,9 @@ fun ChatScreen(
         }
 
         SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
+
+        previewImagePath?.let { path ->
+            ImagePreviewDialog(filePath = path, onDismiss = { previewImagePath = null })
+        }
     }
 }

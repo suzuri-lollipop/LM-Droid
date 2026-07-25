@@ -2,6 +2,7 @@ package com.suzuri.lmdroid.ui.chat.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -34,7 +35,7 @@ import com.suzuri.lmdroid.data.attachment.decodeSampledBitmap
  * A small square preview of an image attachment, decoded off the main thread at a size
  * appropriate for [size] rather than loading the (already-downscaled, but still potentially
  * megapixel-sized) saved file at full resolution. Pass [onRemove] to show a small "x" badge —
- * omit it for a read-only thumbnail (e.g. on an already-sent message).
+ * omit it for a read-only thumbnail. Pass [onClick] to open it full-screen (see ImagePreviewDialog).
  */
 @Composable
 fun AttachmentThumbnail(
@@ -42,6 +43,7 @@ fun AttachmentThumbnail(
     size: Dp,
     modifier: Modifier = Modifier,
     onRemove: (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
 ) {
     var bitmap by remember(filePath) { mutableStateOf<ImageBitmap?>(null) }
     val density = LocalDensity.current
@@ -59,7 +61,8 @@ fun AttachmentThumbnail(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(size)
-                    .clip(RoundedCornerShape(12.dp)),
+                    .clip(RoundedCornerShape(12.dp))
+                    .let { imageModifier -> if (onClick != null) imageModifier.clickable(onClick = onClick) else imageModifier },
             )
         } else {
             Box(
