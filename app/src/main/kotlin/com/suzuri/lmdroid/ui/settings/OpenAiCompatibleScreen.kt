@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -31,13 +32,18 @@ import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.settings.AppSettings
 
-/** LLM設定 → OpenAI Compatible: the API key/model/base URL form for an OpenAI-compatible endpoint. */
+/** API設定 → profile list → this profile's edit form (API key/model/base URL) for an OpenAI-compatible endpoint. */
 @Composable
 fun OpenAiCompatibleScreen(
     viewModel: SettingsViewModel,
+    profileId: Long,
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(profileId) {
+        viewModel.loadProfile(profileId)
+    }
 
     Column(
         modifier = modifier
@@ -47,9 +53,19 @@ fun OpenAiCompatibleScreen(
             .padding(16.dp),
     ) {
         OutlinedTextField(
+            value = uiState.profileName,
+            onValueChange = viewModel::onProfileNameChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(stringResource(R.string.api_profile_name_label)) },
+            singleLine = true,
+        )
+
+        OutlinedTextField(
             value = uiState.apiKey,
             onValueChange = viewModel::onApiKeyChange,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
             label = { Text(stringResource(R.string.settings_api_key_label)) },
             placeholder = { Text(stringResource(R.string.settings_api_key_placeholder)) },
             singleLine = true,

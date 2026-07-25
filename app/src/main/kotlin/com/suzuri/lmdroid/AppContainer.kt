@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.room.Room
 import com.suzuri.lmdroid.data.db.AppDatabase
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
+import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
 import com.suzuri.lmdroid.data.settings.ApiKeyCipher
 import com.suzuri.lmdroid.data.settings.SettingsRepository
@@ -57,7 +58,9 @@ class AppContainer(context: Context) {
 
     private val apiKeyCipher = ApiKeyCipher()
 
-    val settingsRepository = SettingsRepository(appContext, apiKeyCipher)
+    val settingsRepository = SettingsRepository(appContext, apiKeyCipher, database.apiProfileDao())
+
+    val apiProfileRepository = ApiProfileRepository(database.apiProfileDao(), apiKeyCipher)
 
     val openAiApiClient = OpenAiApiClient(okHttpClient, json)
 

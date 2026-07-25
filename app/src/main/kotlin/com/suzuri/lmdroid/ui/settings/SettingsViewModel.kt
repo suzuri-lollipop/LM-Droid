@@ -4,29 +4,48 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.network.OpenAiException
+import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.settings.AppSettings
-import com.suzuri.lmdroid.data.settings.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** Edits a single [com.suzuri.lmdroid.data.db.ApiProfileEntity], loaded on demand via [loadProfile]. */
 class SettingsViewModel(
-    private val settingsRepository: SettingsRepository,
+    private val apiProfileRepository: ApiProfileRepository,
     private val openAiApiClient: OpenAiApiClient,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
-    init {
+    private var profileId: Long? = null
+
+    /** Called by the edit screen (e.g. from a LaunchedEffect keyed on the navigated-to profile id). */
+    fun loadProfile(id: Long) {
+        if (profileId == id) return
+        profileId = id
         viewModelScope.launch {
-            val settings = settingsRepository.currentSettings()
+            val profile = apiProfileRepository.getProfile(id) ?: return@launch
+            val apiKey = apiProfileRepository.decryptApiKey(profile)
             _uiState.update {
-                it.copy(apiKey = settings.apiKey.orEmpty(), model = settings.model, baseUrl = settings.baseUrl)
+                it.copy(
+                    profileName = profile.name,
+                    apiKey = apiKey.orEmpty(),
+                    model = profile.model,
+                    baseUrl = profile.baseUrl,
+                    isKeyVisible = false,
+                    testState = TestConnectionState.Idle,
+                    saved = false,
+                )
             }
         }
+    }
+
+    fun onProfileNameChange(value: String) {
+        _uiState.update { it.copy(profileName = value, saved = false) }
     }
 
     fun onApiKeyChange(value: String) {
@@ -46,17 +65,16 @@ class SettingsViewModel(
     }
 
     fun onSave() {
+        val id = profileId ?: return
         val state = _uiState.value
         viewModelScope.launch {
-            if (state.apiKey.isNotBlank()) {
-                settingsRepository.saveApiKey(state.apiKey)
-            } else {
-                // The field was intentionally cleared — actually forget the previously saved
-                // key rather than silently keeping it, otherwise there is no way to reset it.
-                settingsRepository.clearApiKey()
-            }
-            settingsRepository.saveModel(state.model.ifBlank { AppSettings.DEFAULT_MODEL })
-            settingsRepository.saveBaseUrl(state.baseUrl.ifBlank { AppSettings.DEFAULT_BASE_URL })
+            apiProfileRepository.updateProfile(
+                id = id,
+                name = state.profileName,
+                apiKey = state.apiKey,
+                model = state.model.ifBlank { AppSettings.DEFAULT_MODEL },
+                baseUrl = state.baseUrl.ifBlank { AppSettings.DEFAULT_BASE_URL },
+            )
             _uiState.update { it.copy(saved = true) }
         }
     }

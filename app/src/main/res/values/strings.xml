@@ -32,6 +32,13 @@
     <string name="settings_test_connection">接続テスト</string>
     <string name="settings_test_success">接続に成功しました</string>
     <string name="settings_saved">保存しました</string>
+    <string name="api_profile_empty_message">まだプロファイルがありません。＋で追加してください</string>
+    <string name="api_profile_add">プロファイルを追加</string>
+    <string name="api_profile_create">作成</string>
+    <string name="api_profile_delete">このプロファイルを削除</string>
+    <string name="api_profile_name_label">プロファイル名</string>
+    <string name="api_profile_name_placeholder">例: ローカルサーバー</string>
+    <string name="api_profile_provider_label">プロバイダー</string>
 
     <string name="history_title">履歴</string>
     <string name="history_new_conversation">新しい会話</string>

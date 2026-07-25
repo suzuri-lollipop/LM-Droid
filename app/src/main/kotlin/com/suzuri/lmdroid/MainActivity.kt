@@ -35,7 +35,8 @@ import com.suzuri.lmdroid.ui.chat.ChatViewModel
 import com.suzuri.lmdroid.ui.history.HistoryScreen
 import com.suzuri.lmdroid.ui.history.HistoryViewModel
 import com.suzuri.lmdroid.ui.navigation.Screen
-import com.suzuri.lmdroid.ui.settings.ApiSettingsScreen
+import com.suzuri.lmdroid.ui.settings.ApiProfileListScreen
+import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
 import com.suzuri.lmdroid.ui.settings.OpenAiCompatibleScreen
 import com.suzuri.lmdroid.ui.settings.SettingsRoute
 import com.suzuri.lmdroid.ui.settings.SettingsRootScreen
@@ -69,11 +70,17 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     // Tracked separately from currentScreen so leaving and re-entering History/Chat doesn't
     // reset how deep the user was in Settings.
     var settingsRoute by rememberSaveable { mutableStateOf(SettingsRoute.Root) }
+    // Which profile OpenAiCompatibleScreen is editing — only meaningful while settingsRoute is
+    // OpenAiCompatible; always set to a real, already-created profile id just before navigating
+    // there (profiles are created immediately when added, so there's no "editing a new/unsaved
+    // profile" state to represent here).
+    var editingProfileId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     // Hoisted here (not inside the Scaffold content lambda) so the top bar's actions can also
     // reach them — e.g. tapping "new chat" from the History screen's top bar.
     val chatViewModel: ChatViewModel = viewModel(factory = viewModelFactory)
     val settingsViewModel: SettingsViewModel = viewModel(factory = viewModelFactory)
+    val apiProfileListViewModel: ApiProfileListViewModel = viewModel(factory = viewModelFactory)
     val historyViewModel: HistoryViewModel = viewModel(factory = viewModelFactory)
 
     // Needed here (not just inside ChatScreen) so the top bar can show the active conversation's
@@ -181,9 +188,10 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                 ChatScreen(
                     viewModel = chatViewModel,
                     onNavigateToSettings = {
-                        // Deep-links straight to the form instead of the browse menu — the user
-                        // tapped this specifically to fix a missing API key, not to explore.
-                        settingsRoute = SettingsRoute.OpenAiCompatible
+                        // Goes to the profile list rather than a specific profile's edit form —
+                        // there may be no profile yet (or none selected), so there's no single
+                        // "the" profile to deep-link straight to anymore.
+                        settingsRoute = SettingsRoute.ApiSettings
                         currentScreen = Screen.Settings
                     },
                     modifier = Modifier.padding(innerPadding),
@@ -198,16 +206,24 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                         )
                     }
                     SettingsRoute.ApiSettings -> {
-                        ApiSettingsScreen(
-                            onNavigateToOpenAiCompatible = { settingsRoute = SettingsRoute.OpenAiCompatible },
+                        ApiProfileListScreen(
+                            viewModel = apiProfileListViewModel,
+                            onNavigateToProfile = { id ->
+                                editingProfileId = id
+                                settingsRoute = SettingsRoute.OpenAiCompatible
+                            },
                             modifier = Modifier.padding(innerPadding),
                         )
                     }
                     SettingsRoute.OpenAiCompatible -> {
-                        OpenAiCompatibleScreen(
-                            viewModel = settingsViewModel,
-                            modifier = Modifier.padding(innerPadding),
-                        )
+                        val id = editingProfileId
+                        if (id != null) {
+                            OpenAiCompatibleScreen(
+                                viewModel = settingsViewModel,
+                                profileId = id,
+                                modifier = Modifier.padding(innerPadding),
+                            )
+                        }
                     }
                 }
             }
