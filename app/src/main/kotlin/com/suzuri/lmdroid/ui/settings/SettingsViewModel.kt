@@ -34,12 +34,16 @@ class SettingsViewModel(
                 it.copy(
                     profileName = profile.name,
                     apiKey = apiKey.orEmpty(),
-                    model = profile.model,
                     baseUrl = profile.baseUrl,
                     isKeyVisible = false,
                     testState = TestConnectionState.Idle,
                     saved = false,
                 )
+            }
+        }
+        viewModelScope.launch {
+            apiProfileRepository.observeModels(id).collect { models ->
+                _uiState.update { it.copy(models = models) }
             }
         }
     }
@@ -50,10 +54,6 @@ class SettingsViewModel(
 
     fun onApiKeyChange(value: String) {
         _uiState.update { it.copy(apiKey = value, saved = false, testState = TestConnectionState.Idle) }
-    }
-
-    fun onModelChange(value: String) {
-        _uiState.update { it.copy(model = value, saved = false) }
     }
 
     fun onBaseUrlChange(value: String) {
@@ -72,7 +72,6 @@ class SettingsViewModel(
                 id = id,
                 name = state.profileName,
                 apiKey = state.apiKey,
-                model = state.model.ifBlank { AppSettings.DEFAULT_MODEL },
                 baseUrl = state.baseUrl.ifBlank { AppSettings.DEFAULT_BASE_URL },
             )
             _uiState.update { it.copy(saved = true) }
@@ -80,6 +79,7 @@ class SettingsViewModel(
     }
 
     fun onTestConnection() {
+        val id = profileId
         val apiKey = _uiState.value.apiKey
         if (apiKey.isBlank()) {
             _uiState.update { it.copy(testState = TestConnectionState.Failure("APIキーを入力してください。")) }
@@ -98,6 +98,11 @@ class SettingsViewModel(
                         },
                     ),
                 )
+            }
+            // A successful connection test is also how a profile's available models get
+            // (re-)registered — models are never typed in by hand.
+            if (result.isSuccess && id != null) {
+                apiProfileRepository.refreshModels(id, apiKey, baseUrl)
             }
         }
     }

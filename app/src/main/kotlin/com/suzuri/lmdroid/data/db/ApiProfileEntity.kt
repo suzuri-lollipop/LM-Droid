@@ -5,8 +5,10 @@ import androidx.room.PrimaryKey
 
 /**
  * A saved LLM provider configuration (e.g. a specific OpenAI-compatible endpoint) — the user can
- * register several and switch between them from Settings. [providerType] is a plain string
- * (rather than an enum) since there's only one provider today; see [PROVIDER_OPENAI_COMPATIBLE].
+ * register several and enable more than one at once, switching between their models from the
+ * chat screen. [providerType] is a plain string (rather than an enum) since there's only one
+ * provider today; see [PROVIDER_OPENAI_COMPATIBLE]. The models it offers live separately in
+ * [ApiModelEntity], auto-populated from the provider's model list rather than typed in by hand.
  */
 @Entity(tableName = "api_profiles")
 data class ApiProfileEntity(
@@ -16,8 +18,8 @@ data class ApiProfileEntity(
     val providerType: String,
     val apiKeyCiphertext: String? = null,
     val apiKeyIv: String? = null,
-    val model: String,
     val baseUrl: String,
+    val enabled: Boolean = true,
     val createdAt: Long,
 ) {
     companion object {

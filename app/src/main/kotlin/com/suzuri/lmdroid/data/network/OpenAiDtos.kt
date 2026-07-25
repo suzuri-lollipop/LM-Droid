@@ -40,6 +40,17 @@ data class Delta(
     @SerialName("reasoning_content") val reasoningContent: String? = null,
 )
 
+/** The `GET /models` response shape — used to auto-populate a profile's available models. */
+@Serializable
+data class ModelListResponse(
+    val data: List<ModelInfo> = emptyList(),
+)
+
+@Serializable
+data class ModelInfo(
+    val id: String,
+)
+
 @Serializable
 data class OpenAiErrorBody(
     val error: OpenAiErrorDetail? = null,

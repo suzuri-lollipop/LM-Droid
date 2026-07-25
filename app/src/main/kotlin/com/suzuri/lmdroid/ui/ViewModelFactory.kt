@@ -7,18 +7,22 @@ import com.suzuri.lmdroid.ui.chat.ChatViewModel
 import com.suzuri.lmdroid.ui.history.HistoryViewModel
 import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsViewModel
+import com.suzuri.lmdroid.ui.settings.SystemSettingsViewModel
 
 class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T = when {
         modelClass.isAssignableFrom(ChatViewModel::class.java) ->
-            ChatViewModel(container.conversationRepository, container.settingsRepository) as T
+            ChatViewModel(container.conversationRepository, container.settingsRepository, container.apiProfileRepository) as T
 
         modelClass.isAssignableFrom(SettingsViewModel::class.java) ->
             SettingsViewModel(container.apiProfileRepository, container.openAiApiClient) as T
 
         modelClass.isAssignableFrom(ApiProfileListViewModel::class.java) ->
-            ApiProfileListViewModel(container.apiProfileRepository, container.settingsRepository) as T
+            ApiProfileListViewModel(container.apiProfileRepository) as T
+
+        modelClass.isAssignableFrom(SystemSettingsViewModel::class.java) ->
+            SystemSettingsViewModel(container.apiProfileRepository, container.settingsRepository) as T
 
         modelClass.isAssignableFrom(HistoryViewModel::class.java) ->
             HistoryViewModel(container.conversationRepository) as T

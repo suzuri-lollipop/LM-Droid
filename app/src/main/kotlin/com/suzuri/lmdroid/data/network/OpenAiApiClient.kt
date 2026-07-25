@@ -160,6 +160,41 @@ class OpenAiApiClient(
             }
         }
 
+    /** Fetches the list of model ids a provider offers, to auto-populate a profile's models rather than requiring the user to type one in. */
+    suspend fun listModels(apiKey: String, baseUrl: String = DEFAULT_BASE_URL): Result<List<String>> =
+        withContext(Dispatchers.IO) {
+            val builderWithUrl = try {
+                Request.Builder().url("${normalizeBaseUrl(baseUrl)}/models")
+            } catch (e: IllegalArgumentException) {
+                return@withContext Result.failure(OpenAiException.BadRequest("APIのURLが不正です: ${e.message}"))
+            }
+
+            val request = try {
+                builderWithUrl.addHeader("Authorization", "Bearer $apiKey").get().build()
+            } catch (e: IllegalArgumentException) {
+                return@withContext Result.failure(
+                    OpenAiException.BadRequest("APIキーに使用できない文字が含まれています: ${e.message}"),
+                )
+            }
+
+            try {
+                okHttpClient.newCall(request).execute().use { response ->
+                    val bodyString = response.body?.string()
+                    if (!response.isSuccessful) {
+                        return@withContext Result.failure(mapToException(null, response.code, bodyString))
+                    }
+                    val models = bodyString
+                        ?.let { runCatching { json.decodeFromString(ModelListResponse.serializer(), it) }.getOrNull() }
+                        ?.data
+                        ?.map { it.id }
+                        .orEmpty()
+                    Result.success(models)
+                }
+            } catch (e: IOException) {
+                Result.failure(OpenAiException.NetworkError(e))
+            }
+        }
+
     /**
      * A short, non-streaming completion used purely to auto-title a conversation from its first
      * exchange — best-effort, so callers should treat failure as "keep whatever title we already

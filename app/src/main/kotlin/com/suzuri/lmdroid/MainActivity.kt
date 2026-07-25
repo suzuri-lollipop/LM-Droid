@@ -41,6 +41,8 @@ import com.suzuri.lmdroid.ui.settings.OpenAiCompatibleScreen
 import com.suzuri.lmdroid.ui.settings.SettingsRoute
 import com.suzuri.lmdroid.ui.settings.SettingsRootScreen
 import com.suzuri.lmdroid.ui.settings.SettingsViewModel
+import com.suzuri.lmdroid.ui.settings.SystemSettingsScreen
+import com.suzuri.lmdroid.ui.settings.SystemSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.parent
 import com.suzuri.lmdroid.ui.theme.LmDroidTheme
 
@@ -81,6 +83,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val chatViewModel: ChatViewModel = viewModel(factory = viewModelFactory)
     val settingsViewModel: SettingsViewModel = viewModel(factory = viewModelFactory)
     val apiProfileListViewModel: ApiProfileListViewModel = viewModel(factory = viewModelFactory)
+    val systemSettingsViewModel: SystemSettingsViewModel = viewModel(factory = viewModelFactory)
     val historyViewModel: HistoryViewModel = viewModel(factory = viewModelFactory)
 
     // Needed here (not just inside ChatScreen) so the top bar can show the active conversation's
@@ -111,6 +114,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 SettingsRoute.Root -> stringResource(R.string.settings_title)
                                 SettingsRoute.ApiSettings -> stringResource(R.string.settings_api_category_title)
                                 SettingsRoute.OpenAiCompatible -> stringResource(R.string.settings_openai_compatible_title)
+                                SettingsRoute.System -> stringResource(R.string.settings_system_category_title)
                             }
                             Screen.History -> stringResource(R.string.history_title)
                         },
@@ -202,6 +206,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                     SettingsRoute.Root -> {
                         SettingsRootScreen(
                             onNavigateToApiSettings = { settingsRoute = SettingsRoute.ApiSettings },
+                            onNavigateToSystem = { settingsRoute = SettingsRoute.System },
                             modifier = Modifier.padding(innerPadding),
                         )
                     }
@@ -224,6 +229,12 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }
+                    }
+                    SettingsRoute.System -> {
+                        SystemSettingsScreen(
+                            viewModel = systemSettingsViewModel,
+                            modifier = Modifier.padding(innerPadding),
+                        )
                     }
                 }
             }

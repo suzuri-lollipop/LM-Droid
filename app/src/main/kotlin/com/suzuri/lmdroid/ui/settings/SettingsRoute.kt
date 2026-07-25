@@ -10,10 +10,12 @@ enum class SettingsRoute {
     Root,
     ApiSettings,
     OpenAiCompatible,
+    System,
 }
 
 fun SettingsRoute.parent(): SettingsRoute? = when (this) {
     SettingsRoute.Root -> null
     SettingsRoute.ApiSettings -> SettingsRoute.Root
     SettingsRoute.OpenAiCompatible -> SettingsRoute.ApiSettings
+    SettingsRoute.System -> SettingsRoute.Root
 }

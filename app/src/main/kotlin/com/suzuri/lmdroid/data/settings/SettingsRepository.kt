@@ -1,9 +1,11 @@
 package com.suzuri.lmdroid.data.settings
 
 import android.content.Context
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.suzuri.lmdroid.data.db.ApiProfileDao
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
@@ -16,12 +18,14 @@ import kotlinx.coroutines.flow.map
 
 private val Context.settingsDataStore by preferencesDataStore(name = "settings")
 
+/** A specific (profile, model) pair — identifies exactly which credentials + model to use for a given purpose. */
+data class SelectedModel(val profileId: Long, val model: String)
+
 /**
- * Tracks which [ApiProfileEntity] (see [com.suzuri.lmdroid.data.repository.ApiProfileRepository])
- * is currently active, plus app-wide preferences unrelated to any one profile (like
- * [AppSettings.markdownEnabled]). [settings] resolves the active profile's (decrypted) credentials
- * reactively — apiKey is null whenever no profile is selected, which is exactly the "APIキー未登録"
- * state the rest of the app already knows how to show.
+ * Resolves which (profile, model) pair is used for (a) the chat screen — adjustable there — and
+ * (b) background "system" tasks (auto-titling, prompt suggestions) — adjustable from Settings →
+ * システム, falling back to the chat selection when not explicitly overridden. Also tracks
+ * app-wide preferences unrelated to any one profile, like [AppSettings.markdownEnabled].
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsRepository(
@@ -29,22 +33,43 @@ class SettingsRepository(
     private val cipher: ApiKeyCipher,
     private val apiProfileDao: ApiProfileDao,
 ) {
-    val selectedProfileId: Flow<Long?> = context.settingsDataStore.data.map { prefs -> prefs[KEY_SELECTED_PROFILE_ID] }
+    val selectedChatModel: Flow<SelectedModel?> =
+        context.settingsDataStore.data.map { it.toSelectedModel(KEY_CHAT_PROFILE_ID, KEY_CHAT_MODEL) }
 
-    val settings: Flow<AppSettings> = context.settingsDataStore.data
-        .map { prefs -> prefs[KEY_SELECTED_PROFILE_ID] to (prefs[KEY_MARKDOWN_ENABLED] ?: true) }
-        .flatMapLatest { (profileId, markdownEnabled) ->
-            val profileFlow = if (profileId == null) flowOf(null) else apiProfileDao.observeById(profileId)
-            profileFlow.map { profile -> profile.toAppSettings(markdownEnabled) }
-        }
+    val selectedSystemModel: Flow<SelectedModel?> =
+        context.settingsDataStore.data.map { it.toSelectedModel(KEY_SYSTEM_PROFILE_ID, KEY_SYSTEM_MODEL) }
 
-    suspend fun currentSettings(): AppSettings = settings.first()
+    private val markdownEnabledFlow: Flow<Boolean> =
+        context.settingsDataStore.data.map { it[KEY_MARKDOWN_ENABLED] ?: true }
 
-    suspend fun currentSelectedProfileId(): Long? = selectedProfileId.first()
+    val chatSettings: Flow<AppSettings> = selectedChatModel.flatMapLatest { selected -> resolve(selected) }
 
-    suspend fun setSelectedProfile(profileId: Long?) {
+    /** Falls back to the chat selection when no system-specific override has been chosen. */
+    val systemSettings: Flow<AppSettings> = selectedSystemModel.flatMapLatest { systemSelected ->
+        if (systemSelected != null) resolve(systemSelected) else chatSettings
+    }
+
+    suspend fun currentChatSettings(): AppSettings = chatSettings.first()
+
+    suspend fun currentSystemSettings(): AppSettings = systemSettings.first()
+
+    suspend fun setSelectedChatModel(profileId: Long, model: String) {
         context.settingsDataStore.edit { prefs ->
-            if (profileId != null) prefs[KEY_SELECTED_PROFILE_ID] = profileId else prefs.remove(KEY_SELECTED_PROFILE_ID)
+            prefs[KEY_CHAT_PROFILE_ID] = profileId
+            prefs[KEY_CHAT_MODEL] = model
+        }
+    }
+
+    /** Null clears the override, falling back to the chat selection again. */
+    suspend fun setSelectedSystemModel(profileId: Long?, model: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (profileId != null && model != null) {
+                prefs[KEY_SYSTEM_PROFILE_ID] = profileId
+                prefs[KEY_SYSTEM_MODEL] = model
+            } else {
+                prefs.remove(KEY_SYSTEM_PROFILE_ID)
+                prefs.remove(KEY_SYSTEM_MODEL)
+            }
         }
     }
 
@@ -52,14 +77,34 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs -> prefs[KEY_MARKDOWN_ENABLED] = enabled }
     }
 
-    private fun ApiProfileEntity?.toAppSettings(markdownEnabled: Boolean): AppSettings {
+    private fun resolve(selected: SelectedModel?): Flow<AppSettings> {
+        if (selected == null) {
+            return markdownEnabledFlow.map { markdownEnabled ->
+                AppSettings(
+                    apiKey = null,
+                    model = AppSettings.DEFAULT_MODEL,
+                    baseUrl = AppSettings.DEFAULT_BASE_URL,
+                    markdownEnabled = markdownEnabled,
+                )
+            }
+        }
+        return apiProfileDao.observeById(selected.profileId).flatMapLatest { profile ->
+            markdownEnabledFlow.map { markdownEnabled -> profile.toAppSettings(selected.model, markdownEnabled) }
+        }
+    }
+
+    private fun Preferences.toSelectedModel(
+        profileKey: Preferences.Key<Long>,
+        modelKey: Preferences.Key<String>,
+    ): SelectedModel? {
+        val profileId = this[profileKey] ?: return null
+        val model = this[modelKey] ?: return null
+        return SelectedModel(profileId, model)
+    }
+
+    private fun ApiProfileEntity?.toAppSettings(model: String, markdownEnabled: Boolean): AppSettings {
         if (this == null) {
-            return AppSettings(
-                apiKey = null,
-                model = AppSettings.DEFAULT_MODEL,
-                baseUrl = AppSettings.DEFAULT_BASE_URL,
-                markdownEnabled = markdownEnabled,
-            )
+            return AppSettings(apiKey = null, model = model, baseUrl = AppSettings.DEFAULT_BASE_URL, markdownEnabled = markdownEnabled)
         }
         val ciphertext = apiKeyCiphertext
         val iv = apiKeyIv
@@ -72,7 +117,10 @@ class SettingsRepository(
     }
 
     private companion object {
-        val KEY_SELECTED_PROFILE_ID = longPreferencesKey("selected_profile_id")
+        val KEY_CHAT_PROFILE_ID = longPreferencesKey("chat_profile_id")
+        val KEY_CHAT_MODEL = stringPreferencesKey("chat_model")
+        val KEY_SYSTEM_PROFILE_ID = longPreferencesKey("system_profile_id")
+        val KEY_SYSTEM_MODEL = stringPreferencesKey("system_model")
         val KEY_MARKDOWN_ENABLED = booleanPreferencesKey("markdown_enabled")
     }
 }

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.settings.AppSettings
 
-/** API設定 → profile list → this profile's edit form (API key/model/base URL) for an OpenAI-compatible endpoint. */
+/** API設定 → profile list → this profile's edit form (API key/base URL) for an OpenAI-compatible endpoint. */
 @Composable
 fun OpenAiCompatibleScreen(
     viewModel: SettingsViewModel,
@@ -78,16 +79,6 @@ fun OpenAiCompatibleScreen(
                     )
                 }
             },
-        )
-
-        OutlinedTextField(
-            value = uiState.model,
-            onValueChange = viewModel::onModelChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp),
-            label = { Text(stringResource(R.string.settings_model_label)) },
-            singleLine = true,
         )
 
         OutlinedTextField(
@@ -140,6 +131,29 @@ fun OpenAiCompatibleScreen(
                     text = testState.message,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
+
+        Text(
+            text = stringResource(R.string.settings_registered_models_label),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        if (uiState.models.isEmpty()) {
+            Text(
+                text = stringResource(R.string.settings_registered_models_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        } else {
+            uiState.models.forEach { model ->
+                Text(
+                    text = model,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 8.dp),
                 )
             }
         }

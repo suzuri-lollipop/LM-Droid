@@ -37,6 +37,7 @@ import com.suzuri.lmdroid.ui.chat.components.ChatInputBar
 import com.suzuri.lmdroid.ui.chat.components.EmptyConversationGreeting
 import com.suzuri.lmdroid.ui.chat.components.EmptyConversationSuggestions
 import com.suzuri.lmdroid.ui.chat.components.MessageBubble
+import com.suzuri.lmdroid.ui.chat.components.ModelSelectorButton
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -99,6 +100,14 @@ fun ChatScreen(
                         ) {
                             EmptyConversationGreeting()
                             Spacer(modifier = Modifier.height(20.dp))
+                            if (uiState.availableModels.isNotEmpty()) {
+                                ModelSelectorButton(
+                                    options = uiState.availableModels,
+                                    selected = uiState.selectedModel,
+                                    onSelect = viewModel::onSelectModel,
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
                             if (uiState.apiKeyMissing) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(stringResource(R.string.chat_api_key_missing_message))
@@ -143,6 +152,21 @@ fun ChatScreen(
                                         onEditMessage = viewModel::onEditMessage,
                                         onRegenerate = viewModel::onRegenerateResponse,
                                         markdownEnabled = uiState.markdownEnabled,
+                                    )
+                                }
+                            }
+
+                            if (uiState.availableModels.isNotEmpty()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.End,
+                                ) {
+                                    ModelSelectorButton(
+                                        options = uiState.availableModels,
+                                        selected = uiState.selectedModel,
+                                        onSelect = viewModel::onSelectModel,
                                     )
                                 }
                             }

@@ -3,6 +3,8 @@ package com.suzuri.lmdroid.ui.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.suzuri.lmdroid.data.db.MessageEntity
+import com.suzuri.lmdroid.data.db.ModelOptionRow
+import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
 import com.suzuri.lmdroid.data.settings.SettingsRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -11,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
@@ -20,6 +23,7 @@ import kotlinx.coroutines.launch
 class ChatViewModel(
     private val conversationRepository: ConversationRepository,
     private val settingsRepository: SettingsRepository,
+    private val apiProfileRepository: ApiProfileRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -57,11 +61,29 @@ class ChatViewModel(
         }
 
         viewModelScope.launch {
-            settingsRepository.settings.collect { settings ->
+            settingsRepository.chatSettings.collect { settings ->
                 _uiState.update { state ->
                     state.copy(apiKeyMissing = settings.apiKey.isNullOrBlank(), markdownEnabled = settings.markdownEnabled)
                 }
             }
+        }
+
+        // Keeps the chat-screen model switcher in sync with every enabled profile's registered
+        // models, and — the first time any become available with nothing explicitly chosen yet —
+        // auto-picks one so merely enabling a profile is enough to start chatting, without also
+        // having to visit the switcher.
+        viewModelScope.launch {
+            combine(
+                apiProfileRepository.observeEnabledModelOptions(),
+                settingsRepository.selectedChatModel,
+            ) { options, selected -> options to selected }
+                .collect { (options, selected) ->
+                    _uiState.update { it.copy(availableModels = options, selectedModel = selected) }
+                    if (selected == null && options.isNotEmpty()) {
+                        val first = options.first()
+                        settingsRepository.setSelectedChatModel(first.profileId, first.modelId)
+                    }
+                }
         }
 
         // Best-effort, once per app session: personalizes the empty-conversation suggestion
@@ -141,6 +163,11 @@ class ChatViewModel(
     fun onMarkdownEnabledChange(enabled: Boolean) {
         _uiState.update { it.copy(markdownEnabled = enabled) }
         viewModelScope.launch { settingsRepository.saveMarkdownEnabled(enabled) }
+    }
+
+    /** Switches which enabled profile/model pair chat uses, from the switcher shown on this screen. */
+    fun onSelectModel(option: ModelOptionRow) {
+        viewModelScope.launch { settingsRepository.setSelectedChatModel(option.profileId, option.modelId) }
     }
 
     private fun launchGeneration(block: suspend () -> ConversationRepository.SendResult) {

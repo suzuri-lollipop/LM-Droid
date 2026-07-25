@@ -22,7 +22,6 @@ class ApiProfileDaoTest {
     private fun newProfile(name: String) = ApiProfileEntity(
         name = name,
         providerType = ApiProfileEntity.PROVIDER_OPENAI_COMPATIBLE,
-        model = "gpt-4o-mini",
         baseUrl = "https://api.openai.com/v1",
         createdAt = 0,
     )
@@ -62,7 +61,6 @@ class ApiProfileDaoTest {
                 name = "更新後の名前",
                 apiKeyCiphertext = "cipher",
                 apiKeyIv = "iv",
-                model = "llama-3",
                 baseUrl = "http://localhost:8080/v1",
             ),
         )
@@ -70,7 +68,19 @@ class ApiProfileDaoTest {
         val updated = apiProfileDao.getById(id)
         assertEquals("更新後の名前", updated?.name)
         assertEquals("cipher", updated?.apiKeyCiphertext)
-        assertEquals("llama-3", updated?.model)
+        assertEquals("http://localhost:8080/v1", updated?.baseUrl)
+    }
+
+    @Test
+    fun `setEnabled toggles only the requested profile`() = runTest {
+        val id = apiProfileDao.insert(newProfile("ローカルサーバー"))
+        val otherId = apiProfileDao.insert(newProfile("OpenAI"))
+        assertTrue(apiProfileDao.getById(id)!!.enabled)
+
+        apiProfileDao.setEnabled(id, false)
+
+        assertEquals(false, apiProfileDao.getById(id)?.enabled)
+        assertTrue(apiProfileDao.getById(otherId)!!.enabled)
     }
 
     @Test

@@ -11,7 +11,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+// Robolectric (rather than a plain JVM JUnit run) is needed so android.util.Log calls made by
+// OpenAiApiClient (e.g. logging a malformed SSE chunk) are shadowed as no-ops instead of throwing
+// "not mocked".
+@RunWith(RobolectricTestRunner::class)
 class OpenAiApiClientTest {
 
     private lateinit var server: MockWebServer

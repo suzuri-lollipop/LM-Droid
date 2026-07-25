@@ -113,7 +113,7 @@ class ConversationRepository(
      * suggestions in that case.
      */
     suspend fun generateSuggestedPrompts(): List<String>? {
-        val settings = settingsRepository.currentSettings()
+        val settings = settingsRepository.currentSystemSettings()
         val apiKey = settings.apiKey
         if (apiKey.isNullOrBlank()) return null
 
@@ -129,7 +129,7 @@ class ConversationRepository(
     }
 
     suspend fun sendUserMessage(conversationId: Long, userText: String): SendResult {
-        val settings = settingsRepository.currentSettings()
+        val settings = settingsRepository.currentChatSettings()
         val apiKey = settings.apiKey
         if (apiKey.isNullOrBlank()) {
             return SendResult.ApiKeyMissing
@@ -155,7 +155,7 @@ class ConversationRepository(
      * pattern used by ChatGPT/Claude.
      */
     suspend fun editMessageAndRegenerate(conversationId: Long, messageId: Long, newText: String): SendResult {
-        val settings = settingsRepository.currentSettings()
+        val settings = settingsRepository.currentChatSettings()
         val apiKey = settings.apiKey
         if (apiKey.isNullOrBlank()) {
             return SendResult.ApiKeyMissing
@@ -176,7 +176,7 @@ class ConversationRepository(
      * requiring the user to edit their own message first.
      */
     suspend fun regenerateResponse(conversationId: Long, assistantMessageId: Long): SendResult {
-        val settings = settingsRepository.currentSettings()
+        val settings = settingsRepository.currentChatSettings()
         val apiKey = settings.apiKey
         if (apiKey.isNullOrBlank()) {
             return SendResult.ApiKeyMissing
@@ -301,10 +301,24 @@ class ConversationRepository(
 
         if (isFirstMessage) {
             // Fire-and-forget: the user shouldn't wait on this extra round-trip just to see their
-            // answer. On failure, the conversation just keeps its DEFAULT_TITLE.
+            // answer. On failure, the conversation just keeps its DEFAULT_TITLE. Uses the
+            // "system" model (Settings → システム) rather than whatever's active for chat — it
+            // falls back to the chat selection when no system-specific override is configured.
             val assistantTextForTitle = finalContent.ifBlank { null }
             backgroundScope.launch {
-                openAiApiClient.generateTitle(apiKey, settings.model, latestUserText, assistantTextForTitle, settings.baseUrl)
+                val systemSettings = settingsRepository.currentSystemSettings()
+                val systemApiKey = systemSettings.apiKey
+                if (systemApiKey.isNullOrBlank()) {
+                    Log.w(TAG, "Title generation skipped: no system model configured")
+                    return@launch
+                }
+                openAiApiClient.generateTitle(
+                    systemApiKey,
+                    systemSettings.model,
+                    latestUserText,
+                    assistantTextForTitle,
+                    systemSettings.baseUrl,
+                )
                     .onSuccess { title -> conversationDao.updateTitle(conversationId, title.take(TITLE_MAX_LENGTH)) }
                     .onFailure { e -> Log.w(TAG, "Title generation failed, keeping the fallback title", e) }
             }

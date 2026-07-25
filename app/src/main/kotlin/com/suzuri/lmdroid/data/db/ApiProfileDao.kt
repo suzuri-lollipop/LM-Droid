@@ -23,6 +23,9 @@ interface ApiProfileDao {
     @Query("SELECT * FROM api_profiles WHERE id = :id")
     fun observeById(id: Long): Flow<ApiProfileEntity?>
 
+    @Query("UPDATE api_profiles SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: Long, enabled: Boolean)
+
     @Query("DELETE FROM api_profiles WHERE id = :id")
     suspend fun delete(id: Long)
 }

@@ -60,9 +60,14 @@ class AppContainer(context: Context) {
 
     val settingsRepository = SettingsRepository(appContext, apiKeyCipher, database.apiProfileDao())
 
-    val apiProfileRepository = ApiProfileRepository(database.apiProfileDao(), apiKeyCipher)
-
     val openAiApiClient = OpenAiApiClient(okHttpClient, json)
+
+    val apiProfileRepository = ApiProfileRepository(
+        database.apiProfileDao(),
+        database.apiModelDao(),
+        apiKeyCipher,
+        openAiApiClient,
+    )
 
     val conversationRepository = ConversationRepository(
         conversationDao = database.conversationDao(),

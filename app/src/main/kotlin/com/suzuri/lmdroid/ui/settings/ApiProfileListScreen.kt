@@ -25,7 +25,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -79,21 +79,21 @@ fun ApiProfileListScreen(
             LazyColumn(modifier = Modifier.weight(1f)) {
                 items(uiState.profiles, key = { it.id }) { profile ->
                     ListItem(
-                        leadingContent = {
-                            RadioButton(
-                                selected = profile.id == uiState.selectedProfileId,
-                                onClick = { viewModel.onSelectProfile(profile.id) },
-                            )
-                        },
                         headlineContent = { Text(profile.name) },
-                        supportingContent = { Text(profile.model) },
+                        supportingContent = { Text(profile.baseUrl) },
                         trailingContent = {
-                            IconButton(onClick = { viewModel.onDeleteProfile(profile.id) }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Delete,
-                                    contentDescription = stringResource(R.string.api_profile_delete),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Switch(
+                                    checked = profile.enabled,
+                                    onCheckedChange = { enabled -> viewModel.onToggleEnabled(profile.id, enabled) },
                                 )
+                                IconButton(onClick = { viewModel.onDeleteProfile(profile.id) }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Delete,
+                                        contentDescription = stringResource(R.string.api_profile_delete),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         },
                         modifier = Modifier.clickable { onNavigateToProfile(profile.id) },

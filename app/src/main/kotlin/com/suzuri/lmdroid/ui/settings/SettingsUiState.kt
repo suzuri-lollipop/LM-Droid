@@ -12,9 +12,11 @@ sealed class TestConnectionState {
 data class SettingsUiState(
     val profileName: String = "",
     val apiKey: String = "",
-    val model: String = AppSettings.DEFAULT_MODEL,
     val baseUrl: String = AppSettings.DEFAULT_BASE_URL,
     val isKeyVisible: Boolean = false,
     val testState: TestConnectionState = TestConnectionState.Idle,
+    // Auto-fetched from the provider's /models endpoint via a successful "接続テスト" — never
+    // typed in by hand.
+    val models: List<String> = emptyList(),
     val saved: Boolean = false,
 )
