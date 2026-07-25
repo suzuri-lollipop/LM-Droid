@@ -1,10 +1,8 @@
 package com.suzuri.lmdroid.ui.chat.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,18 +30,12 @@ private val SUGGESTION_KEYS = listOf(
     R.string.chat_suggestion_explain,
 )
 
-/** The Claude/ChatGPT/Gemini-style landing view shown in place of the message list for a brand-new, empty conversation. */
+/** The icon + greeting shown above the input bar for a brand-new, empty conversation. */
 @Composable
-fun EmptyConversationState(onSuggestionClick: (String) -> Unit, modifier: Modifier = Modifier) {
-    // No verticalScroll here: combined with Arrangement.Center it measures with an unbounded
-    // height, which defeats centering (content ends up pinned to the top instead). The content
-    // below is compact enough to fit without scrolling on any real screen.
+fun EmptyConversationGreeting(modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 24.dp, vertical = 16.dp),
+        modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
     ) {
         Box(
             modifier = Modifier
@@ -66,23 +58,23 @@ fun EmptyConversationState(onSuggestionClick: (String) -> Unit, modifier: Modifi
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 20.dp),
         )
+    }
+}
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 32.dp),
-        ) {
-            SUGGESTION_KEYS.forEach { key ->
-                val text = stringResource(key)
-                SuggestionChip(
-                    onClick = { onSuggestionClick(text) },
-                    label = { Text(text) },
-                    shape = SuggestionChipDefaults.shape,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                )
-            }
+/** Tappable example prompts shown below the input bar; tapping one fills the input with its text. */
+@Composable
+fun EmptyConversationSuggestions(onSuggestionClick: (String) -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        SUGGESTION_KEYS.forEach { key ->
+            val text = stringResource(key)
+            SuggestionChip(
+                onClick = { onSuggestionClick(text) },
+                label = { Text(text) },
+                shape = SuggestionChipDefaults.shape,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+            )
         }
     }
 }
