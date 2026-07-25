@@ -44,6 +44,16 @@ class ChatViewModel(
             }
         }
 
+        // Drives the top bar title shown for the Chat screen (see MainActivity), so it tracks
+        // the active conversation's title — including once the LLM-generated title lands.
+        viewModelScope.launch {
+            conversationId.filterNotNull().flatMapLatest { id ->
+                conversationRepository.observeConversation(id)
+            }.collect { conversation ->
+                _uiState.update { state -> state.copy(conversationTitle = conversation?.title.orEmpty()) }
+            }
+        }
+
         viewModelScope.launch {
             settingsRepository.settings.collect { settings ->
                 _uiState.update { state ->

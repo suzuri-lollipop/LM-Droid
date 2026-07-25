@@ -60,6 +60,25 @@ class ConversationDaoTest {
     }
 
     @Test
+    fun `observeConversation emits updates for only the requested conversation`() = runTest {
+        val id = conversationDao.insert(ConversationEntity(title = "新しい会話", createdAt = 0, updatedAt = 0))
+        val otherId = conversationDao.insert(ConversationEntity(title = "other", createdAt = 0, updatedAt = 0))
+
+        conversationDao.observeConversation(id).test {
+            assertEquals("新しい会話", awaitItem()?.title)
+
+            conversationDao.updateTitle(id, "旅行の計画について")
+            assertEquals("旅行の計画について", awaitItem()?.title)
+
+            // A change to a different conversation must not emit here.
+            conversationDao.updateTitle(otherId, "unrelated change")
+            expectNoEvents()
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun `updateTitle changes only the title`() = runTest {
         val id = conversationDao.insert(ConversationEntity(title = "新しい会話", createdAt = 0, updatedAt = 0))
 

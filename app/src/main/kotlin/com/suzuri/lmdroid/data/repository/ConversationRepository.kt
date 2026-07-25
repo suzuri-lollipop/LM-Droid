@@ -61,6 +61,9 @@ class ConversationRepository(
 
     fun observeConversations(): Flow<List<ConversationEntity>> = conversationDao.observeAll()
 
+    fun observeConversation(conversationId: Long): Flow<ConversationEntity?> =
+        conversationDao.observeConversation(conversationId)
+
     fun observeMessages(conversationId: Long): Flow<List<MessageEntity>> =
         messageDao.observeMessages(conversationId)
 
@@ -78,9 +81,9 @@ class ConversationRepository(
             MessageEntity(conversationId = conversationId, role = MessageRole.USER, content = userText, createdAt = sentAt),
         )
         conversationDao.touch(conversationId, sentAt)
-        if (isFirstMessage) {
-            conversationDao.updateTitle(conversationId, userText.take(TITLE_MAX_LENGTH))
-        }
+        // No fallback title set here: the conversation keeps its DEFAULT_TITLE ("新しい会話")
+        // until the LLM-generated title lands below. It's now shown live in the Chat top bar, so
+        // briefly echoing the user's own message back at them as the "title" reads as a glitch.
 
         return generateAssistantReply(conversationId, apiKey, settings, isFirstMessage, userText)
     }
@@ -237,8 +240,7 @@ class ConversationRepository(
 
         if (isFirstMessage) {
             // Fire-and-forget: the user shouldn't wait on this extra round-trip just to see their
-            // answer. A fallback (truncated user text) title was already set when the message was
-            // first sent, so a failure here just means the fallback sticks around.
+            // answer. On failure, the conversation just keeps its DEFAULT_TITLE.
             val assistantTextForTitle = finalContent.ifBlank { null }
             backgroundScope.launch {
                 openAiApiClient.generateTitle(apiKey, settings.model, latestUserText, assistantTextForTitle, settings.baseUrl)

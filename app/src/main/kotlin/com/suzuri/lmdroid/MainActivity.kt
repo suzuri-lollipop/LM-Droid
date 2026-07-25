@@ -20,12 +20,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.suzuri.lmdroid.ui.ViewModelFactory
 import com.suzuri.lmdroid.ui.chat.ChatScreen
@@ -74,6 +76,10 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val settingsViewModel: SettingsViewModel = viewModel(factory = viewModelFactory)
     val historyViewModel: HistoryViewModel = viewModel(factory = viewModelFactory)
 
+    // Needed here (not just inside ChatScreen) so the top bar can show the active conversation's
+    // title instead of the static app name.
+    val chatUiState by chatViewModel.uiState.collectAsState()
+
     // Makes the system/gesture back button pop one level of the Settings drill-down (like the
     // Android Settings app) instead of leaving the tab or exiting the app.
     BackHandler(enabled = currentScreen == Screen.Settings) {
@@ -90,8 +96,10 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
             TopAppBar(
                 title = {
                     Text(
-                        when (currentScreen) {
-                            Screen.Chat -> stringResource(R.string.chat_title)
+                        text = when (currentScreen) {
+                            // Falls back to the app name only until the conversation's title
+                            // (either the "新しい会話" default or the LLM-generated one) loads.
+                            Screen.Chat -> chatUiState.conversationTitle.ifBlank { stringResource(R.string.chat_title) }
                             Screen.Settings -> when (settingsRoute) {
                                 SettingsRoute.Root -> stringResource(R.string.settings_title)
                                 SettingsRoute.ApiSettings -> stringResource(R.string.settings_api_category_title)
@@ -99,6 +107,8 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                             }
                             Screen.History -> stringResource(R.string.history_title)
                         },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 },
                 navigationIcon = {

@@ -11,6 +11,7 @@ data class MessageUiModel(
 )
 
 data class ChatUiState(
+    val conversationTitle: String = "",
     val messages: List<MessageUiModel> = emptyList(),
     val input: String = "",
     val isStreaming: Boolean = false,
