@@ -172,17 +172,30 @@ class OpenAiApiClient(
         assistantMessage: String?,
         baseUrl: String = DEFAULT_BASE_URL,
     ): Result<String> = withContext(Dispatchers.IO) {
-        val messages = buildList {
-            add(ChatMessageDto(role = "system", content = TITLE_SYSTEM_PROMPT))
-            add(ChatMessageDto(role = "user", content = userMessage.take(2000)))
+        // Deliberately NOT replayed as separate user/assistant turns: a request ending on an
+        // "assistant" message reads to some servers' chat templates (confirmed with a local
+        // llama.cpp server) as "continue this assistant turn," which just echoes the given text
+        // back nearly verbatim instead of following the system instruction. Folding the exchange
+        // into a single user message keeps the request unambiguously "answer this," ending on user.
+        val exchangeSummary = buildString {
+            append("User: ").append(userMessage.take(2000))
             if (!assistantMessage.isNullOrBlank()) {
-                add(ChatMessageDto(role = "assistant", content = assistantMessage.take(2000)))
+                append("\nAssistant: ").append(assistantMessage.take(2000))
             }
         }
+        val messages = listOf(
+            ChatMessageDto(role = "system", content = TITLE_SYSTEM_PROMPT),
+            ChatMessageDto(role = "user", content = exchangeSummary),
+        )
         val requestJson = json.encodeToString(
             ChatCompletionRequest.serializer(),
-            ChatCompletionRequest(model = model, messages = messages, stream = false, maxTokens = 20),
+            // A reasoning/"thinking" model (see StreamEvent.ReasoningDelta) burns tokens on its
+            // internal chain-of-thought before it ever writes the actual title, so a small budget
+            // like 20 can be exhausted before any real content comes out, silently producing an
+            // empty title. 500 gives room for that preamble on top of the few words we actually want.
+            ChatCompletionRequest(model = model, messages = messages, stream = false, maxTokens = 500),
         )
+        Log.d(TAG, "generateTitle request: $requestJson")
 
         val builderWithUrl = try {
             Request.Builder().url("${normalizeBaseUrl(baseUrl)}/chat/completions")
@@ -203,19 +216,37 @@ class OpenAiApiClient(
             okHttpClient.newCall(request).execute().use { response ->
                 val bodyString = response.body?.string()
                 if (!response.isSuccessful) {
-                    return@withContext Result.failure(mapToException(null, response.code, bodyString))
+                    val exception = mapToException(null, response.code, bodyString)
+                    Log.w(TAG, "generateTitle failed: ${exception.userMessage}")
+                    return@withContext Result.failure(exception)
                 }
-                val title = bodyString?.let {
+                // HttpLoggingInterceptor is HEADERS-only (see AppContainer), so the response body
+                // never otherwise reaches Logcat — logging it here is the only way to see what
+                // the model actually said versus what we asked for.
+                Log.d(TAG, "generateTitle raw response: $bodyString")
+                val chunk = bodyString?.let {
                     runCatching { json.decodeFromString(ChatCompletionChunk.serializer(), it) }
-                        .getOrNull()?.choices?.firstOrNull()?.message?.content
-                }?.trim()?.trim('"', '「', '」', '『', '』', '.', '。')
+                        .onFailure { e -> Log.w(TAG, "Failed to parse generateTitle response: $it", e) }
+                        .getOrNull()
+                }
+                val message = chunk?.choices?.firstOrNull()?.message
+                val title = message?.content
+                    ?.trim()
+                    ?.trim('"', '「', '」', '『', '』', '.', '。')
                 if (title.isNullOrBlank()) {
+                    Log.w(
+                        TAG,
+                        "generateTitle produced no usable content for model=$model " +
+                            "(reasoningContent=${message?.reasoningContent?.take(200)})",
+                    )
                     Result.failure(OpenAiException.Unknown(null))
                 } else {
+                    Log.d(TAG, "generateTitle extracted title: \"$title\"")
                     Result.success(title)
                 }
             }
         } catch (e: IOException) {
+            Log.w(TAG, "generateTitle failed with a network error", e)
             Result.failure(OpenAiException.NetworkError(e))
         }
     }

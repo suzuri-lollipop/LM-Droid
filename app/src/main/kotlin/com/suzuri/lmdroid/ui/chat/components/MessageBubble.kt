@@ -325,7 +325,6 @@ private fun ReasoningSection(messageId: Long, reasoning: String, isStillThinking
                 text = if (isStillThinking) "考え中…" else "思考プロセス",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
             )
             Icon(
                 imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,

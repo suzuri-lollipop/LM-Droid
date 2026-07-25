@@ -272,10 +272,15 @@ class OpenAiApiClientTest {
         assertTrue(requestBody.contains("\"stream\":false"))
         assertTrue(requestBody.contains("京都旅行"))
         assertTrue(requestBody.contains("観光したいエリア"))
+        // Regression test: a request ending on a "role":"assistant" message was echoed back
+        // nearly verbatim by a local llama.cpp server instead of producing a title, because its
+        // chat template read that shape as "continue this assistant turn." The exchange must be
+        // folded into a single trailing user message instead.
+        assertTrue(!requestBody.contains("\"role\":\"assistant\""))
     }
 
     @Test
-    fun `generateTitle omits the assistant message when it is null`() = runTest {
+    fun `generateTitle folds a null assistant message into just the user's text`() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
                 "{\"choices\":[{\"message\":{\"content\":\"Quick Question\"}}]}",
@@ -294,6 +299,7 @@ class OpenAiApiClientTest {
         val requestBody = server.takeRequest().body.readUtf8()
         assertTrue(requestBody.contains("\"role\":\"user\""))
         assertTrue(!requestBody.contains("\"role\":\"assistant\""))
+        assertTrue(!requestBody.contains("Assistant:"))
     }
 
     @Test

@@ -243,6 +243,7 @@ class ConversationRepository(
             backgroundScope.launch {
                 openAiApiClient.generateTitle(apiKey, settings.model, latestUserText, assistantTextForTitle, settings.baseUrl)
                     .onSuccess { title -> conversationDao.updateTitle(conversationId, title.take(TITLE_MAX_LENGTH)) }
+                    .onFailure { e -> Log.w(TAG, "Title generation failed, keeping the fallback title", e) }
             }
         }
 
