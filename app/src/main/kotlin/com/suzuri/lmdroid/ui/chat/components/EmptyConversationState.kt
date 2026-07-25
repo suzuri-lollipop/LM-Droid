@@ -61,12 +61,21 @@ fun EmptyConversationGreeting(modifier: Modifier = Modifier) {
     }
 }
 
-/** Tappable example prompts shown below the input bar; tapping one fills the input with its text. */
+/**
+ * Tappable example prompts shown below the input bar; tapping one fills the input with its text.
+ * [suggestions], when non-empty, are LLM-generated from the topics of past conversations (see
+ * ChatViewModel); an empty list (no history yet, or generation failed) falls back to a fixed set
+ * of generic starter prompts so the screen never looks broken/blank.
+ */
 @Composable
-fun EmptyConversationSuggestions(onSuggestionClick: (String) -> Unit, modifier: Modifier = Modifier) {
+fun EmptyConversationSuggestions(
+    onSuggestionClick: (String) -> Unit,
+    suggestions: List<String> = emptyList(),
+    modifier: Modifier = Modifier,
+) {
+    val prompts = suggestions.ifEmpty { SUGGESTION_KEYS.map { stringResource(it) } }
     Column(modifier = modifier.fillMaxWidth()) {
-        SUGGESTION_KEYS.forEach { key ->
-            val text = stringResource(key)
+        prompts.forEach { text ->
             SuggestionChip(
                 onClick = { onSuggestionClick(text) },
                 label = { Text(text) },

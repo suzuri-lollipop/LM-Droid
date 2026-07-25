@@ -251,6 +251,93 @@ class OpenAiApiClient(
         }
     }
 
+    /**
+     * Generates a handful of short example prompts based on the topics of the user's past
+     * conversations, for the suggestion chips shown on the empty/new-conversation screen —
+     * best-effort, so callers should fall back to static suggestions on failure.
+     */
+    suspend fun generateSuggestedPrompts(
+        apiKey: String,
+        model: String,
+        pastTopics: List<String>,
+        baseUrl: String = DEFAULT_BASE_URL,
+    ): Result<List<String>> = withContext(Dispatchers.IO) {
+        val topicsList = pastTopics.joinToString("\n") { "- $it" }
+        val messages = listOf(
+            ChatMessageDto(role = "system", content = SUGGESTIONS_SYSTEM_PROMPT),
+            ChatMessageDto(role = "user", content = topicsList.take(4000)),
+        )
+        val requestJson = json.encodeToString(
+            ChatCompletionRequest.serializer(),
+            // Synthesizing 4 fresh prompts across several past topics is a meaningfully harder
+            // reasoning task than generateTitle's "restate this one exchange" — confirmed via
+            // logs that a reasoning model can burn 500+ tokens of chain-of-thought on this
+            // without ever finishing (finish_reason="length", content left empty). This call is
+            // background/non-blocking (see ChatViewModel), so a generous budget just costs a
+            // little extra latency, not a stuck UI.
+            ChatCompletionRequest(model = model, messages = messages, stream = false, maxTokens = 1500),
+        )
+        Log.d(TAG, "generateSuggestedPrompts request: $requestJson")
+
+        val builderWithUrl = try {
+            Request.Builder().url("${normalizeBaseUrl(baseUrl)}/chat/completions")
+        } catch (e: IllegalArgumentException) {
+            return@withContext Result.failure(e)
+        }
+
+        val request = try {
+            builderWithUrl
+                .addHeader("Authorization", "Bearer $apiKey")
+                .post(requestJson.toRequestBody(jsonMediaType))
+                .build()
+        } catch (e: IllegalArgumentException) {
+            return@withContext Result.failure(e)
+        }
+
+        try {
+            okHttpClient.newCall(request).execute().use { response ->
+                val bodyString = response.body?.string()
+                if (!response.isSuccessful) {
+                    val exception = mapToException(null, response.code, bodyString)
+                    Log.w(TAG, "generateSuggestedPrompts failed: ${exception.userMessage}")
+                    return@withContext Result.failure(exception)
+                }
+                Log.d(TAG, "generateSuggestedPrompts raw response: $bodyString")
+                val chunk = bodyString?.let {
+                    runCatching { json.decodeFromString(ChatCompletionChunk.serializer(), it) }
+                        .onFailure { e -> Log.w(TAG, "Failed to parse generateSuggestedPrompts response: $it", e) }
+                        .getOrNull()
+                }
+                val suggestions = chunk?.choices?.firstOrNull()?.message?.content
+                    ?.lines()
+                    ?.map(::cleanSuggestionLine)
+                    ?.filter { it.isNotBlank() }
+                    ?.take(MAX_SUGGESTIONS)
+                    .orEmpty()
+                if (suggestions.isEmpty()) {
+                    Log.w(TAG, "generateSuggestedPrompts produced no usable lines for model=$model")
+                    Result.failure(OpenAiException.Unknown(null))
+                } else {
+                    Log.d(TAG, "generateSuggestedPrompts extracted: $suggestions")
+                    Result.success(suggestions)
+                }
+            }
+        } catch (e: IOException) {
+            Log.w(TAG, "generateSuggestedPrompts failed with a network error", e)
+            Result.failure(OpenAiException.NetworkError(e))
+        }
+    }
+
+    /** Strips numbering ("1.", "2)"), bullet markers ("-", "*", "・"), and surrounding quotes from one suggested-prompt line. */
+    private fun cleanSuggestionLine(line: String): String = line.trim()
+        .removePrefix("-")
+        .removePrefix("*")
+        .removePrefix("・")
+        .trim()
+        .replace(Regex("^\\d+[.)]\\s*"), "")
+        .trim('"', '「', '」', '『', '』')
+        .trim()
+
     private fun mapToException(cause: Throwable?, httpCode: Int?, bodyString: String?): OpenAiException {
         if (httpCode == null) {
             return when (cause) {
@@ -288,6 +375,12 @@ class OpenAiApiClient(
             "Reply with only a short conversation title (3 to 6 words, no quotes, no trailing " +
                 "punctuation) summarizing the topic of the following exchange, in the same " +
                 "language the user is writing in."
+        private const val SUGGESTIONS_SYSTEM_PROMPT =
+            "Based on the user's past conversation topics below, suggest 4 short example " +
+                "prompts (each 3 to 8 words) the user might want to ask next. Write exactly " +
+                "one prompt per line, with no numbering, no bullet points, and no quotes. " +
+                "Reply in the same language as the topics."
+        private const val MAX_SUGGESTIONS = 4
 
         /**
          * Users commonly type a bare host (e.g. "100.97.208.27:721/v1") for a self-hosted

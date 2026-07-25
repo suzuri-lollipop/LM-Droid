@@ -16,14 +16,23 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC")
     fun observeAll(): Flow<List<ConversationEntity>>
 
+    @Query("SELECT * FROM conversations ORDER BY updatedAt DESC LIMIT :limit")
+    suspend fun getRecent(limit: Int): List<ConversationEntity>
+
     @Query("SELECT * FROM conversations WHERE id = :id")
     fun observeConversation(id: Long): Flow<ConversationEntity?>
+
+    @Query("SELECT * FROM conversations WHERE folderId = :folderId ORDER BY updatedAt DESC")
+    fun observeByFolder(folderId: Long): Flow<List<ConversationEntity>>
 
     @Query("UPDATE conversations SET updatedAt = :updatedAt WHERE id = :id")
     suspend fun touch(id: Long, updatedAt: Long)
 
     @Query("UPDATE conversations SET title = :title WHERE id = :id")
     suspend fun updateTitle(id: Long, title: String)
+
+    @Query("UPDATE conversations SET folderId = :folderId WHERE id = :id")
+    suspend fun setFolder(id: Long, folderId: Long?)
 
     @Query("DELETE FROM conversations WHERE id = :id")
     suspend fun delete(id: Long)

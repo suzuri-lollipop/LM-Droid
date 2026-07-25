@@ -5,14 +5,15 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
 @Database(
-    entities = [ConversationEntity::class, MessageEntity::class],
-    version = 2,
+    entities = [ConversationEntity::class, MessageEntity::class, FolderEntity::class],
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun conversationDao(): ConversationDao
     abstract fun messageDao(): MessageDao
+    abstract fun folderDao(): FolderDao
 
     companion object {
         const val DATABASE_NAME = "lmdroid.db"

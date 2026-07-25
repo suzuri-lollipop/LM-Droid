@@ -36,5 +36,13 @@
     <string name="history_title">履歴</string>
     <string name="history_new_conversation">新しい会話</string>
     <string name="history_empty_message">まだ会話がありません</string>
+    <string name="history_folder_empty_message">このフォルダには会話がありません</string>
     <string name="history_delete_conversation">この会話を削除</string>
+    <string name="history_all_conversations">すべて</string>
+    <string name="history_new_folder">新しいフォルダ</string>
+    <string name="history_folder_name_label">フォルダ名</string>
+    <string name="history_create_folder">作成</string>
+    <string name="history_delete_folder">このフォルダを削除</string>
+    <string name="history_move_to_folder">フォルダに追加</string>
+    <string name="history_no_folder">フォルダなし</string>
 </resources>

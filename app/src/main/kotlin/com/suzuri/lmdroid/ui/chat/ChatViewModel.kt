@@ -27,13 +27,15 @@ class ChatViewModel(
 
     // A StateFlow (not a plain var) so switching conversations can drive observeMessages via
     // flatMapLatest below, instead of only ever observing whichever conversation was active when
-    // init{} first ran.
+    // init{} first ran. null is a real, stable state here (not just "still loading"): it means
+    // "a fresh new conversation that hasn't been written to the database yet" — see
+    // ensureConversationId() and startNewConversation().
     private val conversationId = MutableStateFlow<Long?>(null)
     private var sendJob: Job? = null
 
     init {
         viewModelScope.launch {
-            conversationId.value = conversationRepository.getOrCreateDefaultConversation()
+            conversationId.value = conversationRepository.getInitialConversationId()
         }
 
         viewModelScope.launch {
@@ -61,6 +63,17 @@ class ChatViewModel(
                 }
             }
         }
+
+        // Best-effort, once per app session: personalizes the empty-conversation suggestion
+        // chips from past conversation topics. Leaves suggestedPrompts at its emptyList()
+        // default (the UI falls back to static suggestions) on failure or when there's no
+        // history yet to base them on.
+        viewModelScope.launch {
+            val suggestions = conversationRepository.generateSuggestedPrompts()
+            if (!suggestions.isNullOrEmpty()) {
+                _uiState.update { state -> state.copy(suggestedPrompts = suggestions) }
+            }
+        }
     }
 
     fun onInputChange(value: String) {
@@ -69,11 +82,25 @@ class ChatViewModel(
 
     fun onSend() {
         val text = _uiState.value.input.trim()
-        val currentConversationId = conversationId.value ?: return
         if (text.isEmpty() || _uiState.value.isStreaming) return
 
         _uiState.update { it.copy(input = "", errorMessage = null) }
-        launchGeneration { conversationRepository.sendUserMessage(currentConversationId, text) }
+        launchGeneration {
+            val id = ensureConversationId()
+            conversationRepository.sendUserMessage(id, text)
+        }
+    }
+
+    /**
+     * Lazily creates and persists the conversation the moment it's actually needed (the first
+     * message being sent) — until then, conversationId stays null and nothing shows up in the
+     * History list. Safe to call repeatedly: once a real id is assigned, it's reused.
+     */
+    private suspend fun ensureConversationId(): Long {
+        conversationId.value?.let { return it }
+        val newId = conversationRepository.createNewConversation()
+        conversationId.value = newId
+        return newId
     }
 
     /**
@@ -148,10 +175,17 @@ class ChatViewModel(
         conversationId.value = id
     }
 
+    /**
+     * Resets to a fresh, not-yet-persisted conversation (see ensureConversationId()) — nothing is
+     * written to the database, and nothing shows up in History, until a message is actually sent
+     * from it. This is a plain synchronous state reset (no suspend DB call), so mashing "new
+     * conversation" repeatedly is harmless: every call just re-applies the same blank state.
+     */
     fun startNewConversation() {
         sendJob?.cancel()
-        viewModelScope.launch {
-            conversationId.value = conversationRepository.createNewConversation()
+        conversationId.value = null
+        _uiState.update {
+            it.copy(messages = emptyList(), conversationTitle = "", input = "", errorMessage = null)
         }
     }
 

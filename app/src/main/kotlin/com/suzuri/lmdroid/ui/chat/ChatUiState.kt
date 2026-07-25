@@ -18,4 +18,5 @@ data class ChatUiState(
     val apiKeyMissing: Boolean = false,
     val errorMessage: String? = null,
     val markdownEnabled: Boolean = true,
+    val suggestedPrompts: List<String> = emptyList(),
 )

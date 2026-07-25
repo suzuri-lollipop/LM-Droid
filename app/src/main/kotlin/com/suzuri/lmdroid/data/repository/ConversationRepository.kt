@@ -3,6 +3,8 @@ package com.suzuri.lmdroid.data.repository
 import android.util.Log
 import com.suzuri.lmdroid.data.db.ConversationDao
 import com.suzuri.lmdroid.data.db.ConversationEntity
+import com.suzuri.lmdroid.data.db.FolderDao
+import com.suzuri.lmdroid.data.db.FolderEntity
 import com.suzuri.lmdroid.data.db.MessageDao
 import com.suzuri.lmdroid.data.db.MessageEntity
 import com.suzuri.lmdroid.data.db.MessageRole
@@ -27,11 +29,14 @@ import kotlinx.coroutines.withContext
  * conversations. Supports multiple conversations (a lightweight "history") — [observeConversations]
  * lists them, [createNewConversation] starts a fresh one, and each is auto-titled by the model
  * itself from its first exchange. [editMessageAndRegenerate] supports ChatGPT/Claude-style
- * "edit a past message and regenerate from there."
+ * "edit a past message and regenerate from there." Conversations can also be organized into
+ * user-created folders (e.g. "お気に入り") — see [observeFolders], [createFolder], and
+ * [setConversationFolder]; a conversation belongs to at most one folder.
  */
 class ConversationRepository(
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
+    private val folderDao: FolderDao,
     private val settingsRepository: SettingsRepository,
     private val openAiApiClient: OpenAiApiClient,
 ) {
@@ -48,16 +53,17 @@ class ConversationRepository(
     /**
      * Called once when the app cold-starts (ChatViewModel's init), so it should land on a blank
      * conversation — like Claude/ChatGPT/Gemini opening to a fresh chat rather than resuming
-     * whatever you were last talking about. Reuses the most recent conversation only if it's
-     * still empty (e.g. the app was closed again without sending anything), so repeatedly
-     * relaunching without chatting doesn't pile up empty "新しい会話" rows in the history.
+     * whatever you were last talking about. Reuses the most recent conversation if it's still
+     * empty (e.g. the app was closed again without sending anything); otherwise returns null,
+     * meaning "show a fresh, not-yet-persisted new conversation" — nothing is written to the
+     * database (and nothing shows up in History) until the user actually sends a first message.
      */
-    suspend fun getOrCreateDefaultConversation(): Long {
+    suspend fun getInitialConversationId(): Long? {
         val mostRecent = conversationDao.getMostRecent()
         if (mostRecent != null && messageDao.countMessages(mostRecent.id) == 0) {
             return mostRecent.id
         }
-        return createNewConversation()
+        return null
     }
 
     suspend fun createNewConversation(): Long {
@@ -76,6 +82,51 @@ class ConversationRepository(
 
     fun observeMessages(conversationId: Long): Flow<List<MessageEntity>> =
         messageDao.observeMessages(conversationId)
+
+    fun observeFolders(): Flow<List<FolderEntity>> = folderDao.observeAll()
+
+    fun observeConversationsInFolder(folderId: Long): Flow<List<ConversationEntity>> =
+        conversationDao.observeByFolder(folderId)
+
+    suspend fun createFolder(name: String): Long {
+        val trimmed = name.trim()
+        return folderDao.insert(FolderEntity(name = trimmed, createdAt = System.currentTimeMillis()))
+    }
+
+    suspend fun renameFolder(folderId: Long, name: String) {
+        folderDao.rename(folderId, name.trim())
+    }
+
+    /** Deleting a folder unfiles its conversations (see ConversationEntity's SET_NULL foreign key) rather than deleting them. */
+    suspend fun deleteFolder(folderId: Long) {
+        folderDao.delete(folderId)
+    }
+
+    suspend fun setConversationFolder(conversationId: Long, folderId: Long?) {
+        conversationDao.setFolder(conversationId, folderId)
+    }
+
+    /**
+     * Generates prompt-suggestion chips from the topics of past conversations (their titles), for
+     * the empty/new-conversation screen. Returns null when there's no API key, no conversation
+     * history to base suggestions on, or generation fails — callers should fall back to static
+     * suggestions in that case.
+     */
+    suspend fun generateSuggestedPrompts(): List<String>? {
+        val settings = settingsRepository.currentSettings()
+        val apiKey = settings.apiKey
+        if (apiKey.isNullOrBlank()) return null
+
+        val topics = conversationDao.getRecent(RECENT_CONVERSATIONS_FOR_SUGGESTIONS)
+            .map { it.title }
+            .filter { it.isNotBlank() && it != DEFAULT_TITLE }
+            .distinct()
+        if (topics.isEmpty()) return null
+
+        return openAiApiClient.generateSuggestedPrompts(apiKey, settings.model, topics, settings.baseUrl)
+            .onFailure { e -> Log.w(TAG, "Suggested prompt generation failed, falling back to static suggestions", e) }
+            .getOrNull()
+    }
 
     suspend fun sendUserMessage(conversationId: Long, userText: String): SendResult {
         val settings = settingsRepository.currentSettings()
@@ -274,5 +325,6 @@ class ConversationRepository(
         const val TITLE_MAX_LENGTH = 40
         const val DEFAULT_TITLE = "新しい会話"
         const val STOPPED_NOTICE = "（生成を停止しました）"
+        const val RECENT_CONVERSATIONS_FOR_SUGGESTIONS = 15
     }
 }

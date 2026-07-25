@@ -18,6 +18,7 @@ class ConversationDaoTest {
     private lateinit var db: AppDatabase
     private lateinit var conversationDao: ConversationDao
     private lateinit var messageDao: MessageDao
+    private lateinit var folderDao: FolderDao
 
     @Before
     fun setUp() {
@@ -26,6 +27,7 @@ class ConversationDaoTest {
             .build()
         conversationDao = db.conversationDao()
         messageDao = db.messageDao()
+        folderDao = db.folderDao()
     }
 
     @After
@@ -79,6 +81,18 @@ class ConversationDaoTest {
     }
 
     @Test
+    fun `getRecent returns the most recently updated conversations up to the limit`() = runTest {
+        val oldest = conversationDao.insert(ConversationEntity(title = "oldest", createdAt = 100, updatedAt = 100))
+        val middle = conversationDao.insert(ConversationEntity(title = "middle", createdAt = 200, updatedAt = 200))
+        val newest = conversationDao.insert(ConversationEntity(title = "newest", createdAt = 300, updatedAt = 300))
+
+        val recent = conversationDao.getRecent(limit = 2)
+
+        assertEquals(listOf(newest, middle), recent.map { it.id })
+        assertTrue(recent.none { it.id == oldest })
+    }
+
+    @Test
     fun `updateTitle changes only the title`() = runTest {
         val id = conversationDao.insert(ConversationEntity(title = "新しい会話", createdAt = 0, updatedAt = 0))
 
@@ -96,5 +110,32 @@ class ConversationDaoTest {
         conversationDao.delete(id)
 
         assertTrue(messageDao.getMessages(id).isEmpty())
+    }
+
+    @Test
+    fun `observeByFolder emits only conversations assigned to that folder`() = runTest {
+        val folderId = folderDao.insert(FolderEntity(name = "お気に入り", createdAt = 0))
+        val inFolder = conversationDao.insert(ConversationEntity(title = "in folder", createdAt = 100, updatedAt = 100))
+        conversationDao.insert(ConversationEntity(title = "not in folder", createdAt = 200, updatedAt = 200))
+        conversationDao.setFolder(inFolder, folderId)
+
+        conversationDao.observeByFolder(folderId).test {
+            val conversations = awaitItem()
+            assertEquals(listOf(inFolder), conversations.map { it.id })
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `deleting a folder unfiles its conversations instead of deleting them`() = runTest {
+        val folderId = folderDao.insert(FolderEntity(name = "お気に入り", createdAt = 0))
+        val id = conversationDao.insert(ConversationEntity(title = "t", createdAt = 0, updatedAt = 0))
+        conversationDao.setFolder(id, folderId)
+
+        folderDao.delete(folderId)
+
+        val remaining = conversationDao.getRecent(limit = 10)
+        assertEquals(1, remaining.size)
+        assertEquals(null, remaining[0].folderId)
     }
 }

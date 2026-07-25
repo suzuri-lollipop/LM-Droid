@@ -64,6 +64,7 @@ class AppContainer(context: Context) {
     val conversationRepository = ConversationRepository(
         conversationDao = database.conversationDao(),
         messageDao = database.messageDao(),
+        folderDao = database.folderDao(),
         settingsRepository = settingsRepository,
         openAiApiClient = openAiApiClient,
     )
