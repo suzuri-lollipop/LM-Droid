@@ -1,14 +1,77 @@
 package com.suzuri.lmdroid.data.network
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonPrimitive
 
 @Serializable
 data class ChatMessageDto(
     val role: String,
-    val content: String,
+    val content: MessageContent,
 )
+
+/** Convenience for the common case of a plain-text message (no image attachments). */
+fun chatMessage(role: String, text: String): ChatMessageDto = ChatMessageDto(role = role, content = MessageContent.Text(text))
+
+/**
+ * A chat message's "content" is either a plain string (the common, text-only case) or — when the
+ * message carries image attachments — a JSON array of typed parts, matching the OpenAI Chat
+ * Completions vision request shape. [MessageContentSerializer] encodes this as a raw JSON string
+ * or array, not a wrapped/tagged object, so a text-only message's wire format is unchanged from
+ * before this type existed.
+ */
+@Serializable(with = MessageContentSerializer::class)
+sealed class MessageContent {
+    data class Text(val text: String) : MessageContent()
+    data class Parts(val parts: List<ContentPart>) : MessageContent()
+}
+
+/** One part of a multimodal message's content array — see [MessageContent.Parts]. */
+@Serializable
+sealed class ContentPart {
+    @Serializable
+    @SerialName("text")
+    data class TextPart(val text: String) : ContentPart()
+
+    @Serializable
+    @SerialName("image_url")
+    data class ImagePart(@SerialName("image_url") val imageUrl: ImageUrl) : ContentPart()
+}
+
+@Serializable
+data class ImageUrl(val url: String)
+
+object MessageContentSerializer : KSerializer<MessageContent> {
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("MessageContent")
+
+    override fun serialize(encoder: Encoder, value: MessageContent) {
+        val jsonEncoder = encoder as? JsonEncoder ?: error("MessageContent can only be encoded to JSON")
+        val element: JsonElement = when (value) {
+            is MessageContent.Text -> JsonPrimitive(value.text)
+            is MessageContent.Parts ->
+                jsonEncoder.json.encodeToJsonElement(ListSerializer(ContentPart.serializer()), value.parts)
+        }
+        jsonEncoder.encodeJsonElement(element)
+    }
+
+    override fun deserialize(decoder: Decoder): MessageContent {
+        // Only ever used for outgoing requests in this app — responses are parsed separately via
+        // ChatCompletionChunk/Delta, so this path is never actually exercised at runtime.
+        val jsonDecoder = decoder as? JsonDecoder ?: error("MessageContent can only be decoded from JSON")
+        val element = jsonDecoder.decodeJsonElement()
+        val text = (element as? JsonPrimitive)?.takeIf { it.isString }?.content ?: element.toString()
+        return MessageContent.Text(text)
+    }
+}
 
 @Serializable
 data class ChatCompletionRequest(

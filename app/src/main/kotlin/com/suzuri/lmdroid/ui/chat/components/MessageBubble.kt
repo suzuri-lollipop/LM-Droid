@@ -10,6 +10,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -145,6 +146,16 @@ private fun UserBubble(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.End,
     ) {
+        if (message.attachmentPaths.isNotEmpty()) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(bottom = 6.dp),
+            ) {
+                message.attachmentPaths.forEach { path ->
+                    AttachmentThumbnail(filePath = path, size = 96.dp)
+                }
+            }
+        }
         if (isEditing) {
             OutlinedTextField(
                 value = editedText,

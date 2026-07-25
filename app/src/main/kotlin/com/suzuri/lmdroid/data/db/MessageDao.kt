@@ -3,6 +3,7 @@ package com.suzuri.lmdroid.data.db
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -21,6 +22,16 @@ interface MessageDao {
 
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC, id ASC")
     suspend fun getMessages(conversationId: Long): List<MessageEntity>
+
+    /** Same as [observeMessages], joined with each message's image attachments (if any) — used to render them. */
+    @Transaction
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC, id ASC")
+    fun observeMessagesWithAttachments(conversationId: Long): Flow<List<MessageWithAttachments>>
+
+    /** Same as [getMessages], joined with each message's image attachments (if any) — used to build the API request history. */
+    @Transaction
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC, id ASC")
+    suspend fun getMessagesWithAttachments(conversationId: Long): List<MessageWithAttachments>
 
     @Query("SELECT COUNT(*) FROM messages WHERE conversationId = :conversationId")
     suspend fun countMessages(conversationId: Long): Int

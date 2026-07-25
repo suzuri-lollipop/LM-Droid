@@ -11,8 +11,9 @@ import androidx.room.TypeConverters
         FolderEntity::class,
         ApiProfileEntity::class,
         ApiModelEntity::class,
+        MessageAttachmentEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -22,6 +23,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun folderDao(): FolderDao
     abstract fun apiProfileDao(): ApiProfileDao
     abstract fun apiModelDao(): ApiModelDao
+    abstract fun messageAttachmentDao(): MessageAttachmentDao
 
     companion object {
         const val DATABASE_NAME = "lmdroid.db"

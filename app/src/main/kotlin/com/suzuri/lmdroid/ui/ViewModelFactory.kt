@@ -13,7 +13,12 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T = when {
         modelClass.isAssignableFrom(ChatViewModel::class.java) ->
-            ChatViewModel(container.conversationRepository, container.settingsRepository, container.apiProfileRepository) as T
+            ChatViewModel(
+                container.conversationRepository,
+                container.settingsRepository,
+                container.apiProfileRepository,
+                container.attachmentFileStore,
+            ) as T
 
         modelClass.isAssignableFrom(SettingsViewModel::class.java) ->
             SettingsViewModel(container.apiProfileRepository, container.openAiApiClient) as T

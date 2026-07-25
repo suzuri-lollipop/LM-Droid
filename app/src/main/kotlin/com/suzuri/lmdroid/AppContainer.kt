@@ -3,6 +3,7 @@ package com.suzuri.lmdroid
 import android.content.Context
 import android.util.Log
 import androidx.room.Room
+import com.suzuri.lmdroid.data.attachment.AttachmentFileStore
 import com.suzuri.lmdroid.data.db.AppDatabase
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
@@ -69,11 +70,15 @@ class AppContainer(context: Context) {
         openAiApiClient,
     )
 
+    val attachmentFileStore = AttachmentFileStore(appContext)
+
     val conversationRepository = ConversationRepository(
         conversationDao = database.conversationDao(),
         messageDao = database.messageDao(),
+        messageAttachmentDao = database.messageAttachmentDao(),
         folderDao = database.folderDao(),
         settingsRepository = settingsRepository,
         openAiApiClient = openAiApiClient,
+        attachmentFileStore = attachmentFileStore,
     )
 }

@@ -1,17 +1,26 @@
 package com.suzuri.lmdroid.data.repository
 
 import android.util.Log
+import com.suzuri.lmdroid.data.attachment.AttachmentFileStore
+import com.suzuri.lmdroid.data.attachment.SavedAttachment
 import com.suzuri.lmdroid.data.db.ConversationDao
 import com.suzuri.lmdroid.data.db.ConversationEntity
 import com.suzuri.lmdroid.data.db.FolderDao
 import com.suzuri.lmdroid.data.db.FolderEntity
+import com.suzuri.lmdroid.data.db.MessageAttachmentDao
+import com.suzuri.lmdroid.data.db.MessageAttachmentEntity
 import com.suzuri.lmdroid.data.db.MessageDao
 import com.suzuri.lmdroid.data.db.MessageEntity
 import com.suzuri.lmdroid.data.db.MessageRole
+import com.suzuri.lmdroid.data.db.MessageWithAttachments
 import com.suzuri.lmdroid.data.network.ChatMessageDto
+import com.suzuri.lmdroid.data.network.ContentPart
+import com.suzuri.lmdroid.data.network.ImageUrl
+import com.suzuri.lmdroid.data.network.MessageContent
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.network.OpenAiException
 import com.suzuri.lmdroid.data.network.StreamEvent
+import com.suzuri.lmdroid.data.network.chatMessage
 import com.suzuri.lmdroid.data.settings.AppSettings
 import com.suzuri.lmdroid.data.settings.SettingsRepository
 import kotlinx.coroutines.CancellationException
@@ -36,9 +45,11 @@ import kotlinx.coroutines.withContext
 class ConversationRepository(
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
+    private val messageAttachmentDao: MessageAttachmentDao,
     private val folderDao: FolderDao,
     private val settingsRepository: SettingsRepository,
     private val openAiApiClient: OpenAiApiClient,
+    private val attachmentFileStore: AttachmentFileStore,
 ) {
     // For best-effort background work (auto-titling) that shouldn't make the caller wait for the
     // main reply, and should still finish even if the caller's own scope gets cancelled/torn down.
@@ -71,8 +82,18 @@ class ConversationRepository(
         return conversationDao.insert(ConversationEntity(title = DEFAULT_TITLE, createdAt = now, updatedAt = now))
     }
 
+    /** Also deletes any attached images' files on disk — otherwise they'd become permanently orphaned. */
     suspend fun deleteConversation(conversationId: Long) {
+        val messageIds = messageDao.getMessages(conversationId).map { it.id }
+        val filePaths = if (messageIds.isNotEmpty()) {
+            messageAttachmentDao.getForMessages(messageIds).map { it.filePath }
+        } else {
+            emptyList()
+        }
         conversationDao.delete(conversationId)
+        if (filePaths.isNotEmpty()) {
+            attachmentFileStore.deleteAll(filePaths)
+        }
     }
 
     fun observeConversations(): Flow<List<ConversationEntity>> = conversationDao.observeAll()
@@ -80,8 +101,8 @@ class ConversationRepository(
     fun observeConversation(conversationId: Long): Flow<ConversationEntity?> =
         conversationDao.observeConversation(conversationId)
 
-    fun observeMessages(conversationId: Long): Flow<List<MessageEntity>> =
-        messageDao.observeMessages(conversationId)
+    fun observeMessages(conversationId: Long): Flow<List<MessageWithAttachments>> =
+        messageDao.observeMessagesWithAttachments(conversationId)
 
     fun observeFolders(): Flow<List<FolderEntity>> = folderDao.observeAll()
 
@@ -128,7 +149,11 @@ class ConversationRepository(
             .getOrNull()
     }
 
-    suspend fun sendUserMessage(conversationId: Long, userText: String): SendResult {
+    suspend fun sendUserMessage(
+        conversationId: Long,
+        userText: String,
+        attachments: List<SavedAttachment> = emptyList(),
+    ): SendResult {
         val settings = settingsRepository.currentChatSettings()
         val apiKey = settings.apiKey
         if (apiKey.isNullOrBlank()) {
@@ -138,9 +163,21 @@ class ConversationRepository(
         val isFirstMessage = messageDao.getMessages(conversationId).isEmpty()
 
         val sentAt = System.currentTimeMillis()
-        messageDao.insert(
+        val messageId = messageDao.insert(
             MessageEntity(conversationId = conversationId, role = MessageRole.USER, content = userText, createdAt = sentAt),
         )
+        if (attachments.isNotEmpty()) {
+            messageAttachmentDao.insertAll(
+                attachments.map { attachment ->
+                    MessageAttachmentEntity(
+                        messageId = messageId,
+                        filePath = attachment.filePath,
+                        mimeType = attachment.mimeType,
+                        createdAt = sentAt,
+                    )
+                },
+            )
+        }
         conversationDao.touch(conversationId, sentAt)
         // No fallback title set here: the conversation keeps its DEFAULT_TITLE ("新しい会話")
         // until the LLM-generated title lands below. It's now shown live in the Chat top bar, so
@@ -209,26 +246,37 @@ class ConversationRepository(
             ),
         )
 
-        val allMessages = messageDao.getMessages(conversationId)
-            .filter { it.content.isNotBlank() && !it.isError }
+        val allMessages = messageDao.getMessagesWithAttachments(conversationId)
+            .filter { !it.message.isError && (it.message.content.isNotBlank() || it.attachments.isNotEmpty()) }
 
         val history = mutableListOf<ChatMessageDto>()
         if (allMessages.isNotEmpty()) {
-            var currentRole = allMessages[0].role
-            val currentContent = StringBuilder(allMessages[0].content)
+            var currentRole = allMessages[0].message.role
+            val currentContent = StringBuilder(allMessages[0].message.content)
+            val currentAttachments = allMessages[0].attachments.toMutableList()
+
+            suspend fun flushSegment() {
+                history.add(buildChatMessageDto(currentRole, currentContent.toString(), currentAttachments))
+            }
 
             for (i in 1 until allMessages.size) {
-                val msg = allMessages[i]
-                if (msg.role == currentRole) {
-                    currentContent.append("\n\n").append(msg.content)
+                val entry = allMessages[i]
+                if (entry.message.role == currentRole) {
+                    if (currentContent.isNotEmpty() && entry.message.content.isNotBlank()) {
+                        currentContent.append("\n\n")
+                    }
+                    currentContent.append(entry.message.content)
+                    currentAttachments += entry.attachments
                 } else {
-                    history.add(ChatMessageDto(role = currentRole.toApiRole(), content = currentContent.toString()))
-                    currentRole = msg.role
+                    flushSegment()
+                    currentRole = entry.message.role
                     currentContent.setLength(0)
-                    currentContent.append(msg.content)
+                    currentContent.append(entry.message.content)
+                    currentAttachments.clear()
+                    currentAttachments += entry.attachments
                 }
             }
-            history.add(ChatMessageDto(role = currentRole.toApiRole(), content = currentContent.toString()))
+            flushSegment()
         }
 
         val accumulated = StringBuilder()
@@ -301,6 +349,26 @@ class ConversationRepository(
         conversationDao.touch(conversationId, System.currentTimeMillis())
 
         return SendResult.Success
+    }
+
+    /** A segment with no attachments keeps the plain-string wire format; one with any becomes a vision content array. */
+    private suspend fun buildChatMessageDto(
+        role: MessageRole,
+        text: String,
+        attachments: List<MessageAttachmentEntity>,
+    ): ChatMessageDto {
+        if (attachments.isEmpty()) {
+            return chatMessage(role.toApiRole(), text)
+        }
+        val parts = mutableListOf<ContentPart>()
+        if (text.isNotBlank()) {
+            parts += ContentPart.TextPart(text)
+        }
+        attachments.forEach { attachment ->
+            val dataUri = attachmentFileStore.readAsDataUri(SavedAttachment(attachment.filePath, attachment.mimeType))
+            parts += ContentPart.ImagePart(ImageUrl(dataUri))
+        }
+        return ChatMessageDto(role = role.toApiRole(), content = MessageContent.Parts(parts))
     }
 
     /**

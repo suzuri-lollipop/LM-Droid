@@ -1,5 +1,7 @@
 package com.suzuri.lmdroid.ui.chat
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
@@ -52,14 +54,15 @@ fun ChatScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val comingSoonMessage = stringResource(R.string.chat_feature_coming_soon)
-    // File attachment and voice input aren't wired up yet — surfaced as "coming soon" rather than
-    // silently doing nothing, so tapping them doesn't look broken.
-    val onAttachFile: () -> Unit = {
-        coroutineScope.launch { snackbarHostState.showSnackbar(comingSoonMessage) }
-    }
+    // Voice input isn't wired up yet — surfaced as "coming soon" rather than silently doing
+    // nothing, so tapping it doesn't look broken.
     val onVoiceInput: () -> Unit = {
         coroutineScope.launch { snackbarHostState.showSnackbar(comingSoonMessage) }
     }
+    val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { viewModel.onFileAttached(it) }
+    }
+    val onAttachFile: () -> Unit = { imagePickerLauncher.launch("image/*") }
 
     LaunchedEffect(
         uiState.messages.size,
@@ -134,7 +137,9 @@ fun ChatScreen(
                                     availableModels = uiState.availableModels,
                                     selectedModel = uiState.selectedModel,
                                     onSelectModel = viewModel::onSelectModel,
+                                    pendingAttachments = uiState.pendingAttachments,
                                     onAttachFile = onAttachFile,
+                                    onRemoveAttachment = viewModel::onRemovePendingAttachment,
                                     onVoiceInput = onVoiceInput,
                                     modifier = inputBarModifier.fillMaxWidth(),
                                 )
@@ -206,7 +211,9 @@ fun ChatScreen(
                                     availableModels = uiState.availableModels,
                                     selectedModel = uiState.selectedModel,
                                     onSelectModel = viewModel::onSelectModel,
+                                    pendingAttachments = uiState.pendingAttachments,
                                     onAttachFile = onAttachFile,
+                                    onRemoveAttachment = viewModel::onRemovePendingAttachment,
                                     onVoiceInput = onVoiceInput,
                                     modifier = inputBarModifier,
                                 )

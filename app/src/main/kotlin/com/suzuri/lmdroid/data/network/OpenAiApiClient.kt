@@ -210,8 +210,8 @@ class OpenAiApiClient(
         baseUrl: String = DEFAULT_BASE_URL,
     ): Result<String> = withContext(Dispatchers.IO) {
         val messages = listOf(
-            ChatMessageDto(role = "system", content = TITLE_SYSTEM_PROMPT),
-            ChatMessageDto(role = "user", content = userMessage.take(2000)),
+            chatMessage(role = "system", text = TITLE_SYSTEM_PROMPT),
+            chatMessage(role = "user", text = userMessage.take(2000)),
         )
         val requestJson = json.encodeToString(
             ChatCompletionRequest.serializer(),
@@ -290,8 +290,8 @@ class OpenAiApiClient(
     ): Result<List<String>> = withContext(Dispatchers.IO) {
         val topicsList = pastTopics.joinToString("\n") { "- $it" }
         val messages = listOf(
-            ChatMessageDto(role = "system", content = SUGGESTIONS_SYSTEM_PROMPT),
-            ChatMessageDto(role = "user", content = topicsList.take(4000)),
+            chatMessage(role = "system", text = SUGGESTIONS_SYSTEM_PROMPT),
+            chatMessage(role = "user", text = topicsList.take(4000)),
         )
         val requestJson = json.encodeToString(
             ChatCompletionRequest.serializer(),

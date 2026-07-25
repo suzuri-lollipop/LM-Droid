@@ -55,13 +55,47 @@ class OpenAiApiClientTest {
                 .setBody("data: [DONE]\n\n"),
         )
 
-        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl).test {
             awaitItem() // Done
             awaitComplete()
         }
 
         val recordedRequest = server.takeRequest()
         assertTrue(recordedRequest.body.readUtf8().contains("\"stream\":true"))
+    }
+
+    @Test
+    fun `streamChatCompletion serializes a multimodal message as a content parts array`() = runTest {
+        // Regression test for MessageContentSerializer: a text-only message's "content" must stay
+        // a plain JSON string (unchanged wire format), but a message with an image attachment
+        // must switch to the OpenAI vision request shape — an array of typed parts, each tagged
+        // with a bare "type" discriminator ("text"/"image_url"), not a wrapped/qualified one.
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+
+        val message = ChatMessageDto(
+            role = "user",
+            content = MessageContent.Parts(
+                listOf(
+                    ContentPart.TextPart("what is this?"),
+                    ContentPart.ImagePart(ImageUrl("data:image/jpeg;base64,AAAA")),
+                ),
+            ),
+        )
+
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(message), baseUrl).test {
+            awaitItem() // Done
+            awaitComplete()
+        }
+
+        val requestBody = server.takeRequest().body.readUtf8()
+        assertTrue(requestBody.contains("\"type\":\"text\""))
+        assertTrue(requestBody.contains("\"type\":\"image_url\""))
+        assertTrue(requestBody.contains("what is this?"))
+        assertTrue(requestBody.contains("data:image/jpeg;base64,AAAA"))
     }
 
     @Test
@@ -76,7 +110,7 @@ class OpenAiApiClientTest {
                 ),
         )
 
-        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl).test {
             assertEquals(StreamEvent.Delta("Hel"), awaitItem())
             assertEquals(StreamEvent.Delta("lo"), awaitItem())
             assertEquals(StreamEvent.Done, awaitItem())
@@ -100,7 +134,7 @@ class OpenAiApiClientTest {
                 ),
         )
 
-        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl).test {
             assertEquals(StreamEvent.ReasoningDelta("Hmm"), awaitItem())
             assertEquals(StreamEvent.Delta("Answer"), awaitItem())
             assertEquals(StreamEvent.Done, awaitItem())
@@ -120,7 +154,7 @@ class OpenAiApiClientTest {
                 ),
         )
 
-        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl).test {
             assertEquals(StreamEvent.Delta("ok"), awaitItem())
             assertEquals(StreamEvent.Done, awaitItem())
             awaitComplete()
@@ -142,7 +176,7 @@ class OpenAiApiClientTest {
                 ),
         )
 
-        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl).test {
             assertEquals(StreamEvent.Delta("Hi"), awaitItem())
             assertEquals(StreamEvent.Done, awaitItem())
             awaitComplete()
@@ -155,7 +189,7 @@ class OpenAiApiClientTest {
             MockResponse().setResponseCode(401).setBody("{\"error\":{\"message\":\"invalid\"}}"),
         )
 
-        client.streamChatCompletion("bad-key", "gpt-4o-mini", listOf(ChatMessageDto("user", "hi")), baseUrl).test {
+        client.streamChatCompletion("bad-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl).test {
             val error = awaitError()
             assertTrue(error is OpenAiException.InvalidApiKey)
         }
@@ -166,7 +200,7 @@ class OpenAiApiClientTest {
         client.streamChatCompletion(
             apiKey = "test-key",
             model = "gpt-4o-mini",
-            messages = listOf(ChatMessageDto("user", "hi")),
+            messages = listOf(chatMessage("user", "hi")),
             baseUrl = "not a url",
         ).test {
             val error = awaitError()
@@ -223,7 +257,7 @@ class OpenAiApiClientTest {
             client.streamChatCompletion(
                 apiKey = "あいうえお",
                 model = "gpt-4o-mini",
-                messages = listOf(ChatMessageDto("user", "hi")),
+                messages = listOf(chatMessage("user", "hi")),
                 baseUrl = baseUrl,
             ).test {
                 val error = awaitError()

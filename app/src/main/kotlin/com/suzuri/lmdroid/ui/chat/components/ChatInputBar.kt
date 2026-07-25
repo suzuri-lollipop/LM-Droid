@@ -1,12 +1,15 @@
 package com.suzuri.lmdroid.ui.chat.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,11 +35,13 @@ import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.db.ModelOptionRow
 import com.suzuri.lmdroid.data.settings.SelectedModel
+import com.suzuri.lmdroid.ui.chat.PendingAttachmentUiModel
 
 /**
  * The composer: a rounded box with the file-attach button, message text field, voice-input
- * button and send button on top, then (when there's a model to switch between) a divider and
- * the model switcher below it.
+ * button and send button on top; below that, its own row of staged image previews (when any are
+ * attached); and below that (when there's a model to switch between) a divider and the model
+ * switcher — each concern gets its own tier rather than sharing one.
  */
 @Composable
 fun ChatInputBar(
@@ -48,7 +53,9 @@ fun ChatInputBar(
     availableModels: List<ModelOptionRow>,
     selectedModel: SelectedModel?,
     onSelectModel: (ModelOptionRow) -> Unit,
+    pendingAttachments: List<PendingAttachmentUiModel>,
     onAttachFile: () -> Unit,
+    onRemoveAttachment: (String) -> Unit,
     onVoiceInput: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -113,7 +120,7 @@ fun ChatInputBar(
                         }
                     }
                 } else {
-                    val canSend = input.isNotBlank()
+                    val canSend = input.isNotBlank() || pendingAttachments.isNotEmpty()
                     IconButton(
                         onClick = onSend,
                         enabled = canSend,
@@ -136,6 +143,24 @@ fun ChatInputBar(
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
+                        )
+                    }
+                }
+            }
+
+            if (pendingAttachments.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    pendingAttachments.forEach { attachment ->
+                        AttachmentThumbnail(
+                            filePath = attachment.filePath,
+                            size = 56.dp,
+                            onRemove = { onRemoveAttachment(attachment.id) },
                         )
                     }
                 }

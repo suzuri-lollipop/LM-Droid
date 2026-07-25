@@ -10,6 +10,14 @@ data class MessageUiModel(
     val content: String,
     val isError: Boolean,
     val reasoningContent: String? = null,
+    val attachmentPaths: List<String> = emptyList(),
+)
+
+/** An image attached to the composer but not sent yet — [id] is a local key for removal, distinct from any DB row. */
+data class PendingAttachmentUiModel(
+    val id: String,
+    val filePath: String,
+    val mimeType: String,
 )
 
 /**
@@ -40,4 +48,6 @@ data class ChatUiState(
     // Every model offered by every *enabled* profile — the chat-screen model switcher's choices.
     val availableModels: List<ModelOptionRow> = emptyList(),
     val selectedModel: SelectedModel? = null,
+    // Images picked via the composer's attach button, staged until the message is actually sent.
+    val pendingAttachments: List<PendingAttachmentUiModel> = emptyList(),
 )

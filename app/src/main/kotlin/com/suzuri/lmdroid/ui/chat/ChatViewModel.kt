@@ -1,8 +1,12 @@
 package com.suzuri.lmdroid.ui.chat
 
+import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.suzuri.lmdroid.data.db.MessageEntity
+import com.suzuri.lmdroid.data.attachment.AttachmentFileStore
+import com.suzuri.lmdroid.data.attachment.SavedAttachment
+import com.suzuri.lmdroid.data.db.MessageWithAttachments
 import com.suzuri.lmdroid.data.db.ModelOptionRow
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
@@ -18,12 +22,14 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(
     private val conversationRepository: ConversationRepository,
     private val settingsRepository: SettingsRepository,
     private val apiProfileRepository: ApiProfileRepository,
+    private val attachmentFileStore: AttachmentFileStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -110,13 +116,47 @@ class ChatViewModel(
 
     fun onSend() {
         val text = _uiState.value.input.trim()
-        if (text.isEmpty() || _uiState.value.isStreaming) return
+        val attachments = _uiState.value.pendingAttachments
+        if ((text.isEmpty() && attachments.isEmpty()) || _uiState.value.isStreaming) return
 
-        _uiState.update { it.copy(input = "", errorMessage = null) }
+        _uiState.update { it.copy(input = "", pendingAttachments = emptyList(), errorMessage = null) }
         launchGeneration {
             val id = ensureConversationId()
-            conversationRepository.sendUserMessage(id, text)
+            conversationRepository.sendUserMessage(
+                id,
+                text,
+                attachments.map { SavedAttachment(filePath = it.filePath, mimeType = it.mimeType) },
+            )
         }
+    }
+
+    /** Copies the picked image into app storage (see AttachmentFileStore) and stages it above the input bar. */
+    fun onFileAttached(uri: Uri) {
+        viewModelScope.launch {
+            val saved = runCatching { attachmentFileStore.save(uri) }
+                .onFailure { e -> Log.w(TAG, "Failed to save attachment $uri", e) }
+                .getOrNull()
+            if (saved == null) {
+                _uiState.update { it.copy(errorMessage = "画像の読み込みに失敗しました。") }
+                return@launch
+            }
+            _uiState.update { state ->
+                state.copy(
+                    pendingAttachments = state.pendingAttachments + PendingAttachmentUiModel(
+                        id = UUID.randomUUID().toString(),
+                        filePath = saved.filePath,
+                        mimeType = saved.mimeType,
+                    ),
+                )
+            }
+        }
+    }
+
+    /** Removes a not-yet-sent attachment and cleans up its now-unused file. */
+    fun onRemovePendingAttachment(id: String) {
+        val toRemove = _uiState.value.pendingAttachments.find { it.id == id } ?: return
+        _uiState.update { it.copy(pendingAttachments = it.pendingAttachments.filterNot { a -> a.id == id }) }
+        viewModelScope.launch { attachmentFileStore.delete(toRemove.filePath) }
     }
 
     /**
@@ -217,8 +257,18 @@ class ChatViewModel(
     fun startNewConversation() {
         sendJob?.cancel()
         conversationId.value = null
+        val orphanedAttachments = _uiState.value.pendingAttachments
         _uiState.update {
-            it.copy(messages = emptyList(), conversationTitle = "", input = "", errorMessage = null)
+            it.copy(
+                messages = emptyList(),
+                conversationTitle = "",
+                input = "",
+                errorMessage = null,
+                pendingAttachments = emptyList(),
+            )
+        }
+        if (orphanedAttachments.isNotEmpty()) {
+            viewModelScope.launch { attachmentFileStore.deleteAll(orphanedAttachments.map { it.filePath }) }
         }
     }
 
@@ -226,11 +276,16 @@ class ChatViewModel(
         _uiState.update { it.copy(errorMessage = null) }
     }
 
-    private fun MessageEntity.toUiModel() = MessageUiModel(
-        id = id,
-        role = role,
-        content = content,
-        isError = isError,
-        reasoningContent = reasoningContent,
+    private fun MessageWithAttachments.toUiModel() = MessageUiModel(
+        id = message.id,
+        role = message.role,
+        content = message.content,
+        isError = message.isError,
+        reasoningContent = message.reasoningContent,
+        attachmentPaths = attachments.map { it.filePath },
     )
+
+    private companion object {
+        const val TAG = "ChatViewModel"
+    }
 }
