@@ -86,14 +86,20 @@ class ChatViewModel(
                 }
         }
 
-        // Best-effort, once per app session: personalizes the empty-conversation suggestion
-        // chips from past conversation topics. Leaves suggestedPrompts at its emptyList()
-        // default (the UI falls back to static suggestions) on failure or when there's no
-        // history yet to base them on.
+        // Best-effort, once per app session: personalizes the empty-conversation suggestion rows
+        // from past conversation topics. Starts at Loading (shown as a skeleton animation) and
+        // resolves to Generated on success, or Fallback (static starter prompts) on failure or
+        // when there's no history yet to base them on.
         viewModelScope.launch {
             val suggestions = conversationRepository.generateSuggestedPrompts()
-            if (!suggestions.isNullOrEmpty()) {
-                _uiState.update { state -> state.copy(suggestedPrompts = suggestions) }
+            _uiState.update { state ->
+                state.copy(
+                    suggestionsState = if (!suggestions.isNullOrEmpty()) {
+                        SuggestionsUiState.Generated(suggestions)
+                    } else {
+                        SuggestionsUiState.Fallback
+                    },
+                )
             }
         }
     }

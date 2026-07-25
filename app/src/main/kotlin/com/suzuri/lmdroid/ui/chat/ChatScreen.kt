@@ -141,7 +141,7 @@ fun ChatScreen(
                                 Spacer(modifier = Modifier.height(20.dp))
                                 EmptyConversationSuggestions(
                                     onSuggestionClick = viewModel::onInputChange,
-                                    suggestions = uiState.suggestedPrompts,
+                                    state = uiState.suggestionsState,
                                 )
                             }
                         }
