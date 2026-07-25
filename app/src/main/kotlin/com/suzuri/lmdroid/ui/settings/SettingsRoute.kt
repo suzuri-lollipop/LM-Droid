@@ -8,12 +8,12 @@ package com.suzuri.lmdroid.ui.settings
  */
 enum class SettingsRoute {
     Root,
-    LlmSettings,
+    ApiSettings,
     OpenAiCompatible,
 }
 
 fun SettingsRoute.parent(): SettingsRoute? = when (this) {
     SettingsRoute.Root -> null
-    SettingsRoute.LlmSettings -> SettingsRoute.Root
-    SettingsRoute.OpenAiCompatible -> SettingsRoute.LlmSettings
+    SettingsRoute.ApiSettings -> SettingsRoute.Root
+    SettingsRoute.OpenAiCompatible -> SettingsRoute.ApiSettings
 }

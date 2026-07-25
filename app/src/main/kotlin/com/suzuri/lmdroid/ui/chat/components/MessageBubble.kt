@@ -2,6 +2,12 @@ package com.suzuri.lmdroid.ui.chat.components
 
 import android.widget.Toast
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -14,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -44,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.model.markdownPadding
+import com.mikepenz.markdown.model.rememberMarkdownState
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.db.MessageRole
 import com.suzuri.lmdroid.ui.chat.MessageUiModel
@@ -78,22 +86,27 @@ fun MessageBubble(
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
                 )
-                message.content.isBlank() -> Text(
-                    text = "…",
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
+                message.content.isBlank() -> TypingIndicator(
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
                 )
                 // Renders headings/lists/links/**bold** etc. and gives fenced code blocks a
                 // monospace font + distinct background with horizontal scroll for long lines,
                 // instead of dumping raw markdown syntax as flat text.
-                markdownEnabled -> Markdown(
-                    content = message.content,
-                    colors = markdownColor(text = MaterialTheme.colorScheme.onSurface),
-                    padding = chatMarkdownPadding(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 2.dp, vertical = 4.dp),
-                )
+                markdownEnabled -> {
+                    // retainState = true keeps the last successfully-parsed markdown on screen
+                    // while each streaming update reparses in the background — without it, every
+                    // ~150ms content flush blanks the whole message to the library's default
+                    // loading state before the new parse lands, which reads as constant flicker.
+                    val markdownState = rememberMarkdownState(content = message.content, retainState = true)
+                    Markdown(
+                        markdownState = markdownState,
+                        colors = markdownColor(text = MaterialTheme.colorScheme.onSurface),
+                        padding = chatMarkdownPadding(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 2.dp, vertical = 4.dp),
+                    )
+                }
                 else -> Text(
                     text = message.content,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -178,18 +191,21 @@ private fun UserBubble(
                 contentAlignment = Alignment.CenterStart,
             ) {
                 if (markdownEnabled) {
+                    // retainState = true avoids flickering to a blank loading state on every
+                    // edit-and-regenerate re-render (see the assistant-side comment above).
+                    val markdownState = rememberMarkdownState(content = message.content, retainState = true)
                     // No modifier size overrides here: Markdown() defaults its own modifier to
                     // fillMaxSize(), which would force this bubble to the full 320.dp cap for
                     // every message. Passing the bare Modifier keeps it sized to content, like
                     // Text did.
                     Markdown(
-                        content = message.content,
+                        markdownState = markdownState,
                         colors = markdownColor(
                             text = MaterialTheme.colorScheme.onPrimary,
                             codeBackground = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
                             inlineCodeBackground = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
                         ),
-                        padding = chatMarkdownPadding(),
+                        padding = userMarkdownPadding(),
                         modifier = Modifier,
                     )
                 } else {
@@ -221,6 +237,44 @@ private fun chatMarkdownPadding() = markdownPadding(
     listItemBottom = 6.dp,
     codeBlock = PaddingValues(12.dp),
 )
+
+/**
+ * The renderer inserts a leading `block`-height spacer before every element — including the
+ * first, and even when it's the only one. Inside the user bubble's own symmetric padding, that
+ * extra gap only shows up above the text (never below), so a typical one-line prompt sits
+ * visibly off-center. Zeroing `block` here removes that lopsided gap; a snug bubble doesn't need
+ * chatMarkdownPadding()'s breathing room for long multi-paragraph answers anyway.
+ */
+@Composable
+private fun userMarkdownPadding() = markdownPadding(block = 0.dp)
+
+/** Three dots pulsing in sequence, shown in place of the assistant bubble before its first token arrives. */
+@Composable
+private fun TypingIndicator(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "typing_indicator")
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        repeat(3) { index ->
+            val alpha by transition.animateFloat(
+                initialValue = 0.3f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 600, easing = LinearEasing, delayMillis = index * 150),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "dot$index",
+            )
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 2.dp)
+                    .size(6.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+                        shape = CircleShape,
+                    ),
+            )
+        }
+    }
+}
 
 @Composable
 private fun CopyIconButton(text: String) {

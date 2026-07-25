@@ -33,7 +33,7 @@ import com.suzuri.lmdroid.ui.chat.ChatViewModel
 import com.suzuri.lmdroid.ui.history.HistoryScreen
 import com.suzuri.lmdroid.ui.history.HistoryViewModel
 import com.suzuri.lmdroid.ui.navigation.Screen
-import com.suzuri.lmdroid.ui.settings.LlmSettingsScreen
+import com.suzuri.lmdroid.ui.settings.ApiSettingsScreen
 import com.suzuri.lmdroid.ui.settings.OpenAiCompatibleScreen
 import com.suzuri.lmdroid.ui.settings.SettingsRoute
 import com.suzuri.lmdroid.ui.settings.SettingsRootScreen
@@ -63,7 +63,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     var currentScreen by rememberSaveable { mutableStateOf(Screen.Chat) }
-    // Which level of the Settings drill-down is showing (Root → LlmSettings → OpenAiCompatible).
+    // Which level of the Settings drill-down is showing (Root → ApiSettings → OpenAiCompatible).
     // Tracked separately from currentScreen so leaving and re-entering History/Chat doesn't
     // reset how deep the user was in Settings.
     var settingsRoute by rememberSaveable { mutableStateOf(SettingsRoute.Root) }
@@ -94,7 +94,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                             Screen.Chat -> stringResource(R.string.chat_title)
                             Screen.Settings -> when (settingsRoute) {
                                 SettingsRoute.Root -> stringResource(R.string.settings_title)
-                                SettingsRoute.LlmSettings -> stringResource(R.string.settings_llm_category_title)
+                                SettingsRoute.ApiSettings -> stringResource(R.string.settings_api_category_title)
                                 SettingsRoute.OpenAiCompatible -> stringResource(R.string.settings_openai_compatible_title)
                             }
                             Screen.History -> stringResource(R.string.history_title)
@@ -183,12 +183,12 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                 when (settingsRoute) {
                     SettingsRoute.Root -> {
                         SettingsRootScreen(
-                            onNavigateToLlmSettings = { settingsRoute = SettingsRoute.LlmSettings },
+                            onNavigateToApiSettings = { settingsRoute = SettingsRoute.ApiSettings },
                             modifier = Modifier.padding(innerPadding),
                         )
                     }
-                    SettingsRoute.LlmSettings -> {
-                        LlmSettingsScreen(
+                    SettingsRoute.ApiSettings -> {
+                        ApiSettingsScreen(
                             onNavigateToOpenAiCompatible = { settingsRoute = SettingsRoute.OpenAiCompatible },
                             modifier = Modifier.padding(innerPadding),
                         )

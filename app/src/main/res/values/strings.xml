@@ -17,7 +17,7 @@
     <string name="chat_markdown_toggle_label">マークダウン表示</string>
 
     <string name="settings_title">設定</string>
-    <string name="settings_llm_category_title">LLM設定</string>
+    <string name="settings_api_category_title">API設定</string>
     <string name="settings_openai_compatible_title">OpenAI Compatible</string>
     <string name="settings_api_key_label">OpenAI APIキー</string>
     <string name="settings_api_key_placeholder">sk-...</string>

@@ -10,7 +10,7 @@ import com.suzuri.lmdroid.ui.settings.components.SettingsMenuRow
 
 /** Lists LLM providers; currently just the OpenAI-compatible one, with room for more later. */
 @Composable
-fun LlmSettingsScreen(onNavigateToOpenAiCompatible: () -> Unit, modifier: Modifier = Modifier) {
+fun ApiSettingsScreen(onNavigateToOpenAiCompatible: () -> Unit, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxSize()) {
         SettingsMenuRow(
             title = stringResource(R.string.settings_openai_compatible_title),
