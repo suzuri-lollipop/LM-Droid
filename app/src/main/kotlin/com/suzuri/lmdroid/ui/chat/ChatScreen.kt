@@ -28,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -37,7 +38,7 @@ import com.suzuri.lmdroid.ui.chat.components.ChatInputBar
 import com.suzuri.lmdroid.ui.chat.components.EmptyConversationGreeting
 import com.suzuri.lmdroid.ui.chat.components.EmptyConversationSuggestions
 import com.suzuri.lmdroid.ui.chat.components.MessageBubble
-import com.suzuri.lmdroid.ui.chat.components.ModelSelectorButton
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -49,6 +50,16 @@ fun ChatScreen(
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    val comingSoonMessage = stringResource(R.string.chat_feature_coming_soon)
+    // File attachment and voice input aren't wired up yet — surfaced as "coming soon" rather than
+    // silently doing nothing, so tapping them doesn't look broken.
+    val onAttachFile: () -> Unit = {
+        coroutineScope.launch { snackbarHostState.showSnackbar(comingSoonMessage) }
+    }
+    val onVoiceInput: () -> Unit = {
+        coroutineScope.launch { snackbarHostState.showSnackbar(comingSoonMessage) }
+    }
 
     LaunchedEffect(
         uiState.messages.size,
@@ -100,14 +111,6 @@ fun ChatScreen(
                         ) {
                             EmptyConversationGreeting()
                             Spacer(modifier = Modifier.height(20.dp))
-                            if (uiState.availableModels.isNotEmpty()) {
-                                ModelSelectorButton(
-                                    options = uiState.availableModels,
-                                    selected = uiState.selectedModel,
-                                    onSelect = viewModel::onSelectModel,
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                            }
                             if (uiState.apiKeyMissing) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(stringResource(R.string.chat_api_key_missing_message))
@@ -128,6 +131,11 @@ fun ChatScreen(
                                     onInputChange = viewModel::onInputChange,
                                     onSend = viewModel::onSend,
                                     onStop = viewModel::onStopGeneration,
+                                    availableModels = uiState.availableModels,
+                                    selectedModel = uiState.selectedModel,
+                                    onSelectModel = viewModel::onSelectModel,
+                                    onAttachFile = onAttachFile,
+                                    onVoiceInput = onVoiceInput,
                                     modifier = inputBarModifier.fillMaxWidth(),
                                 )
                                 Spacer(modifier = Modifier.height(20.dp))
@@ -152,21 +160,6 @@ fun ChatScreen(
                                         onEditMessage = viewModel::onEditMessage,
                                         onRegenerate = viewModel::onRegenerateResponse,
                                         markdownEnabled = uiState.markdownEnabled,
-                                    )
-                                }
-                            }
-
-                            if (uiState.availableModels.isNotEmpty()) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.End,
-                                ) {
-                                    ModelSelectorButton(
-                                        options = uiState.availableModels,
-                                        selected = uiState.selectedModel,
-                                        onSelect = viewModel::onSelectModel,
                                     )
                                 }
                             }
@@ -210,6 +203,11 @@ fun ChatScreen(
                                     onInputChange = viewModel::onInputChange,
                                     onSend = viewModel::onSend,
                                     onStop = viewModel::onStopGeneration,
+                                    availableModels = uiState.availableModels,
+                                    selectedModel = uiState.selectedModel,
+                                    onSelectModel = viewModel::onSelectModel,
+                                    onAttachFile = onAttachFile,
+                                    onVoiceInput = onVoiceInput,
                                     modifier = inputBarModifier,
                                 )
                             }
