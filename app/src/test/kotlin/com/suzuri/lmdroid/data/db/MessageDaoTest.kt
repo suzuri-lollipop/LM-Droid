@@ -123,6 +123,23 @@ class MessageDaoTest {
     }
 
     @Test
+    fun `countMessages reflects only the given conversation`() = runTest {
+        val conversationId = conversationDao.insert(ConversationEntity(title = "t", createdAt = 0, updatedAt = 0))
+        val otherConversationId = conversationDao.insert(ConversationEntity(title = "u", createdAt = 0, updatedAt = 0))
+
+        assertEquals(0, messageDao.countMessages(conversationId))
+
+        messageDao.insert(
+            MessageEntity(conversationId = conversationId, role = MessageRole.USER, content = "hi", createdAt = 100),
+        )
+        messageDao.insert(
+            MessageEntity(conversationId = otherConversationId, role = MessageRole.USER, content = "unrelated", createdAt = 100),
+        )
+
+        assertEquals(1, messageDao.countMessages(conversationId))
+    }
+
+    @Test
     fun `observeMessages emits a new list when a row is inserted`() = runTest {
         val conversationId = conversationDao.insert(ConversationEntity(title = "t", createdAt = 0, updatedAt = 0))
         messageDao.insert(

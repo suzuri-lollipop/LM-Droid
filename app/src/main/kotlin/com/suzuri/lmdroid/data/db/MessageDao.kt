@@ -22,6 +22,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC, id ASC")
     suspend fun getMessages(conversationId: Long): List<MessageEntity>
 
+    @Query("SELECT COUNT(*) FROM messages WHERE conversationId = :conversationId")
+    suspend fun countMessages(conversationId: Long): Int
+
     /**
      * Used when editing a past user message: discards everything that came after it so the
      * reply can be regenerated from that point.

@@ -28,6 +28,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.ui.chat.components.ChatInputBar
+import com.suzuri.lmdroid.ui.chat.components.EmptyConversationState
 import com.suzuri.lmdroid.ui.chat.components.MessageBubble
 
 @Composable
@@ -61,20 +62,27 @@ fun ChatScreen(
     }
 
     Column(modifier = modifier.fillMaxSize().imePadding()) {
-        LazyColumn(
-            state = listState,
-            reverseLayout = true,
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(uiState.messages.asReversed(), key = { it.id }) { message ->
-                MessageBubble(
-                    message = message,
-                    onEditMessage = viewModel::onEditMessage,
-                    onRegenerate = viewModel::onRegenerateResponse,
-                    markdownEnabled = uiState.markdownEnabled,
-                )
+        if (uiState.messages.isEmpty()) {
+            EmptyConversationState(
+                onSuggestionClick = viewModel::onInputChange,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            LazyColumn(
+                state = listState,
+                reverseLayout = true,
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(uiState.messages.asReversed(), key = { it.id }) { message ->
+                    MessageBubble(
+                        message = message,
+                        onEditMessage = viewModel::onEditMessage,
+                        onRegenerate = viewModel::onRegenerateResponse,
+                        markdownEnabled = uiState.markdownEnabled,
+                    )
+                }
             }
         }
 

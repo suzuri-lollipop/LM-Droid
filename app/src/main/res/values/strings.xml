@@ -15,6 +15,11 @@
     <string name="chat_edit_regenerate">この内容で再生成</string>
     <string name="chat_regenerate">再生成</string>
     <string name="chat_markdown_toggle_label">マークダウン表示</string>
+    <string name="chat_empty_greeting">今日は何をお手伝いしましょうか？</string>
+    <string name="chat_suggestion_brainstorm">アイデアをブレインストーミングして</string>
+    <string name="chat_suggestion_summarize">長い文章の要約を手伝って</string>
+    <string name="chat_suggestion_debug">コードのデバッグを手伝って</string>
+    <string name="chat_suggestion_explain">難しい概念をわかりやすく説明して</string>
 
     <string name="settings_title">設定</string>
     <string name="settings_api_category_title">API設定</string>

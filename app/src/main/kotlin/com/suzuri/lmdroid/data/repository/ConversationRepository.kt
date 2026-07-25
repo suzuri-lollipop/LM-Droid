@@ -45,8 +45,18 @@ class ConversationRepository(
         data class Error(val message: String) : SendResult()
     }
 
+    /**
+     * Called once when the app cold-starts (ChatViewModel's init), so it should land on a blank
+     * conversation — like Claude/ChatGPT/Gemini opening to a fresh chat rather than resuming
+     * whatever you were last talking about. Reuses the most recent conversation only if it's
+     * still empty (e.g. the app was closed again without sending anything), so repeatedly
+     * relaunching without chatting doesn't pile up empty "新しい会話" rows in the history.
+     */
     suspend fun getOrCreateDefaultConversation(): Long {
-        conversationDao.getMostRecent()?.let { return it.id }
+        val mostRecent = conversationDao.getMostRecent()
+        if (mostRecent != null && messageDao.countMessages(mostRecent.id) == 0) {
+            return mostRecent.id
+        }
         return createNewConversation()
     }
 
