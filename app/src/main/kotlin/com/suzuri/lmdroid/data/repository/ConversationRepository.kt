@@ -28,7 +28,7 @@ import kotlinx.coroutines.withContext
  * Orchestrates Room persistence, OpenAI streaming, and the current settings for chat
  * conversations. Supports multiple conversations (a lightweight "history") — [observeConversations]
  * lists them, [createNewConversation] starts a fresh one, and each is auto-titled by the model
- * itself from its first exchange. [editMessageAndRegenerate] supports ChatGPT/Claude-style
+ * itself from the user's first message (see [generateTitleInBackground]). [editMessageAndRegenerate] supports ChatGPT/Claude-style
  * "edit a past message and regenerate from there." Conversations can also be organized into
  * user-created folders (e.g. "お気に入り") — see [observeFolders], [createFolder], and
  * [setConversationFolder]; a conversation belongs to at most one folder.
@@ -145,8 +145,11 @@ class ConversationRepository(
         // No fallback title set here: the conversation keeps its DEFAULT_TITLE ("新しい会話")
         // until the LLM-generated title lands below. It's now shown live in the Chat top bar, so
         // briefly echoing the user's own message back at them as the "title" reads as a glitch.
+        if (isFirstMessage) {
+            generateTitleInBackground(conversationId, userText)
+        }
 
-        return generateAssistantReply(conversationId, apiKey, settings, isFirstMessage, userText)
+        return generateAssistantReply(conversationId, apiKey, settings)
     }
 
     /**
@@ -166,8 +169,12 @@ class ConversationRepository(
         conversationDao.touch(conversationId, System.currentTimeMillis())
 
         val isFirstMessage = messageDao.getMessages(conversationId).size == 1
+        if (isFirstMessage) {
+            // The edited text may describe a different topic than the original — re-title from it.
+            generateTitleInBackground(conversationId, newText)
+        }
 
-        return generateAssistantReply(conversationId, apiKey, settings, isFirstMessage, newText)
+        return generateAssistantReply(conversationId, apiKey, settings)
     }
 
     /**
@@ -185,19 +192,13 @@ class ConversationRepository(
         messageDao.deleteMessagesAfter(conversationId, assistantMessageId)
         messageDao.deleteMessage(assistantMessageId)
 
-        val remaining = messageDao.getMessages(conversationId)
-        val isFirstMessage = remaining.size == 1
-        val latestUserText = remaining.lastOrNull { it.role == MessageRole.USER }?.content.orEmpty()
-
-        return generateAssistantReply(conversationId, apiKey, settings, isFirstMessage, latestUserText)
+        return generateAssistantReply(conversationId, apiKey, settings)
     }
 
     private suspend fun generateAssistantReply(
         conversationId: Long,
         apiKey: String,
         settings: AppSettings,
-        isFirstMessage: Boolean,
-        latestUserText: String,
     ): SendResult {
         val placeholderId = messageDao.insert(
             MessageEntity(
@@ -299,32 +300,29 @@ class ConversationRepository(
         }
         conversationDao.touch(conversationId, System.currentTimeMillis())
 
-        if (isFirstMessage) {
-            // Fire-and-forget: the user shouldn't wait on this extra round-trip just to see their
-            // answer. On failure, the conversation just keeps its DEFAULT_TITLE. Uses the
-            // "system" model (Settings → システム) rather than whatever's active for chat — it
-            // falls back to the chat selection when no system-specific override is configured.
-            val assistantTextForTitle = finalContent.ifBlank { null }
-            backgroundScope.launch {
-                val systemSettings = settingsRepository.currentSystemSettings()
-                val systemApiKey = systemSettings.apiKey
-                if (systemApiKey.isNullOrBlank()) {
-                    Log.w(TAG, "Title generation skipped: no system model configured")
-                    return@launch
-                }
-                openAiApiClient.generateTitle(
-                    systemApiKey,
-                    systemSettings.model,
-                    latestUserText,
-                    assistantTextForTitle,
-                    systemSettings.baseUrl,
-                )
-                    .onSuccess { title -> conversationDao.updateTitle(conversationId, title.take(TITLE_MAX_LENGTH)) }
-                    .onFailure { e -> Log.w(TAG, "Title generation failed, keeping the fallback title", e) }
-            }
-        }
-
         return SendResult.Success
+    }
+
+    /**
+     * Fire-and-forget: titles the conversation from the user's own message, without waiting on
+     * the assistant's reply (see [OpenAiApiClient.generateTitle]) — it's launched right alongside
+     * [generateAssistantReply] rather than after it, so the title can land while the assistant is
+     * still streaming. On failure, the conversation just keeps its DEFAULT_TITLE. Uses the
+     * "system" model (Settings → システム) rather than whatever's active for chat — it falls back
+     * to the chat selection when no system-specific override is configured.
+     */
+    private fun generateTitleInBackground(conversationId: Long, userText: String) {
+        backgroundScope.launch {
+            val systemSettings = settingsRepository.currentSystemSettings()
+            val systemApiKey = systemSettings.apiKey
+            if (systemApiKey.isNullOrBlank()) {
+                Log.w(TAG, "Title generation skipped: no system model configured")
+                return@launch
+            }
+            openAiApiClient.generateTitle(systemApiKey, systemSettings.model, userText, systemSettings.baseUrl)
+                .onSuccess { title -> conversationDao.updateTitle(conversationId, title.take(TITLE_MAX_LENGTH)) }
+                .onFailure { e -> Log.w(TAG, "Title generation failed, keeping the fallback title", e) }
+        }
     }
 
     private fun MessageRole.toApiRole(): String = when (this) {

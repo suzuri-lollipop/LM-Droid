@@ -266,7 +266,6 @@ class OpenAiApiClientTest {
             apiKey = "test-key",
             model = "gpt-4o-mini",
             userMessage = "京都旅行のプランを考えて",
-            assistantMessage = "まず観光したいエリアを教えてください",
             baseUrl = baseUrl,
         )
 
@@ -277,35 +276,10 @@ class OpenAiApiClientTest {
         val requestBody = recordedRequest.body.readUtf8()
         assertTrue(requestBody.contains("\"stream\":false"))
         assertTrue(requestBody.contains("京都旅行"))
-        assertTrue(requestBody.contains("観光したいエリア"))
-        // Regression test: a request ending on a "role":"assistant" message was echoed back
-        // nearly verbatim by a local llama.cpp server instead of producing a title, because its
-        // chat template read that shape as "continue this assistant turn." The exchange must be
-        // folded into a single trailing user message instead.
-        assertTrue(!requestBody.contains("\"role\":\"assistant\""))
-    }
-
-    @Test
-    fun `generateTitle folds a null assistant message into just the user's text`() = runTest {
-        server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
-                "{\"choices\":[{\"message\":{\"content\":\"Quick Question\"}}]}",
-            ),
-        )
-
-        val result = client.generateTitle(
-            apiKey = "test-key",
-            model = "gpt-4o-mini",
-            userMessage = "hi",
-            assistantMessage = null,
-            baseUrl = baseUrl,
-        )
-
-        assertTrue(result.isSuccess)
-        val requestBody = server.takeRequest().body.readUtf8()
+        // Titling is based purely on the user's own message — there's never an assistant turn in
+        // the request, so no chat template can misread it as "continue this assistant turn."
         assertTrue(requestBody.contains("\"role\":\"user\""))
         assertTrue(!requestBody.contains("\"role\":\"assistant\""))
-        assertTrue(!requestBody.contains("Assistant:"))
     }
 
     @Test
@@ -316,7 +290,6 @@ class OpenAiApiClientTest {
             apiKey = "test-key",
             model = "gpt-4o-mini",
             userMessage = "hi",
-            assistantMessage = null,
             baseUrl = baseUrl,
         )
 

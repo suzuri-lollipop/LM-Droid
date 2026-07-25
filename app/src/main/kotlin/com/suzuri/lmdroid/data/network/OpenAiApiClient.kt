@@ -196,31 +196,22 @@ class OpenAiApiClient(
         }
 
     /**
-     * A short, non-streaming completion used purely to auto-title a conversation from its first
-     * exchange — best-effort, so callers should treat failure as "keep whatever title we already
-     * have" rather than surface it to the user.
+     * A short, non-streaming completion used purely to auto-title a conversation from the user's
+     * own first message — best-effort, so callers should treat failure as "keep whatever title we
+     * already have" rather than surface it to the user. Deliberately based on just the prompt
+     * (not the assistant's reply): the topic is already fully expressed in what the user asked,
+     * and it lets the title be generated in parallel with the assistant's reply instead of after
+     * it finishes.
      */
     suspend fun generateTitle(
         apiKey: String,
         model: String,
         userMessage: String,
-        assistantMessage: String?,
         baseUrl: String = DEFAULT_BASE_URL,
     ): Result<String> = withContext(Dispatchers.IO) {
-        // Deliberately NOT replayed as separate user/assistant turns: a request ending on an
-        // "assistant" message reads to some servers' chat templates (confirmed with a local
-        // llama.cpp server) as "continue this assistant turn," which just echoes the given text
-        // back nearly verbatim instead of following the system instruction. Folding the exchange
-        // into a single user message keeps the request unambiguously "answer this," ending on user.
-        val exchangeSummary = buildString {
-            append("User: ").append(userMessage.take(2000))
-            if (!assistantMessage.isNullOrBlank()) {
-                append("\nAssistant: ").append(assistantMessage.take(2000))
-            }
-        }
         val messages = listOf(
             ChatMessageDto(role = "system", content = TITLE_SYSTEM_PROMPT),
-            ChatMessageDto(role = "user", content = exchangeSummary),
+            ChatMessageDto(role = "user", content = userMessage.take(2000)),
         )
         val requestJson = json.encodeToString(
             ChatCompletionRequest.serializer(),
@@ -408,7 +399,7 @@ class OpenAiApiClient(
         const val DEFAULT_BASE_URL = "https://api.openai.com/v1"
         private const val TITLE_SYSTEM_PROMPT =
             "Reply with only a short conversation title (3 to 6 words, no quotes, no trailing " +
-                "punctuation) summarizing the topic of the following exchange, in the same " +
+                "punctuation) summarizing the topic of the following user message, in the same " +
                 "language the user is writing in."
         private const val SUGGESTIONS_SYSTEM_PROMPT =
             "Based on the user's past conversation topics below, suggest 4 short example " +
