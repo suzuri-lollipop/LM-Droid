@@ -3,6 +3,7 @@ package com.suzuri.lmdroid.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.suzuri.lmdroid.AppContainer
+import com.suzuri.lmdroid.ui.assist.AssistViewModel
 import com.suzuri.lmdroid.ui.chat.ChatViewModel
 import com.suzuri.lmdroid.ui.history.HistoryViewModel
 import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
@@ -58,6 +59,9 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
 
         modelClass.isAssignableFrom(SystemPromptEditViewModel::class.java) ->
             SystemPromptEditViewModel(container.systemPromptRepository) as T
+
+        modelClass.isAssignableFrom(AssistViewModel::class.java) ->
+            AssistViewModel(container.conversationRepository, container.settingsRepository) as T
 
         else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }

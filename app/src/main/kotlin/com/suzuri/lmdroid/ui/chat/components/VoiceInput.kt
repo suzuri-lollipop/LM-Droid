@@ -32,6 +32,7 @@ class VoiceInputState internal constructor(private val recognizer: SpeechRecogni
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         }
         recognizer.startListening(intent)
     }
@@ -46,16 +47,20 @@ class VoiceInputState internal constructor(private val recognizer: SpeechRecogni
  * plain text, fed straight into the message input — the model itself never sees audio, so this
  * behaves identically no matter which model is selected for chat. [onError] fires for anything
  * that stops listening without a usable result (permission denied mid-flow, recognizer service
- * error, etc.) — not for plain silence/no-speech, which just quietly stops listening.
+ * error, etc.) — not for plain silence/no-speech, which just quietly stops listening. [onPartialResult]
+ * is best-effort, interim text that arrives while still listening (e.g. for a live "as you speak"
+ * transcript like the assistant overlay) — most callers can ignore it.
  */
 @Composable
 fun rememberVoiceInputState(
     onResult: (String) -> Unit,
     onError: (String) -> Unit,
+    onPartialResult: (String) -> Unit = {},
 ): VoiceInputState {
     val context = LocalContext.current
     val currentOnResult by rememberUpdatedState(onResult)
     val currentOnError by rememberUpdatedState(onError)
+    val currentOnPartialResult by rememberUpdatedState(onPartialResult)
 
     val recognizer = remember {
         if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechRecognizer.createSpeechRecognizer(context) else null
@@ -92,7 +97,14 @@ fun rememberVoiceInputState(
                 override fun onBeginningOfSpeech() = Unit
                 override fun onRmsChanged(rmsdB: Float) = Unit
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
-                override fun onPartialResults(partialResults: Bundle?) = Unit
+
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val text = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                    if (!text.isNullOrBlank()) {
+                        currentOnPartialResult(text)
+                    }
+                }
+
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
             },
         )

@@ -8,7 +8,7 @@ import androidx.compose.ui.res.stringResource
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.ui.settings.components.SettingsMenuRow
 
-/** Top of the Settings drill-down: "API設定", "システム", "Web検索", "位置情報" and "システムプロンプト", with room for more categories later. Settings backup (export/import) lives inside "システム" rather than as its own top-level row. */
+/** Top of the Settings drill-down: "API設定", "システム", "Web検索", "位置情報", "システムプロンプト" and "アシスタント", with room for more categories later. Settings backup (export/import) lives inside "システム" rather than as its own top-level row. */
 @Composable
 fun SettingsRootScreen(
     onNavigateToApiSettings: () -> Unit,
@@ -16,6 +16,7 @@ fun SettingsRootScreen(
     onNavigateToWebSearch: () -> Unit,
     onNavigateToLocation: () -> Unit,
     onNavigateToSystemPrompts: () -> Unit,
+    onNavigateToAssistant: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -38,6 +39,10 @@ fun SettingsRootScreen(
         SettingsMenuRow(
             title = stringResource(R.string.settings_system_prompt_category_title),
             onClick = onNavigateToSystemPrompts,
+        )
+        SettingsMenuRow(
+            title = stringResource(R.string.settings_assistant_category_title),
+            onClick = onNavigateToAssistant,
         )
     }
 }

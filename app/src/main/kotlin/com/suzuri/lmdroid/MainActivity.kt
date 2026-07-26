@@ -56,6 +56,7 @@ import com.suzuri.lmdroid.ui.history.HistoryViewModel
 import com.suzuri.lmdroid.ui.navigation.Screen
 import com.suzuri.lmdroid.ui.settings.ApiProfileListScreen
 import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
+import com.suzuri.lmdroid.ui.settings.AssistantSettingsScreen
 import com.suzuri.lmdroid.ui.settings.LocationSettingsScreen
 import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.OpenAiCompatibleScreen
@@ -245,6 +246,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.Location -> stringResource(R.string.settings_location_category_title)
                                     SettingsRoute.SystemPromptList -> stringResource(R.string.settings_system_prompt_category_title)
                                     SettingsRoute.SystemPromptEdit -> stringResource(R.string.settings_system_prompt_category_title)
+                                    SettingsRoute.Assistant -> stringResource(R.string.settings_assistant_category_title)
                                 }
                             },
                             maxLines = 1,
@@ -325,6 +327,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 onNavigateToWebSearch = { settingsRoute = SettingsRoute.WebSearch },
                                 onNavigateToLocation = { settingsRoute = SettingsRoute.Location },
                                 onNavigateToSystemPrompts = { settingsRoute = SettingsRoute.SystemPromptList },
+                                onNavigateToAssistant = { settingsRoute = SettingsRoute.Assistant },
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }
@@ -387,6 +390,9 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     modifier = Modifier.padding(innerPadding),
                                 )
                             }
+                        }
+                        SettingsRoute.Assistant -> {
+                            AssistantSettingsScreen(modifier = Modifier.padding(innerPadding))
                         }
                     }
                 }

@@ -35,6 +35,12 @@
     <string name="chat_suggestion_debug">コードのデバッグを手伝って</string>
     <string name="chat_suggestion_explain">難しい概念をわかりやすく説明して</string>
 
+    <string name="assist_title">アシスタント</string>
+    <string name="assist_close">閉じる</string>
+    <string name="assist_listening_hint">お話しください</string>
+    <string name="assist_ask_follow_up">続けて質問する</string>
+    <string name="assist_open_in_app">アプリで開く</string>
+
     <string name="settings_title">設定</string>
     <string name="settings_api_category_title">API設定</string>
     <string name="settings_openai_compatible_title">OpenAI Compatible</string>
@@ -95,6 +101,12 @@
     <string name="settings_import_confirm_title">設定をインポート</string>
     <string name="settings_import_confirm_message">APIプロファイルとシステムプロンプトは追加登録されます。モデル選択やWeb検索・位置情報などの設定は、この内容で上書きされます。続けますか？</string>
     <string name="settings_import_confirm_button">インポート</string>
+
+    <string name="settings_assistant_category_title">アシスタント</string>
+    <string name="assistant_settings_description">このアプリをデバイスのアシスタントに設定すると、システムのアシスタント起動操作(例: 電源キーの長押し)でこのアプリの音声入力画面が開くようになります。実際にどの操作でアシスタントが起動するかは端末やAndroidのバージョンによって異なります。</string>
+    <string name="assistant_settings_status_held">現在、このアプリがデバイスのアシスタントに設定されています</string>
+    <string name="assistant_settings_status_not_held">現在、このアプリはデバイスのアシスタントに設定されていません</string>
+    <string name="assistant_settings_set_button">デジタルアシスタントに設定</string>
 
     <string name="history_title">履歴</string>
     <string name="history_new_conversation">新しい会話</string>

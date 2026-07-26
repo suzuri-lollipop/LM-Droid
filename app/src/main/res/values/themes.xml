@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.LmDroid" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- AssistActivity: shows as an overlay on top of whatever app was already on screen (like
+         Google Assistant), rather than switching away to our own full-screen task. -->
+    <style name="Theme.LmDroid.Assist" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>

@@ -1,0 +1,107 @@
+package com.suzuri.lmdroid.ui.assist
+
+import android.util.Log
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.suzuri.lmdroid.data.db.MessageRole
+import com.suzuri.lmdroid.data.repository.ConversationRepository
+import com.suzuri.lmdroid.data.settings.SettingsRepository
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/**
+ * Backs the assistant overlay (AssistActivity): a single voice question sent through the exact
+ * same [ConversationRepository.sendUserMessage] path as the main chat screen, so it shows up as a
+ * normal conversation afterward — just a smaller, one-shot version of ChatViewModel's send/observe
+ * pattern (no attachments, model switcher, or system prompts here).
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class AssistViewModel(
+    private val conversationRepository: ConversationRepository,
+    private val settingsRepository: SettingsRepository,
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(AssistUiState())
+    val uiState: StateFlow<AssistUiState> = _uiState.asStateFlow()
+
+    // Created lazily on the first send (see ensureConversationId) and reused for any follow-up
+    // question asked without leaving the overlay, so a follow-up continues the same conversation.
+    private val conversationId = MutableStateFlow<Long?>(null)
+
+    init {
+        viewModelScope.launch {
+            _uiState.update { it.copy(markdownEnabled = settingsRepository.currentChatSettings().markdownEnabled) }
+        }
+
+        viewModelScope.launch {
+            conversationId.filterNotNull().flatMapLatest { id ->
+                conversationRepository.observeMessages(id)
+            }.collect { entities ->
+                val lastAssistantMessage = entities.lastOrNull { it.message.role == MessageRole.ASSISTANT } ?: return@collect
+                _uiState.update {
+                    it.copy(
+                        assistantText = lastAssistantMessage.message.content,
+                        isAssistantError = lastAssistantMessage.message.isError,
+                    )
+                }
+            }
+        }
+    }
+
+    fun onPartialTranscript(text: String) {
+        _uiState.update { it.copy(transcript = text) }
+    }
+
+    fun onFinalTranscript(text: String) {
+        _uiState.update { it.copy(transcript = text) }
+        if (text.isNotBlank()) {
+            send(text)
+        }
+    }
+
+    /** [message] is already a final, localized display string — see VoiceInputState's onError. */
+    fun onListeningError(message: String) {
+        _uiState.update { it.copy(errorMessage = message) }
+    }
+
+    /** Clears the previous turn's transcript/error so the overlay reads as "ready to listen again" — the conversation id itself is untouched, so this continues the same conversation. */
+    fun onAskFollowUp() {
+        _uiState.update { it.copy(transcript = "", errorMessage = null, apiKeyMissing = false) }
+    }
+
+    private fun send(text: String) {
+        if (_uiState.value.isStreaming) return
+        _uiState.update {
+            it.copy(hasSent = true, isStreaming = true, assistantText = "", isAssistantError = false, apiKeyMissing = false, errorMessage = null)
+        }
+        viewModelScope.launch {
+            val id = ensureConversationId()
+            when (val result = conversationRepository.sendUserMessage(id, text)) {
+                is ConversationRepository.SendResult.Success -> Unit
+                is ConversationRepository.SendResult.ApiKeyMissing -> _uiState.update { it.copy(apiKeyMissing = true) }
+                is ConversationRepository.SendResult.Error -> {
+                    Log.w(TAG, "Assist send failed: ${result.message}")
+                    _uiState.update { it.copy(errorMessage = result.message) }
+                }
+            }
+            _uiState.update { it.copy(isStreaming = false) }
+        }
+    }
+
+    private suspend fun ensureConversationId(): Long {
+        conversationId.value?.let { return it }
+        val newId = conversationRepository.createNewConversation()
+        conversationId.value = newId
+        return newId
+    }
+
+    private companion object {
+        const val TAG = "AssistViewModel"
+    }
+}

@@ -33,6 +33,29 @@
             </intent-filter>
         </activity>
 
+        <!-- Handles the system assist gesture (see Settings → アシスタント to register this app
+             as the device's assist app). exported=true is required for the system to be able to
+             launch it via ACTION_ASSIST from outside this app's own process.
+
+             taskAffinity="" + singleInstance keep this activity permanently isolated in its own
+             task, never sharing one with MainActivity. Without this, taskAffinity defaults to the
+             same value as MainActivity's, so the system routed the assist gesture into the app's
+             existing task and brought MainActivity to the front first — visibly launching the
+             whole app before the assistant overlay appeared on top of it, instead of overlaying
+             directly on top of whatever app was already on screen. -->
+        <activity
+            android:name=".AssistActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:theme="@style/Theme.LmDroid.Assist">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <!-- Grants other apps temporary read access to a picked attachment's file (share sheet,
              image clipboard paste) without exposing the app's whole private storage. -->
         <provider
