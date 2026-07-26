@@ -9,6 +9,9 @@
         android:maxSdkVersion="28" />
     <!-- For the composer's mic button (on-device speech-to-text via SpeechRecognizer). -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- For the "get_current_location" tool (Settings → Web検索 → 位置情報を使用する). -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:name=".LmDroidApplication"

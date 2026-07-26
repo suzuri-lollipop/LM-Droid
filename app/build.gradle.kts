@@ -91,6 +91,7 @@ dependencies {
     implementation(libs.markdown.renderer.m3)
 
     implementation(libs.jsoup)
+    implementation(libs.kaml)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

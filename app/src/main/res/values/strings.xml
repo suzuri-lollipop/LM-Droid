@@ -69,6 +69,14 @@
     <string name="websearch_max_rounds_placeholder">無制限</string>
     <string name="websearch_max_rounds_description">空欄または0の場合、AIが必要と判断する限り検索を繰り返せます。</string>
 
+    <string name="settings_location_category_title">位置情報</string>
+    <string name="location_enable_label">位置情報を使用する</string>
+    <string name="location_enable_description">有効にすると、AIが必要だと判断した時に端末の現在地を取得できるようになります(位置情報の権限が必要です)。</string>
+
+    <string name="settings_export_title">設定をエクスポート</string>
+    <string name="settings_export_success">設定をエクスポートしました</string>
+    <string name="settings_export_failure">エクスポートに失敗しました</string>
+
     <string name="history_title">履歴</string>
     <string name="history_new_conversation">新しい会話</string>
     <string name="history_empty_message">まだ会話がありません</string>

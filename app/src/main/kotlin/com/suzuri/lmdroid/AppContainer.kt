@@ -6,10 +6,12 @@ import androidx.room.Room
 import com.suzuri.lmdroid.data.attachment.AttachmentFileStore
 import com.suzuri.lmdroid.data.attachment.AudioRecorder
 import com.suzuri.lmdroid.data.db.AppDatabase
+import com.suzuri.lmdroid.data.location.DeviceLocationProvider
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
 import com.suzuri.lmdroid.data.settings.ApiKeyCipher
+import com.suzuri.lmdroid.data.settings.SettingsExporter
 import com.suzuri.lmdroid.data.settings.SettingsRepository
 import com.suzuri.lmdroid.data.websearch.BraveSearchClient
 import com.suzuri.lmdroid.data.websearch.WebPageFetcher
@@ -64,6 +66,8 @@ class AppContainer(context: Context) {
 
     val settingsRepository = SettingsRepository(appContext, apiKeyCipher, database.apiProfileDao())
 
+    val settingsExporter = SettingsExporter(database.apiProfileDao(), database.apiModelDao(), settingsRepository)
+
     val openAiApiClient = OpenAiApiClient(okHttpClient, json)
 
     val apiProfileRepository = ApiProfileRepository(
@@ -81,6 +85,8 @@ class AppContainer(context: Context) {
 
     val webPageFetcher = WebPageFetcher(okHttpClient)
 
+    val deviceLocationProvider = DeviceLocationProvider(appContext)
+
     val conversationRepository = ConversationRepository(
         conversationDao = database.conversationDao(),
         messageDao = database.messageDao(),
@@ -91,6 +97,7 @@ class AppContainer(context: Context) {
         attachmentFileStore = attachmentFileStore,
         braveSearchClient = braveSearchClient,
         webPageFetcher = webPageFetcher,
+        deviceLocationProvider = deviceLocationProvider,
         json = json,
     )
 }

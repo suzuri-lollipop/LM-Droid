@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,7 +24,6 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,14 +45,14 @@ import com.suzuri.lmdroid.ui.chat.PendingAttachmentUiModel
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * The composer: a row of staged image/voice-message previews (when any are attached) above a
- * rounded box with the file-attach button, a system-prompt button, message text field, mic button
- * and send button on top; below that (when there's a model to switch between) a divider and the
- * model switcher. The mic button is dual-purpose: a quick tap dictates speech to text (see
- * [onVoiceInput]), while pressing and holding records a voice message to attach and send as audio
- * (see [onStartVoiceRecording]/[onStopVoiceRecording]) — mirroring how voice-message apps use the
- * same gesture split. [onOpenSystemPrompt] opens a dialog (see SystemPromptDialog) to edit the
- * app-wide system prompt.
+ * The composer: the message text field alone on its own full-width line (so it isn't squeezed
+ * between a row of icons), then — below it — a row of staged image/voice-message previews (when
+ * any are attached), then a single toolbar row with every action: file-attach, system-prompt,
+ * the model switcher, mic, and send/stop. The mic button is dual-purpose: a quick tap dictates
+ * speech to text (see [onVoiceInput]), while pressing and holding records a voice message to
+ * attach and send as audio (see [onStartVoiceRecording]/[onStopVoiceRecording]) — mirroring how
+ * voice-message apps use the same gesture split. [onOpenSystemPrompt] opens a dialog (see
+ * SystemPromptDialog) to edit the app-wide system prompt.
  */
 @Composable
 fun ChatInputBar(
@@ -84,8 +85,60 @@ fun ChatInputBar(
         tonalElevation = 2.dp,
     ) {
         Column {
+            // A borderless TextField (its own container/indicator hidden) sitting inside the pill
+            // Surface above, rather than the default boxed OutlinedTextField look — alone on its
+            // own line so it isn't squeezed between the icon buttons below.
+            TextField(
+                value = input,
+                onValueChange = onInputChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                placeholder = { Text(stringResource(R.string.chat_input_placeholder)) },
+                enabled = !isStreaming,
+                maxLines = 6,
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                ),
+            )
+
+            if (pendingAttachments.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    pendingAttachments.forEach { attachment ->
+                        if (attachment.mimeType.startsWith("audio/")) {
+                            AudioAttachmentChip(
+                                filePath = attachment.filePath,
+                                onRemove = { onRemoveAttachment(attachment.id) },
+                            )
+                        } else {
+                            AttachmentThumbnail(
+                                filePath = attachment.filePath,
+                                size = 56.dp,
+                                onRemove = { onRemoveAttachment(attachment.id) },
+                                onClick = { onPreviewAttachment(attachment.filePath) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            // One toolbar row for every action: attach/system-prompt icons and the model switcher
+            // cluster on the left, mic/send on the right, with a flexible gap between them.
             Row(
-                modifier = Modifier.padding(start = 4.dp, end = 6.dp, top = 6.dp, bottom = 2.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 4.dp, end = 8.dp, top = 2.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onAttachFile) {
@@ -102,25 +155,24 @@ fun ChatInputBar(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                if (availableModels.isNotEmpty()) {
+                    // A hard cap (rather than a weight-based one) so a long profile name's own
+                    // maxLines=1 + TextOverflow.Ellipsis actually has a bounded width to shrink
+                    // into — weight(fill = false) doesn't work for this: an unfilled weighted
+                    // child is placed at its own (small) measured width, not its full allotted
+                    // share, so it doesn't reserve any trailing gap and the following Spacer ends
+                    // up right next to it instead of at the row's true right edge.
+                    ModelSelectorButton(
+                        options = availableModels,
+                        selected = selectedModel,
+                        onSelect = onSelectModel,
+                        modifier = Modifier
+                            .widthIn(max = 120.dp)
+                            .padding(start = 4.dp),
+                    )
+                }
 
-                // A borderless TextField (its own container/indicator hidden) sitting inside the
-                // pill Surface above, rather than the default boxed OutlinedTextField look.
-                TextField(
-                    value = input,
-                    onValueChange = onInputChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text(stringResource(R.string.chat_input_placeholder)) },
-                    enabled = !isStreaming,
-                    maxLines = 6,
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent,
-                    ),
-                )
+                Spacer(modifier = Modifier.weight(1f))
 
                 // A plain Box (not IconButton) so a custom tap-vs-long-press gesture can be laid
                 // on top without fighting IconButton's own built-in click handling.
@@ -193,49 +245,6 @@ fun ChatInputBar(
                             },
                         )
                     }
-                }
-            }
-
-            if (pendingAttachments.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    pendingAttachments.forEach { attachment ->
-                        if (attachment.mimeType.startsWith("audio/")) {
-                            AudioAttachmentChip(
-                                filePath = attachment.filePath,
-                                onRemove = { onRemoveAttachment(attachment.id) },
-                            )
-                        } else {
-                            AttachmentThumbnail(
-                                filePath = attachment.filePath,
-                                size = 56.dp,
-                                onRemove = { onRemoveAttachment(attachment.id) },
-                                onClick = { onPreviewAttachment(attachment.filePath) },
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (availableModels.isNotEmpty()) {
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ModelSelectorButton(
-                        options = availableModels,
-                        selected = selectedModel,
-                        onSelect = onSelectModel,
-                    )
                 }
             }
         }

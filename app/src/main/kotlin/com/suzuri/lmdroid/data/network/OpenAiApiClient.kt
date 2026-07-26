@@ -48,6 +48,11 @@ class OpenAiApiClient(
             ChatCompletionRequest.serializer(),
             ChatCompletionRequest(model = model, messages = messages, stream = true, tools = tools),
         )
+        // Deliberately just the tool names, not the full request body — the latter can carry a
+        // full conversation history plus base64 image/audio attachments, which would either spam
+        // Logcat across many lines or get silently truncated by its per-line limit. This is enough
+        // to answer "was this tool actually offered to the model this turn" during diagnosis.
+        Log.d(TAG, "streamChatCompletion: model=$model, tools=${tools?.map { it.function.name }}")
         val requestBody = requestJson.toRequestBody(jsonMediaType)
 
         val builderWithUrl = try {

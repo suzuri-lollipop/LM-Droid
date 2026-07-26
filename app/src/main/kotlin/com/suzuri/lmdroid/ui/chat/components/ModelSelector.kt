@@ -31,10 +31,11 @@ import com.suzuri.lmdroid.data.settings.SelectedModel
 /**
  * Lets the user switch which enabled profile's model chat uses, without leaving this screen.
  * Hidden by the caller when [options] is empty — with no enabled profile there's nothing to
- * switch between. The button shows just the current model's name (Claude-style, rather than a
- * "profile · model" pair on every row), and the menu is grouped by profile — with a section
- * header per profile and a checkmark on the active model — instead of repeating the profile name
- * on every single line.
+ * switch between. The button shows just the current profile's name (Claude-style, rather than a
+ * "profile · model" pair on every row) since that's typically the more meaningful label to
+ * glance at (e.g. "ローカルサーバー" vs a long/cryptic model id); the menu itself is grouped by
+ * profile — with a section header per profile and a checkmark on the active model, each row
+ * still showing its own model id — instead of repeating the profile name on every single line.
  */
 @Composable
 fun ModelSelectorButton(
@@ -45,7 +46,7 @@ fun ModelSelectorButton(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selectedOption = options.find { it.profileId == selected?.profileId && it.modelId == selected.model }
-    val label = selectedOption?.modelId ?: stringResource(R.string.chat_model_selector_placeholder)
+    val label = selectedOption?.profileName ?: stringResource(R.string.chat_model_selector_placeholder)
     // Only worth labeling groups when there's more than one profile to tell apart — with a single
     // enabled profile, a lone section header would just repeat what the button already says.
     val groupedOptions = options.groupBy { it.profileId to it.profileName }

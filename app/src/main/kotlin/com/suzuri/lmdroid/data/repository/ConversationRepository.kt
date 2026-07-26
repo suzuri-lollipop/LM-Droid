@@ -14,6 +14,7 @@ import com.suzuri.lmdroid.data.db.MessageEntity
 import com.suzuri.lmdroid.data.db.MessageRole
 import com.suzuri.lmdroid.data.db.MessageWithAttachments
 import com.suzuri.lmdroid.data.db.ThinkingTimelineEntry
+import com.suzuri.lmdroid.data.location.DeviceLocationProvider
 import com.suzuri.lmdroid.data.network.ChatMessageDto
 import com.suzuri.lmdroid.data.network.ContentPart
 import com.suzuri.lmdroid.data.network.FunctionCallDto
@@ -71,6 +72,7 @@ class ConversationRepository(
     private val attachmentFileStore: AttachmentFileStore,
     private val braveSearchClient: BraveSearchClient,
     private val webPageFetcher: WebPageFetcher,
+    private val deviceLocationProvider: DeviceLocationProvider,
     private val json: Json,
 ) {
     // For best-effort background work (auto-titling) that shouldn't make the caller wait for the
@@ -315,15 +317,16 @@ class ConversationRepository(
             history.add(1, chatMessage("system", systemPrompt))
         }
 
-        // Web tools: when enabled and configured in Settings, the model is offered "web_search"
-        // and "fetch_webpage" functions it can decide to call on its own (agentic tool calling),
-        // rather than the app deciding unconditionally what to search/fetch and force-feeding the
-        // results into every request. The harness (this repository) only ever executes either one
-        // when the model actually asks for it, via executeToolCall() below. maxToolRounds caps how
-        // many tool round-trips one reply can make before it's forced to answer with what it has —
-        // 0 in Settings means "no user-configured cap", bounded only by SAFETY_MAX_TOOL_ROUNDS so a
-        // model that won't stop calling tools can't loop forever.
-        val tools = webToolsIfEnabled()
+        // Tools: when enabled and configured in Settings, the model is offered "web_search",
+        // "fetch_webpage" and/or "get_current_location" functions it can decide to call on its own
+        // (agentic tool calling), rather than the app deciding unconditionally what to search/
+        // fetch/locate and force-feeding the results into every request. The harness (this
+        // repository) only ever executes one when the model actually asks for it, via
+        // executeToolCall() below. maxToolRounds caps how many tool round-trips one reply can make
+        // before it's forced to answer with what it has — 0 in Settings means "no user-configured
+        // cap", bounded only by SAFETY_MAX_TOOL_ROUNDS so a model that won't stop calling tools
+        // can't loop forever.
+        val tools = availableTools()
         val configuredMaxRounds = settingsRepository.currentWebSearchMaxToolRounds()
         val maxToolRounds = if (configuredMaxRounds <= 0) {
             SAFETY_MAX_TOOL_ROUNDS
@@ -390,6 +393,19 @@ class ConversationRepository(
                         timeline += ThinkingTimelineEntry.ToolActivity(label = "🌐 \"$url\"", content = content)
                         content
                     }
+                }
+            }
+            GET_LOCATION_TOOL_NAME -> {
+                val location = deviceLocationProvider.getCurrentLocation()
+                if (location == null) {
+                    "The device's current location is unavailable right now (permission not granted, location services off, or no fix could be obtained)."
+                } else {
+                    val resultText = buildString {
+                        append("Latitude: ${location.latitude}, Longitude: ${location.longitude}")
+                        if (location.address != null) append("\nApproximate address: ${location.address}")
+                    }
+                    timeline += ThinkingTimelineEntry.ToolActivity(label = "📍 現在地を取得", content = resultText)
+                    resultText
                 }
             }
             else -> "Error: unknown tool \"${call.name}\"."
@@ -516,16 +532,17 @@ class ConversationRepository(
     }
 
     /**
-     * The "web_search" and "fetch_webpage" function definitions offered to the model when the
-     * feature is enabled and configured — null otherwise, so
+     * The function definitions offered to the model this turn — "web_search"/"fetch_webpage" when
+     * Web検索 is enabled and configured, "get_current_location" when 位置情報 is enabled — or null
+     * if neither is, so
      * [ChatCompletionRequest.tools][com.suzuri.lmdroid.data.network.ChatCompletionRequest] is
      * omitted entirely rather than sent as an empty/useless list.
      */
-    private suspend fun webToolsIfEnabled(): List<ToolDefinitionDto>? {
-        if (!settingsRepository.currentBraveSearchEnabled()) return null
-        if (settingsRepository.currentBraveSearchApiKey().isNullOrBlank()) return null
-        return listOf(
-            ToolDefinitionDto(
+    private suspend fun availableTools(): List<ToolDefinitionDto>? {
+        val tools = mutableListOf<ToolDefinitionDto>()
+
+        if (settingsRepository.currentBraveSearchEnabled() && !settingsRepository.currentBraveSearchApiKey().isNullOrBlank()) {
+            tools += ToolDefinitionDto(
                 function = FunctionSchemaDto(
                     name = WEB_SEARCH_TOOL_NAME,
                     description = "Search the live web for up-to-date information — current events, " +
@@ -538,8 +555,8 @@ class ConversationRepository(
                         "don't assume the top result is the most recent one.",
                     parameters = webSearchToolParameters,
                 ),
-            ),
-            ToolDefinitionDto(
+            )
+            tools += ToolDefinitionDto(
                 function = FunctionSchemaDto(
                     name = FETCH_WEBPAGE_TOOL_NAME,
                     description = "Fetch a specific web page by URL and read its visible text content — " +
@@ -549,8 +566,24 @@ class ConversationRepository(
                         "(e.g. some sites' live weather figures) may not be captured.",
                     parameters = fetchWebpageToolParameters,
                 ),
-            ),
-        )
+            )
+        }
+
+        if (settingsRepository.currentLocationEnabled()) {
+            tools += ToolDefinitionDto(
+                function = FunctionSchemaDto(
+                    name = GET_LOCATION_TOOL_NAME,
+                    description = "Get the user's current device location — approximate latitude/" +
+                        "longitude and, when available, a human-readable address. Call this when the " +
+                        "user's question depends on where they currently are (e.g. local weather, " +
+                        "nearby places, time zone) and they haven't already told you a location.",
+                    parameters = noArgumentsToolParameters,
+                ),
+            )
+        }
+
+        Log.d(TAG, "availableTools: ${tools.map { it.function.name }} (locationEnabled=${settingsRepository.currentLocationEnabled()})")
+        return tools.takeIf { it.isNotEmpty() }
     }
 
     /** Grounds the model in today's actual date — see the call site in [generateAssistantReply] for why this is unconditional. */
@@ -633,6 +666,7 @@ class ConversationRepository(
         const val RECENT_CONVERSATIONS_FOR_SUGGESTIONS = 15
         const val WEB_SEARCH_TOOL_NAME = "web_search"
         const val FETCH_WEBPAGE_TOOL_NAME = "fetch_webpage"
+        const val GET_LOCATION_TOOL_NAME = "get_current_location"
 
         // A hard ceiling regardless of the user's own Settings → Web検索 configuration (where 0
         // means "no cap") — purely a safety valve against a truly runaway model that never stops
@@ -670,6 +704,15 @@ class ConversationRepository(
                     ),
                 ),
                 "required" to JsonArray(listOf(JsonPrimitive("url"))),
+            ),
+        )
+
+        // get_current_location takes no arguments — still needs an (empty) object schema, since
+        // the tool-calling protocol requires "parameters" to be a valid JSON Schema object.
+        val noArgumentsToolParameters: JsonElement = JsonObject(
+            mapOf(
+                "type" to JsonPrimitive("object"),
+                "properties" to JsonObject(emptyMap()),
             ),
         )
     }

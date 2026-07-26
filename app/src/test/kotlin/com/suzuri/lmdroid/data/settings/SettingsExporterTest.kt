@@ -1,0 +1,80 @@
+package com.suzuri.lmdroid.data.settings
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Exercises only the pure YAML-encoding half of [SettingsExporter] (see [encodeSettingsExportToYaml])
+ * — the data-gathering half needs a real [SettingsRepository], which needs a real [ApiKeyCipher],
+ * which needs a live AndroidKeyStore that doesn't exist under Robolectric (see
+ * app/src/test/resources/robolectric.properties), so it isn't unit-testable here. This still
+ * covers what's actually novel/risky about this feature: the wire format itself.
+ */
+class SettingsExporterTest {
+
+    private fun sampleExport(
+        apiKey: ExportedEncryptedValue? = ExportedEncryptedValue(ciphertext = "c1phertext==", iv = "1v=="),
+    ) = SettingsExport(
+        exportedAt = "2026-07-27T00:00:00Z",
+        apiProfiles = listOf(
+            ExportedApiProfile(
+                id = 1,
+                name = "ローカルサーバー",
+                baseUrl = "http://localhost:8080/v1",
+                enabled = true,
+                apiKey = apiKey,
+                models = listOf("gpt-4o-mini", "gpt-4o"),
+            ),
+        ),
+        chatSelection = ExportedModelSelection(profileId = 1, profileName = "ローカルサーバー", model = "gpt-4o-mini"),
+        systemSelection = null,
+        markdownEnabled = true,
+        systemPrompt = "常に日本語の敬語で回答してください",
+        webSearch = ExportedWebSearchSettings(enabled = true, apiKey = apiKey, maxToolRounds = 3),
+        locationEnabled = true,
+    )
+
+    @Test
+    fun `encodes profile fields and never contains a plaintext api key`() {
+        val yamlText = encodeSettingsExportToYaml(sampleExport())
+
+        assertTrue(yamlText.contains("ローカルサーバー"))
+        assertTrue(yamlText.contains("http://localhost:8080/v1"))
+        assertTrue(yamlText.contains("gpt-4o-mini"))
+        assertTrue(yamlText.contains("c1phertext=="))
+        assertTrue(yamlText.contains("1v=="))
+        // The only "secret" this test ever supplies is the ciphertext itself — asserting its
+        // literal absence would be circular, so this instead pins the field name that carries it,
+        // confirming the schema never introduces a separate plaintext field alongside it.
+        assertFalse(yamlText.contains("apiKeyPlaintext"))
+    }
+
+    @Test
+    fun `omits the api key entirely when none is configured`() {
+        val yamlText = encodeSettingsExportToYaml(sampleExport(apiKey = null))
+
+        assertFalse(yamlText.contains("ciphertext"))
+    }
+
+    @Test
+    fun `round-trips through decode back to an equal SettingsExport`() {
+        val original = sampleExport()
+
+        val yamlText = encodeSettingsExportToYaml(original)
+        val decoded = settingsExportYaml.decodeFromString(SettingsExport.serializer(), yamlText)
+
+        assertEquals(original, decoded)
+    }
+
+    @Test
+    fun `a blank system prompt and no model selections still encode cleanly`() {
+        val export = sampleExport().copy(chatSelection = null, systemSelection = null, systemPrompt = "")
+
+        val yamlText = encodeSettingsExportToYaml(export)
+        val decoded = settingsExportYaml.decodeFromString(SettingsExport.serializer(), yamlText)
+
+        assertEquals(export, decoded)
+    }
+}

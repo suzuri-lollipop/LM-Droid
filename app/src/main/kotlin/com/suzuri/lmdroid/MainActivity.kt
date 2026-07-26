@@ -1,10 +1,13 @@
 package com.suzuri.lmdroid
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,6 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,7 +53,10 @@ import com.suzuri.lmdroid.ui.history.HistoryViewModel
 import com.suzuri.lmdroid.ui.navigation.Screen
 import com.suzuri.lmdroid.ui.settings.ApiProfileListScreen
 import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
+import com.suzuri.lmdroid.ui.settings.LocationSettingsScreen
+import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.OpenAiCompatibleScreen
+import com.suzuri.lmdroid.ui.settings.SettingsExportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsRoute
 import com.suzuri.lmdroid.ui.settings.SettingsRootScreen
 import com.suzuri.lmdroid.ui.settings.SettingsViewModel
@@ -60,6 +67,8 @@ import com.suzuri.lmdroid.ui.settings.WebSearchSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.parent
 import com.suzuri.lmdroid.ui.theme.LmDroidTheme
 import kotlinx.coroutines.launch
+
+private const val EXPORT_FILE_NAME = "lmdroid-settings.yaml"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -100,7 +109,27 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val apiProfileListViewModel: ApiProfileListViewModel = viewModel(factory = viewModelFactory)
     val systemSettingsViewModel: SystemSettingsViewModel = viewModel(factory = viewModelFactory)
     val webSearchSettingsViewModel: WebSearchSettingsViewModel = viewModel(factory = viewModelFactory)
+    val locationSettingsViewModel: LocationSettingsViewModel = viewModel(factory = viewModelFactory)
     val historyViewModel: HistoryViewModel = viewModel(factory = viewModelFactory)
+    val settingsExportViewModel: SettingsExportViewModel = viewModel(factory = viewModelFactory)
+
+    val context = LocalContext.current
+    val exportScope = rememberCoroutineScope()
+    val exportFailedMessage = stringResource(R.string.settings_export_failure)
+    val exportSucceededMessage = stringResource(R.string.settings_export_success)
+    // CreateDocument hands back a content:// Uri already created at the location the user picked
+    // (e.g. via the system "Save As" dialog) — writing is just a normal ContentResolver stream.
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/x-yaml")) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        exportScope.launch {
+            val result = runCatching {
+                val yaml = settingsExportViewModel.exportToYaml()
+                context.contentResolver.openOutputStream(uri)?.use { it.write(yaml.toByteArray(Charsets.UTF_8)) }
+                    ?: error("Unable to open $uri for writing")
+            }
+            Toast.makeText(context, if (result.isSuccess) exportSucceededMessage else exportFailedMessage, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Conversation history lives in a slide-out drawer (opened via the hamburger icon on the
     // Chat screen) rather than being a separate full-screen destination.
@@ -187,6 +216,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.OpenAiCompatible -> stringResource(R.string.settings_openai_compatible_title)
                                     SettingsRoute.System -> stringResource(R.string.settings_system_category_title)
                                     SettingsRoute.WebSearch -> stringResource(R.string.settings_websearch_category_title)
+                                    SettingsRoute.Location -> stringResource(R.string.settings_location_category_title)
                                 }
                             },
                             maxLines = 1,
@@ -261,6 +291,8 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 onNavigateToApiSettings = { settingsRoute = SettingsRoute.ApiSettings },
                                 onNavigateToSystem = { settingsRoute = SettingsRoute.System },
                                 onNavigateToWebSearch = { settingsRoute = SettingsRoute.WebSearch },
+                                onNavigateToLocation = { settingsRoute = SettingsRoute.Location },
+                                onExportSettings = { exportLauncher.launch(EXPORT_FILE_NAME) },
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }
@@ -293,6 +325,12 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                         SettingsRoute.WebSearch -> {
                             WebSearchSettingsScreen(
                                 viewModel = webSearchSettingsViewModel,
+                                modifier = Modifier.padding(innerPadding),
+                            )
+                        }
+                        SettingsRoute.Location -> {
+                            LocationSettingsScreen(
+                                viewModel = locationSettingsViewModel,
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }

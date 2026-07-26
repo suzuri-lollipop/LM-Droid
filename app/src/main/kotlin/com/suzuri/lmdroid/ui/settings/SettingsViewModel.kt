@@ -6,13 +6,21 @@ import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.network.OpenAiException
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.settings.AppSettings
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Edits a single [com.suzuri.lmdroid.data.db.ApiProfileEntity], loaded on demand via [loadProfile]. */
+/**
+ * Edits a single [com.suzuri.lmdroid.data.db.ApiProfileEntity], loaded on demand via [loadProfile]
+ * — this ViewModel instance is shared across every profile edited during the app's lifetime
+ * (hoisted once in MainActivity), not recreated per profile.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModel(
     private val apiProfileRepository: ApiProfileRepository,
     private val openAiApiClient: OpenAiApiClient,
@@ -23,10 +31,26 @@ class SettingsViewModel(
 
     private var profileId: Long? = null
 
+    // A StateFlow (not a plain var) so switching which profile is being edited drives observeModels
+    // via flatMapLatest below, which cancels the previous profile's collector — without this, editing
+    // profile A and then profile B left BOTH collectors running against the shared uiState.models,
+    // and whichever one's Flow happened to re-emit last (e.g. profile A's, on any unrelated write to
+    // the api_models table) silently overwrote profile B's just-fetched models with stale ones.
+    private val observedProfileId = MutableStateFlow<Long?>(null)
+
+    init {
+        viewModelScope.launch {
+            observedProfileId.filterNotNull()
+                .flatMapLatest { id -> apiProfileRepository.observeModels(id) }
+                .collect { models -> _uiState.update { it.copy(models = models) } }
+        }
+    }
+
     /** Called by the edit screen (e.g. from a LaunchedEffect keyed on the navigated-to profile id). */
     fun loadProfile(id: Long) {
         if (profileId == id) return
         profileId = id
+        observedProfileId.value = id
         viewModelScope.launch {
             val profile = apiProfileRepository.getProfile(id) ?: return@launch
             val apiKey = apiProfileRepository.decryptApiKey(profile)
@@ -39,11 +63,6 @@ class SettingsViewModel(
                     testState = TestConnectionState.Idle,
                     saved = false,
                 )
-            }
-        }
-        viewModelScope.launch {
-            apiProfileRepository.observeModels(id).collect { models ->
-                _uiState.update { it.copy(models = models) }
             }
         }
     }

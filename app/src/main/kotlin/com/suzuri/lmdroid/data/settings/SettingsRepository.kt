@@ -112,6 +112,15 @@ class SettingsRepository(
         return runCatching { cipher.decrypt(ciphertext, iv) }.getOrNull()
     }
 
+    /** Raw ciphertext+IV exactly as stored, for callers (e.g. settings export) that want to copy the already-encrypted value without ever decrypting it. */
+    suspend fun currentBraveSearchApiKeyEncrypted(): ApiKeyCipher.Encrypted? {
+        val prefs = context.settingsDataStore.data.first()
+        val ciphertext = prefs[KEY_BRAVE_API_KEY_CIPHERTEXT]
+        val iv = prefs[KEY_BRAVE_API_KEY_IV]
+        if (ciphertext == null || iv == null) return null
+        return ApiKeyCipher.Encrypted(ciphertext, iv)
+    }
+
     /** How many web_search tool round-trips one reply may make before being forced to answer with what it has. 0 (the default) means unconditionally allowed, up to ConversationRepository's own hard safety ceiling. */
     val webSearchMaxToolRounds: Flow<Int> =
         context.settingsDataStore.data.map { it[KEY_WEB_SEARCH_MAX_TOOL_ROUNDS] ?: 0 }
@@ -131,6 +140,15 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs ->
             if (prompt.isBlank()) prefs.remove(KEY_SYSTEM_PROMPT) else prefs[KEY_SYSTEM_PROMPT] = prompt
         }
+    }
+
+    /** Whether the "get_current_location" tool (see ConversationRepository) is offered to the model — the caller (WebSearchSettingsScreen) is expected to only turn this on once location permission is actually granted. */
+    val locationEnabled: Flow<Boolean> = context.settingsDataStore.data.map { it[KEY_LOCATION_ENABLED] ?: false }
+
+    suspend fun currentLocationEnabled(): Boolean = locationEnabled.first()
+
+    suspend fun setLocationEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_LOCATION_ENABLED] = enabled }
     }
 
     private fun resolve(selected: SelectedModel?): Flow<AppSettings> {
@@ -183,5 +201,6 @@ class SettingsRepository(
         val KEY_BRAVE_API_KEY_IV = stringPreferencesKey("brave_search_api_key_iv")
         val KEY_WEB_SEARCH_MAX_TOOL_ROUNDS = intPreferencesKey("web_search_max_tool_rounds")
         val KEY_SYSTEM_PROMPT = stringPreferencesKey("system_prompt")
+        val KEY_LOCATION_ENABLED = booleanPreferencesKey("location_enabled")
     }
 }

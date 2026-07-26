@@ -12,6 +12,7 @@ enum class SettingsRoute {
     OpenAiCompatible,
     System,
     WebSearch,
+    Location,
 }
 
 fun SettingsRoute.parent(): SettingsRoute? = when (this) {
@@ -20,4 +21,5 @@ fun SettingsRoute.parent(): SettingsRoute? = when (this) {
     SettingsRoute.OpenAiCompatible -> SettingsRoute.ApiSettings
     SettingsRoute.System -> SettingsRoute.Root
     SettingsRoute.WebSearch -> SettingsRoute.Root
+    SettingsRoute.Location -> SettingsRoute.Root
 }

@@ -33,7 +33,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
 
-/** Settings → Web検索: on/off toggle + Brave Search API key. */
+/** Settings → Web検索: on/off toggle + Brave Search API key for the web_search/fetch_webpage tools. */
 @Composable
 fun WebSearchSettingsScreen(viewModel: WebSearchSettingsViewModel, modifier: Modifier = Modifier) {
     val uiState by viewModel.uiState.collectAsState()
