@@ -47,6 +47,10 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
 
 /**
  * Orchestrates Room persistence, OpenAI streaming, and the current settings for chat
@@ -297,12 +301,18 @@ class ConversationRepository(
             flushSegment()
         }
 
+        // Models have no internal clock and a fixed training cutoff, so without this they have no
+        // way to resolve "today"/"tomorrow"/"next week", or to judge whether a piece of
+        // information (e.g. a web search result) is current or years out of date — exactly the
+        // failure mode that caused stale, wrong-year forecasts to get treated as current before.
+        history.add(0, chatMessage("system", currentDateSystemPrompt()))
+
         // A user-authored instruction that applies to every conversation, not persisted as part
         // of any one message — added fresh as the leading message on every request, the same way
         // the old web-search injection used to be, rather than written into message history.
         val systemPrompt = settingsRepository.currentSystemPrompt()
         if (systemPrompt.isNotBlank()) {
-            history.add(0, chatMessage("system", systemPrompt))
+            history.add(1, chatMessage("system", systemPrompt))
         }
 
         // Web tools: when enabled and configured in Settings, the model is offered "web_search"
@@ -521,7 +531,11 @@ class ConversationRepository(
                     description = "Search the live web for up-to-date information — current events, " +
                         "facts you're unsure of, or anything that may have changed since your training " +
                         "data. Call this whenever it would improve the accuracy of your answer. Results " +
-                        "are short snippets — use $FETCH_WEBPAGE_TOOL_NAME on a promising URL to read more.",
+                        "are short snippets — use $FETCH_WEBPAGE_TOOL_NAME on a promising URL to read more. " +
+                        "Results often mix pages from different years (e.g. an old cached forecast or " +
+                        "article alongside a current one) — check each result's own date/content against " +
+                        "today's date (see the system message) and prefer whichever is actually current; " +
+                        "don't assume the top result is the most recent one.",
                     parameters = webSearchToolParameters,
                 ),
             ),
@@ -537,6 +551,16 @@ class ConversationRepository(
                 ),
             ),
         )
+    }
+
+    /** Grounds the model in today's actual date — see the call site in [generateAssistantReply] for why this is unconditional. */
+    private fun currentDateSystemPrompt(): String {
+        val today = LocalDate.now()
+        val isoDate = today.format(DateTimeFormatter.ISO_LOCAL_DATE)
+        val dayOfWeek = today.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
+        return "Today's date is $isoDate ($dayOfWeek). Use this as the ground truth for any relative " +
+            "date reasoning (\"today\", \"tomorrow\", \"next week\", etc.), and to judge whether " +
+            "information you encounter — including web search or fetched page results — is current or outdated."
     }
 
     /** Pulls a string argument out of a tool call's raw JSON arguments, e.g. `key="query"` from `{"query":"kyoto weather"}`. */

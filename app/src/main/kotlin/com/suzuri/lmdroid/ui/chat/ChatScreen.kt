@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +53,10 @@ import com.suzuri.lmdroid.ui.chat.components.MessageBubble
 import com.suzuri.lmdroid.ui.chat.components.SystemPromptDialog
 import com.suzuri.lmdroid.ui.chat.components.rememberVoiceInputState
 import kotlinx.coroutines.launch
+
+// Far more than any realistic conversation's total scrollable height, so a single scrollBy call
+// always clamps at the true bottom — see its use below for why Float.MAX_VALUE itself is avoided.
+private const val LARGE_SCROLL_DELTA_PX = 100_000f
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -134,16 +140,50 @@ fun ChatScreen(
     // is just whether the dialog is currently showing.
     var isSystemPromptDialogOpen by rememberSaveable { mutableStateOf(false) }
 
+    // Whether the viewport is at the very bottom of the conversation. Naively deriving this from
+    // canScrollForward alone caused a self-inflicted flicker: appending new streamed content makes
+    // canScrollForward momentarily true again (there's now more below the current view) even
+    // though nobody scrolled — right up until our own catch-up scroll below reaches it — so a
+    // snapshotFlow on canScrollForward toggled this on and off every ~150ms tick during normal
+    // streaming. isProgrammaticScroll distinguishes "we're mid catch-up" (ignore) from a genuine
+    // user-driven scroll (isScrollInProgress goes true without us having asked for it), which is
+    // the only thing allowed to turn auto-follow off; reaching the bottom is what turns it back on.
+    var autoScrollEnabled by remember { mutableStateOf(true) }
+    var isProgrammaticScroll by remember { mutableStateOf(false) }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collect { inProgress ->
+            if (inProgress && !isProgrammaticScroll) {
+                autoScrollEnabled = false
+            }
+        }
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow { !listState.canScrollForward }.collect { atBottom ->
+            if (atBottom) autoScrollEnabled = true
+        }
+    }
+
     LaunchedEffect(
         uiState.messages.size,
         uiState.messages.lastOrNull()?.content,
         uiState.messages.lastOrNull()?.thinkingTimeline,
     ) {
-        // With reverseLayout = true below, index 0 is the newest message and sits at the bottom
-        // of the viewport, so this single call keeps the growing tail pinned in place — no need
-        // to reason about the pixel height of a message that's taller than the screen.
-        if (uiState.messages.isNotEmpty()) {
-            listState.scrollToItem(0)
+        // A large scroll delta clamps to the true end of the content regardless of how tall the
+        // last (currently streaming) message is, keeping its growing tail in view. Messages are in
+        // natural (oldest-first) order with no reverseLayout, so — unlike the anchor used before —
+        // growth at the end never shifts what a user scrolled elsewhere is looking at: its own
+        // anchor item's position is unaffected by content appended after it. Float.MAX_VALUE
+        // itself is deliberately avoided here — LazyListState's internal scroll-distance math can
+        // misbehave at that extreme (observed scrolling to the *top* instead of clamping at the
+        // bottom); comfortably large but finite reaches the same result without the edge case.
+        if (uiState.messages.isNotEmpty() && autoScrollEnabled) {
+            isProgrammaticScroll = true
+            try {
+                listState.scrollBy(LARGE_SCROLL_DELTA_PX)
+            } finally {
+                isProgrammaticScroll = false
+            }
         }
     }
 
@@ -230,12 +270,11 @@ fun ChatScreen(
                         Column(modifier = Modifier.fillMaxSize()) {
                             LazyColumn(
                                 state = listState,
-                                reverseLayout = true,
                                 modifier = Modifier.weight(1f),
                                 contentPadding = PaddingValues(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                items(uiState.messages.asReversed(), key = { it.id }) { message ->
+                                items(uiState.messages, key = { it.id }) { message ->
                                     MessageBubble(
                                         message = message,
                                         onEditMessage = viewModel::onEditMessage,
