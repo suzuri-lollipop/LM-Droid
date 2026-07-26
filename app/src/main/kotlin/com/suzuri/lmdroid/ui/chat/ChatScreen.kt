@@ -140,28 +140,26 @@ fun ChatScreen(
     // is just whether the dialog is currently showing.
     var isSystemPromptDialogOpen by rememberSaveable { mutableStateOf(false) }
 
-    // Whether the viewport is at the very bottom of the conversation. Naively deriving this from
-    // canScrollForward alone caused a self-inflicted flicker: appending new streamed content makes
-    // canScrollForward momentarily true again (there's now more below the current view) even
-    // though nobody scrolled — right up until our own catch-up scroll below reaches it — so a
-    // snapshotFlow on canScrollForward toggled this on and off every ~150ms tick during normal
-    // streaming. isProgrammaticScroll distinguishes "we're mid catch-up" (ignore) from a genuine
-    // user-driven scroll (isScrollInProgress goes true without us having asked for it), which is
-    // the only thing allowed to turn auto-follow off; reaching the bottom is what turns it back on.
+    // Whether to keep auto-following new content to the bottom. "Is the last message merely
+    // somewhere on screen" turned out too loose to gate this on directly: a tall streaming message
+    // stays partially visible across a wide range of scroll positions, so it kept re-triggering
+    // even after scrolling well away from the bottom. Instead this is turned off the moment the
+    // user actually starts dragging/flinging the list (isScrollInProgress, guarded against our own
+    // catch-up scroll below so that doesn't immediately undo itself), and back on once the last
+    // message is on screen again.
     var autoScrollEnabled by remember { mutableStateOf(true) }
-    var isProgrammaticScroll by remember { mutableStateOf(false) }
+    var isCatchUpScroll by remember { mutableStateOf(false) }
 
     LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress }.collect { inProgress ->
-            if (inProgress && !isProgrammaticScroll) {
-                autoScrollEnabled = false
-            }
+        snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
+            if (scrolling && !isCatchUpScroll) autoScrollEnabled = false
         }
     }
     LaunchedEffect(listState) {
-        snapshotFlow { !listState.canScrollForward }.collect { atBottom ->
-            if (atBottom) autoScrollEnabled = true
-        }
+        snapshotFlow {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()
+            lastVisible == null || lastVisible.index == listState.layoutInfo.totalItemsCount - 1
+        }.collect { atBottom -> if (atBottom) autoScrollEnabled = true }
     }
 
     LaunchedEffect(
@@ -170,19 +168,16 @@ fun ChatScreen(
         uiState.messages.lastOrNull()?.thinkingTimeline,
     ) {
         // A large scroll delta clamps to the true end of the content regardless of how tall the
-        // last (currently streaming) message is, keeping its growing tail in view. Messages are in
-        // natural (oldest-first) order with no reverseLayout, so — unlike the anchor used before —
-        // growth at the end never shifts what a user scrolled elsewhere is looking at: its own
-        // anchor item's position is unaffected by content appended after it. Float.MAX_VALUE
-        // itself is deliberately avoided here — LazyListState's internal scroll-distance math can
-        // misbehave at that extreme (observed scrolling to the *top* instead of clamping at the
-        // bottom); comfortably large but finite reaches the same result without the edge case.
+        // last (currently streaming) message is, keeping its growing tail in view — scrollToItem
+        // alone would only show that message starting from its own top. Float.MAX_VALUE itself is
+        // avoided here since LazyListState's internal scroll-distance math can misbehave at that
+        // extreme (observed scrolling to the *top* instead of clamping at the bottom).
         if (uiState.messages.isNotEmpty() && autoScrollEnabled) {
-            isProgrammaticScroll = true
+            isCatchUpScroll = true
             try {
                 listState.scrollBy(LARGE_SCROLL_DELTA_PX)
             } finally {
-                isProgrammaticScroll = false
+                isCatchUpScroll = false
             }
         }
     }
