@@ -55,6 +55,8 @@ import com.suzuri.lmdroid.ui.settings.SettingsRootScreen
 import com.suzuri.lmdroid.ui.settings.SettingsViewModel
 import com.suzuri.lmdroid.ui.settings.SystemSettingsScreen
 import com.suzuri.lmdroid.ui.settings.SystemSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.WebSearchSettingsScreen
+import com.suzuri.lmdroid.ui.settings.WebSearchSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.parent
 import com.suzuri.lmdroid.ui.theme.LmDroidTheme
 import kotlinx.coroutines.launch
@@ -97,6 +99,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val settingsViewModel: SettingsViewModel = viewModel(factory = viewModelFactory)
     val apiProfileListViewModel: ApiProfileListViewModel = viewModel(factory = viewModelFactory)
     val systemSettingsViewModel: SystemSettingsViewModel = viewModel(factory = viewModelFactory)
+    val webSearchSettingsViewModel: WebSearchSettingsViewModel = viewModel(factory = viewModelFactory)
     val historyViewModel: HistoryViewModel = viewModel(factory = viewModelFactory)
 
     // Conversation history lives in a slide-out drawer (opened via the hamburger icon on the
@@ -183,6 +186,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.ApiSettings -> stringResource(R.string.settings_api_category_title)
                                     SettingsRoute.OpenAiCompatible -> stringResource(R.string.settings_openai_compatible_title)
                                     SettingsRoute.System -> stringResource(R.string.settings_system_category_title)
+                                    SettingsRoute.WebSearch -> stringResource(R.string.settings_websearch_category_title)
                                 }
                             },
                             maxLines = 1,
@@ -256,6 +260,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                             SettingsRootScreen(
                                 onNavigateToApiSettings = { settingsRoute = SettingsRoute.ApiSettings },
                                 onNavigateToSystem = { settingsRoute = SettingsRoute.System },
+                                onNavigateToWebSearch = { settingsRoute = SettingsRoute.WebSearch },
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }
@@ -282,6 +287,12 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                         SettingsRoute.System -> {
                             SystemSettingsScreen(
                                 viewModel = systemSettingsViewModel,
+                                modifier = Modifier.padding(innerPadding),
+                            )
+                        }
+                        SettingsRoute.WebSearch -> {
+                            WebSearchSettingsScreen(
+                                viewModel = webSearchSettingsViewModel,
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }

@@ -8,6 +8,7 @@ import com.suzuri.lmdroid.ui.history.HistoryViewModel
 import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsViewModel
 import com.suzuri.lmdroid.ui.settings.SystemSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.WebSearchSettingsViewModel
 
 class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
@@ -19,6 +20,7 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
                 container.apiProfileRepository,
                 container.attachmentFileStore,
                 container.audioRecorder,
+                container.json,
             ) as T
 
         modelClass.isAssignableFrom(SettingsViewModel::class.java) ->
@@ -29,6 +31,9 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
 
         modelClass.isAssignableFrom(SystemSettingsViewModel::class.java) ->
             SystemSettingsViewModel(container.apiProfileRepository, container.settingsRepository) as T
+
+        modelClass.isAssignableFrom(WebSearchSettingsViewModel::class.java) ->
+            WebSearchSettingsViewModel(container.settingsRepository, container.braveSearchClient) as T
 
         modelClass.isAssignableFrom(HistoryViewModel::class.java) ->
             HistoryViewModel(container.conversationRepository) as T

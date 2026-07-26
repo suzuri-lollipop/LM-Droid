@@ -3,6 +3,8 @@ package com.suzuri.lmdroid.data.network
 import app.cash.turbine.test
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -62,6 +64,32 @@ class OpenAiApiClientTest {
 
         val recordedRequest = server.takeRequest()
         assertTrue(recordedRequest.body.readUtf8().contains("\"stream\":true"))
+    }
+
+    @Test
+    fun `streamChatCompletion omits tool_calls, tool_call_id and tools for a plain request`() = runTest {
+        // Regression test: this app's Json config has encodeDefaults=true (needed to keep
+        // "stream" and "max_tokens" from being dropped — see the test above), which would
+        // otherwise also serialize every message with an explicit "tool_calls":null and
+        // "tool_call_id":null, plus a top-level "tools":null, on every single request — even
+        // when no tool-calling feature is in use at all. Several self-hosted OpenAI-compatible
+        // servers return HTTP 500 when a message carries fields their request schema doesn't
+        // defensively handle being null, so these three must stay fully absent unless actually set.
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl).test {
+            awaitItem() // Done
+            awaitComplete()
+        }
+
+        val requestBody = server.takeRequest().body.readUtf8()
+        assertTrue(!requestBody.contains("tool_calls"))
+        assertTrue(!requestBody.contains("tool_call_id"))
+        assertTrue(!requestBody.contains("\"tools\""))
     }
 
     @Test
@@ -171,6 +199,120 @@ class OpenAiApiClientTest {
     }
 
     @Test
+    fun `streamChatCompletion reassembles a tool call streamed across multiple fragments`() = runTest {
+        // OpenAI streams a tool call's id/name up front, then trickles the JSON "arguments"
+        // string in one chunk at a time — this must all be reassembled into a single
+        // RequestedToolCall, not surfaced piecemeal.
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"web_search\",\"arguments\":\"\"}}]}}]}\n\n" +
+                        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"ab\"}}]}}]}\n\n" +
+                        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"c123\"}}]}}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl).test {
+            val event = awaitItem()
+            assertTrue(event is StreamEvent.ToolCallsRequested)
+            val toolCalls = (event as StreamEvent.ToolCallsRequested).toolCalls
+            assertEquals(1, toolCalls.size)
+            assertEquals("call_1", toolCalls[0].id)
+            assertEquals("web_search", toolCalls[0].name)
+            assertEquals("abc123", toolCalls[0].argumentsJson)
+            assertEquals(StreamEvent.Done, awaitItem())
+            awaitComplete()
+        }
+    }
+
+    @Test
+    fun `streamChatCompletion accumulates multiple simultaneous tool calls separately by index`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    "data: {\"choices\":[{\"delta\":{\"tool_calls\":[" +
+                        "{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"web_search\",\"arguments\":\"{}\"}}," +
+                        "{\"index\":1,\"id\":\"call_2\",\"type\":\"function\",\"function\":{\"name\":\"web_search\",\"arguments\":\"{}\"}}" +
+                        "]}}]}\n\n" +
+                        "data: [DONE]\n\n",
+                ),
+        )
+
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl).test {
+            val event = awaitItem()
+            assertTrue(event is StreamEvent.ToolCallsRequested)
+            val toolCalls = (event as StreamEvent.ToolCallsRequested).toolCalls
+            assertEquals(listOf("call_1", "call_2"), toolCalls.map { it.id })
+            assertEquals(StreamEvent.Done, awaitItem())
+            awaitComplete()
+        }
+    }
+
+    @Test
+    fun `streamChatCompletion includes the tools array in the request body when provided`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+
+        val tool = ToolDefinitionDto(
+            function = FunctionSchemaDto(
+                name = "web_search",
+                description = "Search the web.",
+                parameters = JsonObject(mapOf("type" to JsonPrimitive("object"))),
+            ),
+        )
+
+        client.streamChatCompletion(
+            "test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl, tools = listOf(tool),
+        ).test {
+            awaitItem() // Done
+            awaitComplete()
+        }
+
+        val requestBody = server.takeRequest().body.readUtf8()
+        assertTrue(requestBody.contains("\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"web_search\""))
+    }
+
+    @Test
+    fun `streamChatCompletion serializes an assistant tool-call message and a tool result message`() = runTest {
+        // Regression test for the OpenAI tool-calling wire shape: an assistant message that only
+        // requests a tool call has null content plus a "tool_calls" array, and the follow-up
+        // "tool" role message carries its result tagged by "tool_call_id" rather than "content"
+        // alone.
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+
+        val messages = listOf(
+            chatMessage("user", "what's the weather in kyoto?"),
+            ChatMessageDto(
+                role = "assistant",
+                toolCalls = listOf(
+                    ToolCallDto(id = "call_1", function = FunctionCallDto(name = "web_search", arguments = "{\"query\":\"kyoto weather\"}")),
+                ),
+            ),
+            ChatMessageDto(role = "tool", content = MessageContent.Text("sunny today"), toolCallId = "call_1"),
+        )
+
+        client.streamChatCompletion("test-key", "gpt-4o-mini", messages, baseUrl).test {
+            awaitItem() // Done
+            awaitComplete()
+        }
+
+        val requestBody = server.takeRequest().body.readUtf8()
+        assertTrue(requestBody.contains("\"tool_calls\":[{\"id\":\"call_1\""))
+        assertTrue(requestBody.contains("\"tool_call_id\":\"call_1\""))
+        assertTrue(requestBody.contains("\"content\":\"sunny today\""))
+    }
+
+    @Test
     fun `streamChatCompletion ignores malformed chunk and continues`() = runTest {
         server.enqueue(
             MockResponse()
@@ -274,6 +416,54 @@ class OpenAiApiClientTest {
         val result = client.testApiKey("test-key", "not a url")
 
         assertTrue(result.exceptionOrNull() is OpenAiException.BadRequest)
+    }
+
+    @Test
+    fun `listModels extracts model ids from the data array`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                "{\"data\":[{\"id\":\"gpt-4o-mini\"},{\"id\":\"gpt-4o\"}]}",
+            ),
+        )
+
+        val result = client.listModels("test-key", baseUrl)
+
+        assertTrue(result.isSuccess)
+        assertEquals(listOf("gpt-4o-mini", "gpt-4o"), result.getOrNull())
+    }
+
+    @Test
+    fun `listModels succeeds with an empty list when the server genuinely has none`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{\"data\":[]}"))
+
+        val result = client.listModels("test-key", baseUrl)
+
+        assertTrue(result.isSuccess)
+        assertEquals(emptyList<String>(), result.getOrNull())
+    }
+
+    @Test
+    fun `listModels fails rather than silently returning an empty list when the response shape is unrecognized`() =
+        runTest {
+            // Regression test: a 200 response whose body doesn't parse into the expected
+            // {"data": [...]} shape (e.g. a server with a nonstandard /models format) used to
+            // silently resolve to Result.success(emptyList()) — indistinguishable from "this
+            // provider genuinely has zero models" — which left a saved profile with no models
+            // registered and no visible error explaining why.
+            server.enqueue(MockResponse().setResponseCode(200).setBody("not valid json at all"))
+
+            val result = client.listModels("test-key", baseUrl)
+
+            assertTrue(result.isFailure)
+        }
+
+    @Test
+    fun `listModels maps a non-2xx response to a failure`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(401).setBody("{\"error\":{\"message\":\"invalid\"}}"))
+
+        val result = client.listModels("bad-key", baseUrl)
+
+        assertTrue(result.exceptionOrNull() is OpenAiException.InvalidApiKey)
     }
 
     @Test

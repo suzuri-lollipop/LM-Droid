@@ -9,6 +9,7 @@ import com.suzuri.lmdroid.data.attachment.AudioRecorder
 import com.suzuri.lmdroid.data.attachment.SavedAttachment
 import com.suzuri.lmdroid.data.db.MessageWithAttachments
 import com.suzuri.lmdroid.data.db.ModelOptionRow
+import com.suzuri.lmdroid.data.db.ThinkingTimelineEntry
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
 import com.suzuri.lmdroid.data.settings.SettingsRepository
@@ -23,6 +24,8 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import java.util.UUID
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -32,6 +35,7 @@ class ChatViewModel(
     private val apiProfileRepository: ApiProfileRepository,
     private val attachmentFileStore: AttachmentFileStore,
     private val audioRecorder: AudioRecorder,
+    private val json: Json,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -73,6 +77,12 @@ class ChatViewModel(
                 _uiState.update { state ->
                     state.copy(apiKeyMissing = settings.apiKey.isNullOrBlank(), markdownEnabled = settings.markdownEnabled)
                 }
+            }
+        }
+
+        viewModelScope.launch {
+            settingsRepository.systemPrompt.collect { prompt ->
+                _uiState.update { state -> state.copy(systemPrompt = prompt) }
             }
         }
 
@@ -253,6 +263,12 @@ class ChatViewModel(
         viewModelScope.launch { settingsRepository.saveMarkdownEnabled(enabled) }
     }
 
+    /** Saves the app-wide system prompt edited via [com.suzuri.lmdroid.ui.chat.components.SystemPromptDialog]. */
+    fun onSystemPromptChange(value: String) {
+        _uiState.update { it.copy(systemPrompt = value) }
+        viewModelScope.launch { settingsRepository.setSystemPrompt(value) }
+    }
+
     /** Switches which enabled profile/model pair chat uses, from the switcher shown on this screen. */
     fun onSelectModel(option: ModelOptionRow) {
         viewModelScope.launch { settingsRepository.setSelectedChatModel(option.profileId, option.modelId) }
@@ -325,7 +341,11 @@ class ChatViewModel(
         role = message.role,
         content = message.content,
         isError = message.isError,
-        reasoningContent = message.reasoningContent,
+        thinkingTimeline = message.thinkingTimelineJson?.let { raw ->
+            runCatching { json.decodeFromString(ListSerializer(ThinkingTimelineEntry.serializer()), raw) }
+                .onFailure { e -> Log.w(TAG, "Failed to parse thinking timeline for message ${message.id}", e) }
+                .getOrNull()
+        }.orEmpty(),
         attachments = attachments.map { MessageAttachmentUiModel(filePath = it.filePath, mimeType = it.mimeType) },
     )
 

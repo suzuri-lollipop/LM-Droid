@@ -8,11 +8,12 @@ import androidx.compose.ui.res.stringResource
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.ui.settings.components.SettingsMenuRow
 
-/** Top of the Settings drill-down: "API設定" and "システム", with room for more categories later. */
+/** Top of the Settings drill-down: "API設定", "システム" and "Web検索", with room for more categories later. */
 @Composable
 fun SettingsRootScreen(
     onNavigateToApiSettings: () -> Unit,
     onNavigateToSystem: () -> Unit,
+    onNavigateToWebSearch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -23,6 +24,10 @@ fun SettingsRootScreen(
         SettingsMenuRow(
             title = stringResource(R.string.settings_system_category_title),
             onClick = onNavigateToSystem,
+        )
+        SettingsMenuRow(
+            title = stringResource(R.string.settings_websearch_category_title),
+            onClick = onNavigateToWebSearch,
         )
     }
 }

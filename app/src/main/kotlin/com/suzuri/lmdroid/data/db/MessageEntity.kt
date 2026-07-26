@@ -25,7 +25,9 @@ data class MessageEntity(
     val content: String,
     val createdAt: Long,
     val isError: Boolean = false,
-    // The model's chain-of-thought, shown separately in a collapsible "thinking" section —
-    // null for messages that never had a reasoning phase (e.g. the user's own messages).
-    val reasoningContent: String? = null,
+    // The reply's "thinking process" — chain-of-thought reasoning and tool activity (web search /
+    // page fetches), interleaved in the order they actually happened — a JSON-encoded
+    // List<ThinkingTimelineEntry>, shown in a collapsible section. Null for messages that never
+    // had one (e.g. the user's own messages).
+    val thinkingTimelineJson: String? = null,
 )

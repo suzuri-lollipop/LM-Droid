@@ -67,14 +67,28 @@ class SettingsViewModel(
     fun onSave() {
         val id = profileId ?: return
         val state = _uiState.value
+        val apiKey = state.apiKey
+        val baseUrl = state.baseUrl.ifBlank { AppSettings.DEFAULT_BASE_URL }
         viewModelScope.launch {
-            apiProfileRepository.updateProfile(
-                id = id,
-                name = state.profileName,
-                apiKey = state.apiKey,
-                baseUrl = state.baseUrl.ifBlank { AppSettings.DEFAULT_BASE_URL },
-            )
+            apiProfileRepository.updateProfile(id = id, name = state.profileName, apiKey = apiKey, baseUrl = baseUrl)
             _uiState.update { it.copy(saved = true) }
+
+            // Saving a key is also how its models get registered — without this, a profile with
+            // a saved key but no models never shows up as usable in the chat screen's model
+            // switcher unless the user separately remembers to also tap "接続テスト".
+            if (apiKey.isNotBlank()) {
+                val result = apiProfileRepository.refreshModels(id, apiKey, baseUrl)
+                _uiState.update {
+                    it.copy(
+                        testState = result.fold(
+                            onSuccess = { TestConnectionState.Success },
+                            onFailure = { e ->
+                                TestConnectionState.Failure((e as? OpenAiException)?.userMessage ?: "接続に失敗しました。")
+                            },
+                        ),
+                    )
+                }
+            }
         }
     }
 

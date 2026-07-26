@@ -2,6 +2,7 @@ package com.suzuri.lmdroid.ui.chat
 
 import com.suzuri.lmdroid.data.db.MessageRole
 import com.suzuri.lmdroid.data.db.ModelOptionRow
+import com.suzuri.lmdroid.data.db.ThinkingTimelineEntry
 import com.suzuri.lmdroid.data.settings.SelectedModel
 
 data class MessageUiModel(
@@ -9,7 +10,9 @@ data class MessageUiModel(
     val role: MessageRole,
     val content: String,
     val isError: Boolean,
-    val reasoningContent: String? = null,
+    // Chain-of-thought reasoning and tool activity (web search / page fetches), in the order they
+    // actually happened — see ThinkingTimelineEntry.
+    val thinkingTimeline: List<ThinkingTimelineEntry> = emptyList(),
     val attachments: List<MessageAttachmentUiModel> = emptyList(),
 )
 
@@ -58,4 +61,6 @@ data class ChatUiState(
     val pendingAttachments: List<PendingAttachmentUiModel> = emptyList(),
     // True while the mic's long-press-to-record gesture is actively capturing audio.
     val isRecordingVoiceMessage: Boolean = false,
+    // App-wide instruction prepended to every conversation — see SettingsRepository.systemPrompt.
+    val systemPrompt: String = "",
 )

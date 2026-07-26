@@ -55,6 +55,7 @@ import com.mikepenz.markdown.model.markdownPadding
 import com.mikepenz.markdown.model.rememberMarkdownState
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.db.MessageRole
+import com.suzuri.lmdroid.data.db.ThinkingTimelineEntry
 import com.suzuri.lmdroid.ui.chat.MessageUiModel
 
 @Composable
@@ -72,15 +73,15 @@ fun MessageBubble(
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        if (!message.reasoningContent.isNullOrBlank()) {
-            ReasoningSection(
+        if (message.thinkingTimeline.isNotEmpty()) {
+            ThinkingTimelineSection(
                 messageId = message.id,
-                reasoning = message.reasoningContent,
+                timeline = message.thinkingTimeline,
                 isStillThinking = message.content.isBlank() && !message.isError,
             )
         }
 
-        val hasFinalContent = message.content.isNotBlank() || message.reasoningContent.isNullOrBlank()
+        val hasFinalContent = message.content.isNotBlank() || message.thinkingTimeline.isEmpty()
         if (hasFinalContent) {
             when {
                 message.isError -> Text(
@@ -323,12 +324,14 @@ private fun CopyIconButton(text: String) {
 }
 
 /**
- * A tappable, collapsible "thinking" block, similar to how Claude/ChatGPT show a model's
- * chain-of-thought: collapsed by default (just a small header), the user taps it to reveal the
- * raw reasoning text. The header label reflects whether the model is still thinking or done.
+ * A tappable, collapsible "thinking" block, similar to how Claude shows a model's chain-of-thought
+ * alongside its tool use: collapsed by default (just a small header), the user taps it to reveal
+ * the full timeline — reasoning text and tool activity (web search / page fetches) rendered in
+ * the exact order they happened, rather than grouped into separate fixed sections. The header
+ * label reflects whether the model is still thinking or done.
  */
 @Composable
-private fun ReasoningSection(messageId: Long, reasoning: String, isStillThinking: Boolean) {
+private fun ThinkingTimelineSection(messageId: Long, timeline: List<ThinkingTimelineEntry>, isStillThinking: Boolean) {
     var expanded by rememberSaveable(messageId) { mutableStateOf(false) }
 
     Column(
@@ -358,13 +361,39 @@ private fun ReasoningSection(messageId: Long, reasoning: String, isStillThinking
             )
         }
         if (expanded) {
-            Text(
-                text = reasoning,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontStyle = FontStyle.Italic,
+            Column(
                 modifier = Modifier.padding(top = 6.dp),
-            )
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                timeline.forEach { entry ->
+                    when (entry) {
+                        is ThinkingTimelineEntry.Reasoning -> Text(
+                            text = entry.text,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontStyle = FontStyle.Italic,
+                        )
+                        is ThinkingTimelineEntry.ToolActivity -> Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(8.dp))
+                                .padding(8.dp),
+                        ) {
+                            Text(
+                                text = entry.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = entry.content,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

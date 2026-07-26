@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -44,12 +45,13 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The composer: a row of staged image/voice-message previews (when any are attached) above a
- * rounded box with the file-attach button, message text field, mic button and send button on
- * top; below that (when there's a model to switch between) a divider and the model switcher.
- * The mic button is dual-purpose: a quick tap dictates speech to text (see [onVoiceInput]),
- * while pressing and holding records a voice message to attach and send as audio (see
- * [onStartVoiceRecording]/[onStopVoiceRecording]) — mirroring how voice-message apps use the same
- * gesture split.
+ * rounded box with the file-attach button, a system-prompt button, message text field, mic button
+ * and send button on top; below that (when there's a model to switch between) a divider and the
+ * model switcher. The mic button is dual-purpose: a quick tap dictates speech to text (see
+ * [onVoiceInput]), while pressing and holding records a voice message to attach and send as audio
+ * (see [onStartVoiceRecording]/[onStopVoiceRecording]) — mirroring how voice-message apps use the
+ * same gesture split. [onOpenSystemPrompt] opens a dialog (see SystemPromptDialog) to edit the
+ * app-wide system prompt.
  */
 @Composable
 fun ChatInputBar(
@@ -63,6 +65,7 @@ fun ChatInputBar(
     onSelectModel: (ModelOptionRow) -> Unit,
     pendingAttachments: List<PendingAttachmentUiModel>,
     onAttachFile: () -> Unit,
+    onOpenSystemPrompt: () -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onPreviewAttachment: (String) -> Unit,
     isListening: Boolean,
@@ -89,6 +92,13 @@ fun ChatInputBar(
                     Icon(
                         imageVector = Icons.Filled.AttachFile,
                         contentDescription = stringResource(R.string.chat_attach_file),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onOpenSystemPrompt) {
+                    Icon(
+                        imageVector = Icons.Filled.Tune,
+                        contentDescription = stringResource(R.string.chat_system_prompt_title),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

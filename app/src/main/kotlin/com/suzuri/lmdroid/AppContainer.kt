@@ -11,6 +11,8 @@ import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
 import com.suzuri.lmdroid.data.settings.ApiKeyCipher
 import com.suzuri.lmdroid.data.settings.SettingsRepository
+import com.suzuri.lmdroid.data.websearch.BraveSearchClient
+import com.suzuri.lmdroid.data.websearch.WebPageFetcher
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -24,7 +26,7 @@ import java.util.concurrent.TimeUnit
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
 
-    private val json = Json {
+    val json = Json {
         ignoreUnknownKeys = true
         // kotlinx.serialization defaults to omitting fields whose value equals the Kotlin
         // default (e.g. "stream": true, "max_tokens": 256) — which silently dropped "stream"
@@ -75,6 +77,10 @@ class AppContainer(context: Context) {
 
     val audioRecorder = AudioRecorder(attachmentFileStore)
 
+    val braveSearchClient = BraveSearchClient(okHttpClient, json)
+
+    val webPageFetcher = WebPageFetcher(okHttpClient)
+
     val conversationRepository = ConversationRepository(
         conversationDao = database.conversationDao(),
         messageDao = database.messageDao(),
@@ -83,5 +89,8 @@ class AppContainer(context: Context) {
         settingsRepository = settingsRepository,
         openAiApiClient = openAiApiClient,
         attachmentFileStore = attachmentFileStore,
+        braveSearchClient = braveSearchClient,
+        webPageFetcher = webPageFetcher,
+        json = json,
     )
 }

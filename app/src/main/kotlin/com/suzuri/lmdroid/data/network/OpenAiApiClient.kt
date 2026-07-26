@@ -39,10 +39,14 @@ class OpenAiApiClient(
         model: String,
         messages: List<ChatMessageDto>,
         baseUrl: String = DEFAULT_BASE_URL,
+        // Non-null only when a tool-using feature is enabled and still allowed for this turn
+        // (see ConversationRepository's round cap) — offering the model a way to call out on its
+        // own, rather than the app deciding unconditionally what to feed it ahead of time.
+        tools: List<ToolDefinitionDto>? = null,
     ): Flow<StreamEvent> = callbackFlow {
         val requestJson = json.encodeToString(
             ChatCompletionRequest.serializer(),
-            ChatCompletionRequest(model = model, messages = messages, stream = true),
+            ChatCompletionRequest(model = model, messages = messages, stream = true, tools = tools),
         )
         val requestBody = requestJson.toRequestBody(jsonMediaType)
 
@@ -85,6 +89,13 @@ class OpenAiApiClient(
                         return@use
                     }
 
+                    // Keyed by the fragment's index (its position among the calls the model is
+                    // making this turn, not a char offset) — a call's `id`/`function.name` usually
+                    // arrive whole on the first fragment while `arguments` streams in piece by
+                    // piece across many chunks, so everything must be reassembled before it's
+                    // usable. A LinkedHashMap preserves the order calls were first seen in.
+                    val toolCallAccumulators = LinkedHashMap<Int, ToolCallAccumulator>()
+
                     while (isActive && !source.exhausted()) {
                         val rawLine = source.readUtf8Line() ?: break
                         val line = rawLine.trim()
@@ -97,7 +108,6 @@ class OpenAiApiClient(
                         }
 
                         if (data == "[DONE]") {
-                            trySend(StreamEvent.Done)
                             break
                         }
                         val chunk = runCatching {
@@ -118,7 +128,30 @@ class OpenAiApiClient(
                         if (!delta.isNullOrEmpty()) {
                             trySend(StreamEvent.Delta(delta))
                         }
+                        val toolCallFragments = choice?.delta?.toolCalls ?: choice?.message?.toolCalls
+                        toolCallFragments?.forEach { fragment ->
+                            val accumulator = toolCallAccumulators.getOrPut(fragment.index) { ToolCallAccumulator() }
+                            fragment.id?.let { accumulator.id = it }
+                            fragment.function?.name?.let { accumulator.name = accumulator.name.orEmpty() + it }
+                            fragment.function?.arguments?.let { accumulator.arguments.append(it) }
+                        }
                     }
+                    if (toolCallAccumulators.isNotEmpty()) {
+                        val requestedToolCalls = toolCallAccumulators.values.mapNotNull { accumulator ->
+                            val id = accumulator.id
+                            val name = accumulator.name
+                            if (id == null || name == null) {
+                                Log.w(TAG, "Dropping incomplete tool call (id=$id, name=$name)")
+                                null
+                            } else {
+                                RequestedToolCall(id = id, name = name, argumentsJson = accumulator.arguments.toString())
+                            }
+                        }
+                        if (requestedToolCalls.isNotEmpty()) {
+                            trySend(StreamEvent.ToolCallsRequested(requestedToolCalls))
+                        }
+                    }
+                    trySend(StreamEvent.Done)
                     close()
                 }
             } catch (e: IOException) {
@@ -181,13 +214,23 @@ class OpenAiApiClient(
                 okHttpClient.newCall(request).execute().use { response ->
                     val bodyString = response.body?.string()
                     if (!response.isSuccessful) {
+                        Log.w(TAG, "listModels failed: HTTP ${response.code}: ${bodyString?.take(300)}")
                         return@withContext Result.failure(mapToException(null, response.code, bodyString))
                     }
-                    val models = bodyString
-                        ?.let { runCatching { json.decodeFromString(ModelListResponse.serializer(), it) }.getOrNull() }
-                        ?.data
-                        ?.map { it.id }
-                        .orEmpty()
+                    Log.d(TAG, "listModels raw response: $bodyString")
+                    val parsed = bodyString?.let {
+                        runCatching { json.decodeFromString(ModelListResponse.serializer(), it) }
+                            .onFailure { e -> Log.w(TAG, "Failed to parse listModels response: $it", e) }
+                            .getOrNull()
+                    }
+                    if (parsed == null) {
+                        // Distinct from "the server genuinely has zero models" — this is "the
+                        // response didn't match the shape we expected," which must not silently
+                        // resolve to an empty (falsely "successful") model list.
+                        return@withContext Result.failure(IOException("Unable to parse the model list response"))
+                    }
+                    val models = parsed.data.map { it.id }
+                    Log.d(TAG, "listModels extracted ${models.size} model(s): $models")
                     Result.success(models)
                 }
             } catch (e: IOException) {
@@ -425,4 +468,11 @@ class OpenAiApiClient(
             }
         }
     }
+}
+
+/** Mutable, in-progress reassembly of one streamed tool call — see [StreamEvent.ToolCallsRequested]. */
+private class ToolCallAccumulator {
+    var id: String? = null
+    var name: String? = null
+    val arguments: StringBuilder = StringBuilder()
 }

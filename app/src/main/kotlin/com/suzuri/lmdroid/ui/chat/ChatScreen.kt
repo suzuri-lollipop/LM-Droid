@@ -48,6 +48,7 @@ import com.suzuri.lmdroid.ui.chat.components.EmptyConversationGreeting
 import com.suzuri.lmdroid.ui.chat.components.EmptyConversationSuggestions
 import com.suzuri.lmdroid.ui.chat.components.ImagePreviewDialog
 import com.suzuri.lmdroid.ui.chat.components.MessageBubble
+import com.suzuri.lmdroid.ui.chat.components.SystemPromptDialog
 import com.suzuri.lmdroid.ui.chat.components.rememberVoiceInputState
 import kotlinx.coroutines.launch
 
@@ -128,10 +129,15 @@ fun ChatScreen(
     var previewImagePath by rememberSaveable { mutableStateOf<String?>(null) }
     val onPreviewAttachment: (String) -> Unit = { path -> previewImagePath = path }
 
+    // The system-prompt button opens a dialog editing the app-wide instruction (see
+    // SettingsRepository.systemPrompt) — its persisted value lives in uiState.systemPrompt, this
+    // is just whether the dialog is currently showing.
+    var isSystemPromptDialogOpen by rememberSaveable { mutableStateOf(false) }
+
     LaunchedEffect(
         uiState.messages.size,
         uiState.messages.lastOrNull()?.content,
-        uiState.messages.lastOrNull()?.reasoningContent,
+        uiState.messages.lastOrNull()?.thinkingTimeline,
     ) {
         // With reverseLayout = true below, index 0 is the newest message and sits at the bottom
         // of the viewport, so this single call keeps the growing tail pinned in place — no need
@@ -203,6 +209,7 @@ fun ChatScreen(
                                     onSelectModel = viewModel::onSelectModel,
                                     pendingAttachments = uiState.pendingAttachments,
                                     onAttachFile = onAttachFile,
+                                    onOpenSystemPrompt = { isSystemPromptDialogOpen = true },
                                     onRemoveAttachment = viewModel::onRemovePendingAttachment,
                                     onPreviewAttachment = onPreviewAttachment,
                                     isListening = voiceInputState.isListening,
@@ -283,6 +290,7 @@ fun ChatScreen(
                                     onSelectModel = viewModel::onSelectModel,
                                     pendingAttachments = uiState.pendingAttachments,
                                     onAttachFile = onAttachFile,
+                                    onOpenSystemPrompt = { isSystemPromptDialogOpen = true },
                                     onRemoveAttachment = viewModel::onRemovePendingAttachment,
                                     onPreviewAttachment = onPreviewAttachment,
                                     isListening = voiceInputState.isListening,
@@ -303,6 +311,17 @@ fun ChatScreen(
 
         previewImagePath?.let { path ->
             ImagePreviewDialog(filePath = path, onDismiss = { previewImagePath = null })
+        }
+
+        if (isSystemPromptDialogOpen) {
+            SystemPromptDialog(
+                initialValue = uiState.systemPrompt,
+                onSave = { value ->
+                    viewModel.onSystemPromptChange(value)
+                    isSystemPromptDialogOpen = false
+                },
+                onDismiss = { isSystemPromptDialogOpen = false },
+            )
         }
     }
 }

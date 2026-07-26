@@ -90,6 +90,8 @@ dependencies {
 
     implementation(libs.markdown.renderer.m3)
 
+    implementation(libs.jsoup)
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
