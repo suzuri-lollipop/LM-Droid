@@ -1,5 +1,7 @@
 package com.suzuri.lmdroid.ui.chat
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -36,14 +38,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.ui.chat.components.ChatInputBar
 import com.suzuri.lmdroid.ui.chat.components.EmptyConversationGreeting
 import com.suzuri.lmdroid.ui.chat.components.EmptyConversationSuggestions
 import com.suzuri.lmdroid.ui.chat.components.ImagePreviewDialog
 import com.suzuri.lmdroid.ui.chat.components.MessageBubble
+import com.suzuri.lmdroid.ui.chat.components.rememberVoiceInputState
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -57,16 +62,65 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
-    val comingSoonMessage = stringResource(R.string.chat_feature_coming_soon)
-    // Voice input isn't wired up yet — surfaced as "coming soon" rather than silently doing
-    // nothing, so tapping it doesn't look broken.
-    val onVoiceInput: () -> Unit = {
-        coroutineScope.launch { snackbarHostState.showSnackbar(comingSoonMessage) }
-    }
+    val context = LocalContext.current
+
     val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { viewModel.onFileAttached(it) }
     }
     val onAttachFile: () -> Unit = { imagePickerLauncher.launch("image/*") }
+
+    // On-device speech-to-text for the mic button: recognized speech is fed straight into the
+    // input field as plain text, so it works the same regardless of which model is selected for
+    // chat — there's no "model doesn't support this" case, only "this device has no speech
+    // recognition service" (voiceInputState.isAvailable), which some devices genuinely lack.
+    val voiceUnavailableMessage = stringResource(R.string.chat_voice_input_unavailable)
+    val voicePermissionDeniedMessage = stringResource(R.string.chat_voice_input_permission_denied)
+    val voiceInputState = rememberVoiceInputState(
+        onResult = viewModel::onVoiceInputResult,
+        onError = { message -> coroutineScope.launch { snackbarHostState.showSnackbar(message) } },
+    )
+
+    fun hasRecordAudioPermission() =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    // Both dictation (tap) and voice-message recording (long-press) need RECORD_AUDIO — whichever
+    // one triggered the request is resumed once the user grants it.
+    var pendingAfterPermission by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            pendingAfterPermission?.invoke()
+        } else {
+            coroutineScope.launch { snackbarHostState.showSnackbar(voicePermissionDeniedMessage) }
+        }
+        pendingAfterPermission = null
+    }
+    val onVoiceInput: () -> Unit = {
+        when {
+            voiceInputState.isListening -> voiceInputState.stop()
+            !voiceInputState.isAvailable ->
+                coroutineScope.launch { snackbarHostState.showSnackbar(voiceUnavailableMessage) }
+            hasRecordAudioPermission() -> voiceInputState.start()
+            else -> {
+                pendingAfterPermission = { voiceInputState.start() }
+                recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+    // Recording a voice message to send as audio (long-press on the mic) — a separate mechanism
+    // from dictation above: this attaches the raw recording rather than converting it to text, so
+    // an audio-input-capable model can listen to it directly. Unsupported models simply reject
+    // the request with an error, surfaced the same way any other server error is.
+    val onStartVoiceRecording: () -> Unit = {
+        if (hasRecordAudioPermission()) {
+            viewModel.onVoiceRecordingStart()
+        } else {
+            pendingAfterPermission = { viewModel.onVoiceRecordingStart() }
+            recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+    val onStopVoiceRecording: () -> Unit = { viewModel.onVoiceRecordingStop() }
 
     // Tapping any attachment thumbnail (staged or already sent) opens it full-screen — see
     // ImagePreviewDialog, rendered once at the bottom of this screen regardless of which
@@ -151,7 +205,11 @@ fun ChatScreen(
                                     onAttachFile = onAttachFile,
                                     onRemoveAttachment = viewModel::onRemovePendingAttachment,
                                     onPreviewAttachment = onPreviewAttachment,
+                                    isListening = voiceInputState.isListening,
                                     onVoiceInput = onVoiceInput,
+                                    isRecordingVoiceMessage = uiState.isRecordingVoiceMessage,
+                                    onStartVoiceRecording = onStartVoiceRecording,
+                                    onStopVoiceRecording = onStopVoiceRecording,
                                     modifier = inputBarModifier.fillMaxWidth(),
                                 )
                                 Spacer(modifier = Modifier.height(20.dp))
@@ -227,7 +285,11 @@ fun ChatScreen(
                                     onAttachFile = onAttachFile,
                                     onRemoveAttachment = viewModel::onRemovePendingAttachment,
                                     onPreviewAttachment = onPreviewAttachment,
+                                    isListening = voiceInputState.isListening,
                                     onVoiceInput = onVoiceInput,
+                                    isRecordingVoiceMessage = uiState.isRecordingVoiceMessage,
+                                    onStartVoiceRecording = onStartVoiceRecording,
+                                    onStopVoiceRecording = onStopVoiceRecording,
                                     modifier = inputBarModifier,
                                 )
                             }

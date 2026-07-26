@@ -99,6 +99,34 @@ class OpenAiApiClientTest {
     }
 
     @Test
+    fun `streamChatCompletion serializes a voice message as an input_audio content part`() = runTest {
+        // Regression test: the audio-input part carries raw base64 in "data" (no data-URI
+        // prefix, unlike images) plus a separate "format" field, per the OpenAI audio-input shape.
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+
+        val message = ChatMessageDto(
+            role = "user",
+            content = MessageContent.Parts(
+                listOf(ContentPart.AudioPart(InputAudio(data = "AAAA", format = "wav"))),
+            ),
+        )
+
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(message), baseUrl).test {
+            awaitItem() // Done
+            awaitComplete()
+        }
+
+        val requestBody = server.takeRequest().body.readUtf8()
+        assertTrue(requestBody.contains("\"type\":\"input_audio\""))
+        assertTrue(requestBody.contains("\"data\":\"AAAA\""))
+        assertTrue(requestBody.contains("\"format\":\"wav\""))
+    }
+
+    @Test
     fun `streamChatCompletion emits deltas then done`() = runTest {
         server.enqueue(
             MockResponse()

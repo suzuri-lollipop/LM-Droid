@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.suzuri.lmdroid.data.attachment.AttachmentFileStore
+import com.suzuri.lmdroid.data.attachment.AudioRecorder
 import com.suzuri.lmdroid.data.attachment.SavedAttachment
 import com.suzuri.lmdroid.data.db.MessageWithAttachments
 import com.suzuri.lmdroid.data.db.ModelOptionRow
@@ -30,6 +31,7 @@ class ChatViewModel(
     private val settingsRepository: SettingsRepository,
     private val apiProfileRepository: ApiProfileRepository,
     private val attachmentFileStore: AttachmentFileStore,
+    private val audioRecorder: AudioRecorder,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -114,9 +116,18 @@ class ChatViewModel(
         _uiState.update { it.copy(input = value) }
     }
 
+    /** Appends dictated speech to whatever's already typed (rather than replacing it outright). */
+    fun onVoiceInputResult(text: String) {
+        _uiState.update { state ->
+            state.copy(input = if (state.input.isBlank()) text else "${state.input} $text")
+        }
+    }
+
     fun onSend() {
-        val text = _uiState.value.input.trim()
-        val attachments = _uiState.value.pendingAttachments
+        performSend(_uiState.value.input.trim(), _uiState.value.pendingAttachments)
+    }
+
+    private fun performSend(text: String, attachments: List<PendingAttachmentUiModel>) {
         if ((text.isEmpty() && attachments.isEmpty()) || _uiState.value.isStreaming) return
 
         _uiState.update { it.copy(input = "", pendingAttachments = emptyList(), errorMessage = null) }
@@ -157,6 +168,37 @@ class ChatViewModel(
         val toRemove = _uiState.value.pendingAttachments.find { it.id == id } ?: return
         _uiState.update { it.copy(pendingAttachments = it.pendingAttachments.filterNot { a -> a.id == id }) }
         viewModelScope.launch { attachmentFileStore.delete(toRemove.filePath) }
+    }
+
+    /**
+     * Starts recording a voice message (the composer's mic long-press) — a separate mechanism
+     * from [onVoiceInputResult]'s on-device dictation: this captures raw audio to attach and send
+     * to an audio-input-capable model, rather than converting speech to text locally. The caller
+     * is expected to have already confirmed RECORD_AUDIO permission.
+     */
+    fun onVoiceRecordingStart() {
+        _uiState.update { it.copy(isRecordingVoiceMessage = true) }
+        audioRecorder.start(viewModelScope)
+    }
+
+    /**
+     * Stops recording and sends immediately — unlike a picked image, a voice message isn't staged
+     * for the user to review and separately hit Send on; releasing the mic *is* the send action,
+     * the same way letting go in a voice-messaging app sends it. Whatever's currently typed (if
+     * anything) goes along with it, exactly as a normal send would.
+     */
+    fun onVoiceRecordingStop() {
+        viewModelScope.launch {
+            val file = audioRecorder.stop()
+            _uiState.update { it.copy(isRecordingVoiceMessage = false) }
+            if (file == null) return@launch
+            val voiceAttachment = PendingAttachmentUiModel(
+                id = UUID.randomUUID().toString(),
+                filePath = file.absolutePath,
+                mimeType = "audio/wav",
+            )
+            performSend(_uiState.value.input.trim(), _uiState.value.pendingAttachments + voiceAttachment)
+        }
     }
 
     /**
@@ -256,6 +298,7 @@ class ChatViewModel(
      */
     fun startNewConversation() {
         sendJob?.cancel()
+        audioRecorder.cancel()
         conversationId.value = null
         val orphanedAttachments = _uiState.value.pendingAttachments
         _uiState.update {
@@ -265,6 +308,7 @@ class ChatViewModel(
                 input = "",
                 errorMessage = null,
                 pendingAttachments = emptyList(),
+                isRecordingVoiceMessage = false,
             )
         }
         if (orphanedAttachments.isNotEmpty()) {
@@ -282,7 +326,7 @@ class ChatViewModel(
         content = message.content,
         isError = message.isError,
         reasoningContent = message.reasoningContent,
-        attachmentPaths = attachments.map { it.filePath },
+        attachments = attachments.map { MessageAttachmentUiModel(filePath = it.filePath, mimeType = it.mimeType) },
     )
 
     private companion object {

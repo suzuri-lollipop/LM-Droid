@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.room.Room
 import com.suzuri.lmdroid.data.attachment.AttachmentFileStore
+import com.suzuri.lmdroid.data.attachment.AudioRecorder
 import com.suzuri.lmdroid.data.db.AppDatabase
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
@@ -71,6 +72,8 @@ class AppContainer(context: Context) {
     )
 
     val attachmentFileStore = AttachmentFileStore(appContext)
+
+    val audioRecorder = AudioRecorder(attachmentFileStore)
 
     val conversationRepository = ConversationRepository(
         conversationDao = database.conversationDao(),

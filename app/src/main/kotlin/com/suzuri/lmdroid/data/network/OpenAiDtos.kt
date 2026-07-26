@@ -45,10 +45,19 @@ sealed class ContentPart {
     @Serializable
     @SerialName("image_url")
     data class ImagePart(@SerialName("image_url") val imageUrl: ImageUrl) : ContentPart()
+
+    /** A recorded voice message, for audio-input-capable models — unsupported models reject this with an error. */
+    @Serializable
+    @SerialName("input_audio")
+    data class AudioPart(@SerialName("input_audio") val inputAudio: InputAudio) : ContentPart()
 }
 
 @Serializable
 data class ImageUrl(val url: String)
+
+/** [data] is raw base64 audio bytes (no data-URI prefix) — [format] is a separate field, e.g. "wav". */
+@Serializable
+data class InputAudio(val data: String, val format: String)
 
 object MessageContentSerializer : KSerializer<MessageContent> {
     override val descriptor: SerialDescriptor = buildClassSerialDescriptor("MessageContent")

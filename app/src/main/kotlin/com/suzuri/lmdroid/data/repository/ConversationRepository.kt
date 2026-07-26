@@ -16,6 +16,7 @@ import com.suzuri.lmdroid.data.db.MessageWithAttachments
 import com.suzuri.lmdroid.data.network.ChatMessageDto
 import com.suzuri.lmdroid.data.network.ContentPart
 import com.suzuri.lmdroid.data.network.ImageUrl
+import com.suzuri.lmdroid.data.network.InputAudio
 import com.suzuri.lmdroid.data.network.MessageContent
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.network.OpenAiException
@@ -351,7 +352,13 @@ class ConversationRepository(
         return SendResult.Success
     }
 
-    /** A segment with no attachments keeps the plain-string wire format; one with any becomes a vision content array. */
+    /**
+     * A segment with no attachments keeps the plain-string wire format; one with any becomes a
+     * content-parts array — images as "image_url" (Vision), voice recordings as "input_audio"
+     * (Audio). A server whose model doesn't support one of these simply rejects the request; there
+     * is no reliable way to know a model's supported modalities ahead of time from a generic
+     * OpenAI-compatible /models listing, so that error just surfaces to the user as-is.
+     */
     private suspend fun buildChatMessageDto(
         role: MessageRole,
         text: String,
@@ -365,8 +372,14 @@ class ConversationRepository(
             parts += ContentPart.TextPart(text)
         }
         attachments.forEach { attachment ->
-            val dataUri = attachmentFileStore.readAsDataUri(SavedAttachment(attachment.filePath, attachment.mimeType))
-            parts += ContentPart.ImagePart(ImageUrl(dataUri))
+            if (attachment.mimeType.startsWith("audio/")) {
+                val base64 = attachmentFileStore.readAsBase64(attachment.filePath)
+                val format = attachment.mimeType.substringAfter('/')
+                parts += ContentPart.AudioPart(InputAudio(data = base64, format = format))
+            } else {
+                val dataUri = attachmentFileStore.readAsDataUri(SavedAttachment(attachment.filePath, attachment.mimeType))
+                parts += ContentPart.ImagePart(ImageUrl(dataUri))
+            }
         }
         return ChatMessageDto(role = role.toApiRole(), content = MessageContent.Parts(parts))
     }

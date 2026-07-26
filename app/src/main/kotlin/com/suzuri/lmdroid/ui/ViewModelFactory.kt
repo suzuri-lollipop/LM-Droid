@@ -18,6 +18,7 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
                 container.settingsRepository,
                 container.apiProfileRepository,
                 container.attachmentFileStore,
+                container.audioRecorder,
             ) as T
 
         modelClass.isAssignableFrom(SettingsViewModel::class.java) ->

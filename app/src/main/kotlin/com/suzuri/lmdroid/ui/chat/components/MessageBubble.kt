@@ -148,13 +148,21 @@ private fun UserBubble(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.End,
     ) {
-        if (message.attachmentPaths.isNotEmpty()) {
+        if (message.attachments.isNotEmpty()) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.padding(bottom = 6.dp),
             ) {
-                message.attachmentPaths.forEach { path ->
-                    AttachmentThumbnail(filePath = path, size = 96.dp, onClick = { onPreviewAttachment(path) })
+                message.attachments.forEach { attachment ->
+                    if (attachment.mimeType.startsWith("audio/")) {
+                        AudioAttachmentChip(filePath = attachment.filePath)
+                    } else {
+                        AttachmentThumbnail(
+                            filePath = attachment.filePath,
+                            size = 96.dp,
+                            onClick = { onPreviewAttachment(attachment.filePath) },
+                        )
+                    }
                 }
             }
         }
@@ -196,33 +204,37 @@ private fun UserBubble(
                 }
             }
         } else {
-            Box(
-                modifier = Modifier
-                    .widthIn(max = 320.dp)
-                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(18.dp))
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                if (markdownEnabled) {
-                    // retainState = true avoids flickering to a blank loading state on every
-                    // edit-and-regenerate re-render (see the assistant-side comment above).
-                    val markdownState = rememberMarkdownState(content = message.content, retainState = true)
-                    // No modifier size overrides here: Markdown() defaults its own modifier to
-                    // fillMaxSize(), which would force this bubble to the full 320.dp cap for
-                    // every message. Passing the bare Modifier keeps it sized to content, like
-                    // Text did.
-                    Markdown(
-                        markdownState = markdownState,
-                        colors = markdownColor(
-                            text = MaterialTheme.colorScheme.onPrimary,
-                            codeBackground = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
-                            inlineCodeBackground = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
-                        ),
-                        padding = userMarkdownPadding(),
-                        modifier = Modifier,
-                    )
-                } else {
-                    Text(text = message.content, color = MaterialTheme.colorScheme.onPrimary)
+            // A voice-message-only send has no text at all — an empty bubble here would just be
+            // a blank rounded box sitting under the attachment with nothing in it.
+            if (message.content.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 320.dp)
+                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(18.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    if (markdownEnabled) {
+                        // retainState = true avoids flickering to a blank loading state on every
+                        // edit-and-regenerate re-render (see the assistant-side comment above).
+                        val markdownState = rememberMarkdownState(content = message.content, retainState = true)
+                        // No modifier size overrides here: Markdown() defaults its own modifier to
+                        // fillMaxSize(), which would force this bubble to the full 320.dp cap for
+                        // every message. Passing the bare Modifier keeps it sized to content, like
+                        // Text did.
+                        Markdown(
+                            markdownState = markdownState,
+                            colors = markdownColor(
+                                text = MaterialTheme.colorScheme.onPrimary,
+                                codeBackground = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
+                                inlineCodeBackground = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
+                            ),
+                            padding = userMarkdownPadding(),
+                            modifier = Modifier,
+                        )
+                    } else {
+                        Text(text = message.content, color = MaterialTheme.colorScheme.onPrimary)
+                    }
                 }
             }
             Row {

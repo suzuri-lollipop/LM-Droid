@@ -24,7 +24,9 @@
     <string name="chat_attachment_permission_denied">画像の保存には権限が必要です</string>
     <string name="chat_attachment_share">共有</string>
     <string name="chat_voice_input">音声入力</string>
-    <string name="chat_feature_coming_soon">この機能は近日対応予定です</string>
+    <string name="chat_voice_input_unavailable">この端末は音声入力に対応していません</string>
+    <string name="chat_voice_input_permission_denied">音声入力にはマイクの権限が必要です</string>
+    <string name="chat_voice_message_label">音声メッセージ</string>
     <string name="chat_empty_greeting">今日は何をお手伝いしましょうか？</string>
     <string name="chat_suggestion_brainstorm">アイデアをブレインストーミングして</string>
     <string name="chat_suggestion_summarize">長い文章の要約を手伝って</string>

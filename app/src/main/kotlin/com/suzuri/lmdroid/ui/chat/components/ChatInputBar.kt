@@ -1,6 +1,9 @@
 package com.suzuri.lmdroid.ui.chat.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,18 +33,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.db.ModelOptionRow
 import com.suzuri.lmdroid.data.settings.SelectedModel
 import com.suzuri.lmdroid.ui.chat.PendingAttachmentUiModel
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * The composer: a rounded box with the file-attach button, message text field, voice-input
- * button and send button on top; below that, its own row of staged image previews (when any are
- * attached); and below that (when there's a model to switch between) a divider and the model
- * switcher — each concern gets its own tier rather than sharing one.
+ * The composer: a row of staged image/voice-message previews (when any are attached) above a
+ * rounded box with the file-attach button, message text field, mic button and send button on
+ * top; below that (when there's a model to switch between) a divider and the model switcher.
+ * The mic button is dual-purpose: a quick tap dictates speech to text (see [onVoiceInput]),
+ * while pressing and holding records a voice message to attach and send as audio (see
+ * [onStartVoiceRecording]/[onStopVoiceRecording]) — mirroring how voice-message apps use the same
+ * gesture split.
  */
 @Composable
 fun ChatInputBar(
@@ -57,7 +65,11 @@ fun ChatInputBar(
     onAttachFile: () -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onPreviewAttachment: (String) -> Unit,
+    isListening: Boolean,
     onVoiceInput: () -> Unit,
+    isRecordingVoiceMessage: Boolean,
+    onStartVoiceRecording: () -> Unit,
+    onStopVoiceRecording: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -100,11 +112,36 @@ fun ChatInputBar(
                     ),
                 )
 
-                IconButton(onClick = onVoiceInput) {
+                // A plain Box (not IconButton) so a custom tap-vs-long-press gesture can be laid
+                // on top without fighting IconButton's own built-in click handling.
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown()
+                                val releasedQuickly = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                                    waitForUpOrCancellation()
+                                } != null
+                                if (releasedQuickly) {
+                                    onVoiceInput()
+                                } else {
+                                    onStartVoiceRecording()
+                                    waitForUpOrCancellation()
+                                    onStopVoiceRecording()
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Icon(
                         imageVector = Icons.Filled.Mic,
                         contentDescription = stringResource(R.string.chat_voice_input),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = if (isListening || isRecordingVoiceMessage) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     )
                 }
 
@@ -158,12 +195,19 @@ fun ChatInputBar(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     pendingAttachments.forEach { attachment ->
-                        AttachmentThumbnail(
-                            filePath = attachment.filePath,
-                            size = 56.dp,
-                            onRemove = { onRemoveAttachment(attachment.id) },
-                            onClick = { onPreviewAttachment(attachment.filePath) },
-                        )
+                        if (attachment.mimeType.startsWith("audio/")) {
+                            AudioAttachmentChip(
+                                filePath = attachment.filePath,
+                                onRemove = { onRemoveAttachment(attachment.id) },
+                            )
+                        } else {
+                            AttachmentThumbnail(
+                                filePath = attachment.filePath,
+                                size = 56.dp,
+                                onRemove = { onRemoveAttachment(attachment.id) },
+                                onClick = { onPreviewAttachment(attachment.filePath) },
+                            )
+                        }
                     }
                 }
             }

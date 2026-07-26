@@ -10,10 +10,16 @@ data class MessageUiModel(
     val content: String,
     val isError: Boolean,
     val reasoningContent: String? = null,
-    val attachmentPaths: List<String> = emptyList(),
+    val attachments: List<MessageAttachmentUiModel> = emptyList(),
 )
 
-/** An image attached to the composer but not sent yet — [id] is a local key for removal, distinct from any DB row. */
+/** One image or voice-message attachment on an already-sent message. */
+data class MessageAttachmentUiModel(
+    val filePath: String,
+    val mimeType: String,
+)
+
+/** An image or voice message attached to the composer but not sent yet — [id] is a local key for removal, distinct from any DB row. */
 data class PendingAttachmentUiModel(
     val id: String,
     val filePath: String,
@@ -50,4 +56,6 @@ data class ChatUiState(
     val selectedModel: SelectedModel? = null,
     // Images picked via the composer's attach button, staged until the message is actually sent.
     val pendingAttachments: List<PendingAttachmentUiModel> = emptyList(),
+    // True while the mic's long-press-to-record gesture is actively capturing audio.
+    val isRecordingVoiceMessage: Boolean = false,
 )

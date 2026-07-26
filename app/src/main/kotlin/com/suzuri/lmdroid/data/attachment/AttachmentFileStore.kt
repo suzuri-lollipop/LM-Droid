@@ -10,24 +10,28 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
-/** A single saved attachment: an already-downscaled, re-encoded JPEG living in app-private storage. */
+/** A single saved attachment (image or audio) living in app-private storage — see [AttachmentFileStore]. */
 data class SavedAttachment(
     val filePath: String,
     val mimeType: String,
 )
 
 /**
- * Persists picked attachment images into app-private storage rather than referencing the
- * picker's content:// URI directly — that URI's read grant isn't guaranteed to survive an app
- * restart. Images are downscaled and re-encoded as JPEG on the way in: an un-resized phone photo
- * can be tens of megabytes, which base64-inflates into a request body many vision-capable
- * OpenAI-compatible servers will reject or choke on.
+ * Persists picked attachment images (and, via [newAttachmentFile], recorded voice messages — see
+ * AudioRecorder) into app-private storage rather than referencing the picker's content:// URI
+ * directly — that URI's read grant isn't guaranteed to survive an app restart. Images are
+ * downscaled and re-encoded as JPEG on the way in: an un-resized phone photo can be tens of
+ * megabytes, which base64-inflates into a request body many vision-capable OpenAI-compatible
+ * servers will reject or choke on.
  */
 class AttachmentFileStore(context: Context) {
     private val appContext = context.applicationContext
-    private val attachmentsDir: File by lazy {
+    val attachmentsDir: File by lazy {
         File(appContext.filesDir, "attachments").apply { mkdirs() }
     }
+
+    /** A fresh, uniquely-named file under [attachmentsDir] — shared by image saving and audio recording alike. */
+    fun newAttachmentFile(extension: String): File = File(attachmentsDir, "${UUID.randomUUID()}.$extension")
 
     suspend fun save(uri: Uri): SavedAttachment = withContext(Dispatchers.IO) {
         // decodeStream with inJustDecodeBounds = true always returns null by contract (it only
@@ -45,7 +49,7 @@ class AttachmentFileStore(context: Context) {
 
         val finalBitmap = downscaleIfNeeded(sampledBitmap, MAX_DIMENSION_PX)
 
-        val file = File(attachmentsDir, "${UUID.randomUUID()}.jpg")
+        val file = newAttachmentFile("jpg")
         file.outputStream().use { out -> finalBitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out) }
 
         if (finalBitmap !== sampledBitmap) sampledBitmap.recycle()
@@ -56,9 +60,16 @@ class AttachmentFileStore(context: Context) {
 
     /** Reads a saved attachment back out as a base64 data URI, for the vision request format. */
     suspend fun readAsDataUri(attachment: SavedAttachment): String = withContext(Dispatchers.IO) {
-        val bytes = File(attachment.filePath).readBytes()
-        "data:${attachment.mimeType};base64,${Base64.encodeToString(bytes, Base64.NO_WRAP)}"
+        "data:${attachment.mimeType};base64,${encodeBase64(attachment.filePath)}"
     }
+
+    /** Raw base64 (no data-URI prefix) — the audio-input content part carries format separately. */
+    suspend fun readAsBase64(filePath: String): String = withContext(Dispatchers.IO) {
+        encodeBase64(filePath)
+    }
+
+    private fun encodeBase64(filePath: String): String =
+        Base64.encodeToString(File(filePath).readBytes(), Base64.NO_WRAP)
 
     suspend fun delete(filePath: String) = withContext(Dispatchers.IO) {
         runCatching { File(filePath).delete() }
