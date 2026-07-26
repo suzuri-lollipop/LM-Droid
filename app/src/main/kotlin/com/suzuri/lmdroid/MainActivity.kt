@@ -1,5 +1,6 @@
 package com.suzuri.lmdroid
 
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -29,6 +31,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -57,9 +60,14 @@ import com.suzuri.lmdroid.ui.settings.LocationSettingsScreen
 import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.OpenAiCompatibleScreen
 import com.suzuri.lmdroid.ui.settings.SettingsExportViewModel
+import com.suzuri.lmdroid.ui.settings.SettingsImportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsRoute
 import com.suzuri.lmdroid.ui.settings.SettingsRootScreen
 import com.suzuri.lmdroid.ui.settings.SettingsViewModel
+import com.suzuri.lmdroid.ui.settings.SystemPromptEditScreen
+import com.suzuri.lmdroid.ui.settings.SystemPromptEditViewModel
+import com.suzuri.lmdroid.ui.settings.SystemPromptListScreen
+import com.suzuri.lmdroid.ui.settings.SystemPromptListViewModel
 import com.suzuri.lmdroid.ui.settings.SystemSettingsScreen
 import com.suzuri.lmdroid.ui.settings.SystemSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.WebSearchSettingsScreen
@@ -101,6 +109,10 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     // there (profiles are created immediately when added, so there's no "editing a new/unsaved
     // profile" state to represent here).
     var editingProfileId by rememberSaveable { mutableStateOf<Long?>(null) }
+    // Same idea as editingProfileId, but for SystemPromptEdit — always set to a real,
+    // already-created prompt id just before navigating there (prompts are created immediately
+    // when added, same as API profiles).
+    var editingSystemPromptId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     // Hoisted here (not inside the Scaffold content lambda) so the top bar's actions can also
     // reach them — e.g. tapping "new chat" from the history drawer.
@@ -110,8 +122,11 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val systemSettingsViewModel: SystemSettingsViewModel = viewModel(factory = viewModelFactory)
     val webSearchSettingsViewModel: WebSearchSettingsViewModel = viewModel(factory = viewModelFactory)
     val locationSettingsViewModel: LocationSettingsViewModel = viewModel(factory = viewModelFactory)
+    val systemPromptListViewModel: SystemPromptListViewModel = viewModel(factory = viewModelFactory)
+    val systemPromptEditViewModel: SystemPromptEditViewModel = viewModel(factory = viewModelFactory)
     val historyViewModel: HistoryViewModel = viewModel(factory = viewModelFactory)
     val settingsExportViewModel: SettingsExportViewModel = viewModel(factory = viewModelFactory)
+    val settingsImportViewModel: SettingsImportViewModel = viewModel(factory = viewModelFactory)
 
     val context = LocalContext.current
     val exportScope = rememberCoroutineScope()
@@ -129,6 +144,17 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
             }
             Toast.makeText(context, if (result.isSuccess) exportSucceededMessage else exportFailedMessage, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    val importScope = rememberCoroutineScope()
+    val importFailedMessage = stringResource(R.string.settings_import_failure)
+    val importSucceededMessage = stringResource(R.string.settings_import_success)
+    // Importing overwrites several app-wide settings (see SettingsImporter), so the picked file is
+    // held here and only actually read/applied once the user confirms the dialog below — rather
+    // than acting the instant a file is picked, in case the wrong file was chosen by mistake.
+    var pendingImportUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) pendingImportUri = uri
     }
 
     // Conversation history lives in a slide-out drawer (opened via the hamburger icon on the
@@ -217,6 +243,8 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.System -> stringResource(R.string.settings_system_category_title)
                                     SettingsRoute.WebSearch -> stringResource(R.string.settings_websearch_category_title)
                                     SettingsRoute.Location -> stringResource(R.string.settings_location_category_title)
+                                    SettingsRoute.SystemPromptList -> stringResource(R.string.settings_system_prompt_category_title)
+                                    SettingsRoute.SystemPromptEdit -> stringResource(R.string.settings_system_prompt_category_title)
                                 }
                             },
                             maxLines = 1,
@@ -281,6 +309,10 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                             settingsRoute = SettingsRoute.ApiSettings
                             currentScreen = Screen.Settings
                         },
+                        onManageSystemPrompts = {
+                            settingsRoute = SettingsRoute.SystemPromptList
+                            currentScreen = Screen.Settings
+                        },
                         modifier = Modifier.padding(innerPadding),
                     )
                 }
@@ -292,7 +324,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 onNavigateToSystem = { settingsRoute = SettingsRoute.System },
                                 onNavigateToWebSearch = { settingsRoute = SettingsRoute.WebSearch },
                                 onNavigateToLocation = { settingsRoute = SettingsRoute.Location },
-                                onExportSettings = { exportLauncher.launch(EXPORT_FILE_NAME) },
+                                onNavigateToSystemPrompts = { settingsRoute = SettingsRoute.SystemPromptList },
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }
@@ -319,6 +351,8 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                         SettingsRoute.System -> {
                             SystemSettingsScreen(
                                 viewModel = systemSettingsViewModel,
+                                onExportSettings = { exportLauncher.launch(EXPORT_FILE_NAME) },
+                                onImportSettings = { importLauncher.launch(arrayOf("*/*")) },
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }
@@ -334,9 +368,58 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }
+                        SettingsRoute.SystemPromptList -> {
+                            SystemPromptListScreen(
+                                viewModel = systemPromptListViewModel,
+                                onNavigateToPrompt = { id ->
+                                    editingSystemPromptId = id
+                                    settingsRoute = SettingsRoute.SystemPromptEdit
+                                },
+                                modifier = Modifier.padding(innerPadding),
+                            )
+                        }
+                        SettingsRoute.SystemPromptEdit -> {
+                            val id = editingSystemPromptId
+                            if (id != null) {
+                                SystemPromptEditScreen(
+                                    viewModel = systemPromptEditViewModel,
+                                    promptId = id,
+                                    modifier = Modifier.padding(innerPadding),
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+
+    pendingImportUri?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { pendingImportUri = null },
+            title = { Text(stringResource(R.string.settings_import_confirm_title)) },
+            text = { Text(stringResource(R.string.settings_import_confirm_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingImportUri = null
+                    importScope.launch {
+                        val result = runCatching {
+                            val yaml = context.contentResolver.openInputStream(uri)?.use { stream ->
+                                stream.readBytes().toString(Charsets.UTF_8)
+                            } ?: error("Unable to open $uri for reading")
+                            settingsImportViewModel.importFromYaml(yaml).getOrThrow()
+                        }
+                        Toast.makeText(context, if (result.isSuccess) importSucceededMessage else importFailedMessage, Toast.LENGTH_SHORT).show()
+                    }
+                }) {
+                    Text(stringResource(R.string.settings_import_confirm_button))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingImportUri = null }) {
+                    Text(stringResource(R.string.chat_edit_cancel))
+                }
+            },
+        )
     }
 }

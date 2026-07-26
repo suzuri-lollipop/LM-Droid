@@ -28,8 +28,7 @@
     <string name="chat_voice_input_permission_denied">音声入力にはマイクの権限が必要です</string>
     <string name="chat_voice_message_label">音声メッセージ</string>
     <string name="chat_system_prompt_title">システムプロンプト</string>
-    <string name="chat_system_prompt_description">すべての会話に適用される追加の指示です。空欄の場合は設定されません。</string>
-    <string name="chat_system_prompt_placeholder">例: 常に日本語の敬語で回答してください</string>
+    <string name="chat_system_prompt_empty_message">まだシステムプロンプトがありません。「管理」から追加してください。</string>
     <string name="chat_empty_greeting">今日は何をお手伝いしましょうか？</string>
     <string name="chat_suggestion_brainstorm">アイデアをブレインストーミングして</string>
     <string name="chat_suggestion_summarize">長い文章の要約を手伝って</string>
@@ -60,6 +59,19 @@
     <string name="settings_system_description">会話タイトルの生成や入力例の提案に使うモデルを選択します。未選択の場合はチャットで選択中のモデルが使われます。</string>
     <string name="settings_system_use_chat_model">チャットと同じモデルを使う</string>
 
+    <string name="settings_system_prompt_category_title">システムプロンプト</string>
+    <string name="system_prompt_empty_message">まだプロファイルがありません。＋で追加してください</string>
+    <string name="system_prompt_content_empty">内容未設定</string>
+    <string name="system_prompt_delete">このシステムプロンプトを削除</string>
+    <string name="system_prompt_add">システムプロンプトを追加</string>
+    <string name="system_prompt_create">作成</string>
+    <string name="system_prompt_name_label">名前</string>
+    <string name="system_prompt_name_placeholder">例: 敬語で回答</string>
+    <string name="system_prompt_content_label">内容</string>
+    <string name="system_prompt_content_placeholder">例: 常に日本語の敬語で回答してください</string>
+    <string name="system_prompt_manage">管理</string>
+    <string name="system_prompt_close">閉じる</string>
+
     <string name="settings_websearch_category_title">Web検索</string>
     <string name="websearch_enable_label">Web検索を有効にする</string>
     <string name="websearch_enable_description">有効にすると、AIが必要だと判断した時に自らWeb検索やページ内容の取得を行い、その結果を参考にして返信できるようになります。</string>
@@ -76,6 +88,13 @@
     <string name="settings_export_title">設定をエクスポート</string>
     <string name="settings_export_success">設定をエクスポートしました</string>
     <string name="settings_export_failure">エクスポートに失敗しました</string>
+
+    <string name="settings_import_title">設定をインポート</string>
+    <string name="settings_import_success">設定をインポートしました</string>
+    <string name="settings_import_failure">インポートに失敗しました。ファイルの形式を確認してください</string>
+    <string name="settings_import_confirm_title">設定をインポート</string>
+    <string name="settings_import_confirm_message">APIプロファイルとシステムプロンプトは追加登録されます。モデル選択やWeb検索・位置情報などの設定は、この内容で上書きされます。続けますか？</string>
+    <string name="settings_import_confirm_button">インポート</string>
 
     <string name="history_title">履歴</string>
     <string name="history_new_conversation">新しい会話</string>

@@ -63,6 +63,7 @@ private const val LARGE_SCROLL_DELTA_PX = 100_000f
 fun ChatScreen(
     viewModel: ChatViewModel,
     onNavigateToSettings: () -> Unit,
+    onManageSystemPrompts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -349,10 +350,12 @@ fun ChatScreen(
 
         if (isSystemPromptDialogOpen) {
             SystemPromptDialog(
-                initialValue = uiState.systemPrompt,
-                onSave = { value ->
-                    viewModel.onSystemPromptChange(value)
+                prompts = uiState.systemPrompts,
+                selectedIds = uiState.selectedSystemPromptIds,
+                onToggle = viewModel::onToggleSystemPrompt,
+                onManage = {
                     isSystemPromptDialogOpen = false
+                    onManageSystemPrompts()
                 },
                 onDismiss = { isSystemPromptDialogOpen = false },
             )

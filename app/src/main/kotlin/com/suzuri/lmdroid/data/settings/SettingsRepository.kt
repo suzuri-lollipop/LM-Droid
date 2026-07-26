@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.suzuri.lmdroid.data.db.ApiProfileDao
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
@@ -121,6 +122,19 @@ class SettingsRepository(
         return ApiKeyCipher.Encrypted(ciphertext, iv)
     }
 
+    /** Counterpart to [currentBraveSearchApiKeyEncrypted] — stores an already-encrypted ciphertext+IV directly (e.g. from SettingsImporter) without ever handling a plaintext key. Null clears the stored key. */
+    suspend fun setBraveSearchApiKeyEncrypted(encrypted: ApiKeyCipher.Encrypted?) {
+        context.settingsDataStore.edit { prefs ->
+            if (encrypted == null) {
+                prefs.remove(KEY_BRAVE_API_KEY_CIPHERTEXT)
+                prefs.remove(KEY_BRAVE_API_KEY_IV)
+            } else {
+                prefs[KEY_BRAVE_API_KEY_CIPHERTEXT] = encrypted.ciphertextBase64
+                prefs[KEY_BRAVE_API_KEY_IV] = encrypted.ivBase64
+            }
+        }
+    }
+
     /** How many web_search tool round-trips one reply may make before being forced to answer with what it has. 0 (the default) means unconditionally allowed, up to ConversationRepository's own hard safety ceiling. */
     val webSearchMaxToolRounds: Flow<Int> =
         context.settingsDataStore.data.map { it[KEY_WEB_SEARCH_MAX_TOOL_ROUNDS] ?: 0 }
@@ -131,14 +145,21 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs -> prefs[KEY_WEB_SEARCH_MAX_TOOL_ROUNDS] = rounds.coerceAtLeast(0) }
     }
 
-    /** A user-authored instruction prepended as a leading "system" message on every request, not tied to any one conversation. Blank means none is sent. */
-    val systemPrompt: Flow<String> = context.settingsDataStore.data.map { it[KEY_SYSTEM_PROMPT] ?: "" }
+    /** Which saved [com.suzuri.lmdroid.data.db.SystemPromptEntity]s (zero or more) are currently active — see SystemPromptRepository, which resolves these to the prompts' actual text. */
+    val selectedSystemPromptIds: Flow<Set<Long>> =
+        context.settingsDataStore.data.map { prefs ->
+            prefs[KEY_SELECTED_SYSTEM_PROMPT_IDS]?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet()
+        }
 
-    suspend fun currentSystemPrompt(): String = systemPrompt.first()
+    suspend fun currentSelectedSystemPromptIds(): Set<Long> = selectedSystemPromptIds.first()
 
-    suspend fun setSystemPrompt(prompt: String) {
+    suspend fun setSelectedSystemPromptIds(ids: Set<Long>) {
         context.settingsDataStore.edit { prefs ->
-            if (prompt.isBlank()) prefs.remove(KEY_SYSTEM_PROMPT) else prefs[KEY_SYSTEM_PROMPT] = prompt
+            if (ids.isEmpty()) {
+                prefs.remove(KEY_SELECTED_SYSTEM_PROMPT_IDS)
+            } else {
+                prefs[KEY_SELECTED_SYSTEM_PROMPT_IDS] = ids.map { it.toString() }.toSet()
+            }
         }
     }
 
@@ -200,7 +221,7 @@ class SettingsRepository(
         val KEY_BRAVE_API_KEY_CIPHERTEXT = stringPreferencesKey("brave_search_api_key_ciphertext")
         val KEY_BRAVE_API_KEY_IV = stringPreferencesKey("brave_search_api_key_iv")
         val KEY_WEB_SEARCH_MAX_TOOL_ROUNDS = intPreferencesKey("web_search_max_tool_rounds")
-        val KEY_SYSTEM_PROMPT = stringPreferencesKey("system_prompt")
+        val KEY_SELECTED_SYSTEM_PROMPT_IDS = stringSetPreferencesKey("selected_system_prompt_ids")
         val KEY_LOCATION_ENABLED = booleanPreferencesKey("location_enabled")
     }
 }

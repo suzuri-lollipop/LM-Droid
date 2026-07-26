@@ -8,7 +8,10 @@ import com.suzuri.lmdroid.ui.history.HistoryViewModel
 import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
 import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsExportViewModel
+import com.suzuri.lmdroid.ui.settings.SettingsImportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsViewModel
+import com.suzuri.lmdroid.ui.settings.SystemPromptEditViewModel
+import com.suzuri.lmdroid.ui.settings.SystemPromptListViewModel
 import com.suzuri.lmdroid.ui.settings.SystemSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.WebSearchSettingsViewModel
 
@@ -22,6 +25,7 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
                 container.apiProfileRepository,
                 container.attachmentFileStore,
                 container.audioRecorder,
+                container.systemPromptRepository,
                 container.json,
             ) as T
 
@@ -43,8 +47,17 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
         modelClass.isAssignableFrom(SettingsExportViewModel::class.java) ->
             SettingsExportViewModel(container.settingsExporter) as T
 
+        modelClass.isAssignableFrom(SettingsImportViewModel::class.java) ->
+            SettingsImportViewModel(container.settingsImporter) as T
+
         modelClass.isAssignableFrom(LocationSettingsViewModel::class.java) ->
             LocationSettingsViewModel(container.settingsRepository) as T
+
+        modelClass.isAssignableFrom(SystemPromptListViewModel::class.java) ->
+            SystemPromptListViewModel(container.systemPromptRepository) as T
+
+        modelClass.isAssignableFrom(SystemPromptEditViewModel::class.java) ->
+            SystemPromptEditViewModel(container.systemPromptRepository) as T
 
         else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }

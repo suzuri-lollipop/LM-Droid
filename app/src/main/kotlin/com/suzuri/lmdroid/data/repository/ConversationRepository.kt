@@ -73,6 +73,7 @@ class ConversationRepository(
     private val braveSearchClient: BraveSearchClient,
     private val webPageFetcher: WebPageFetcher,
     private val deviceLocationProvider: DeviceLocationProvider,
+    private val systemPromptRepository: SystemPromptRepository,
     private val json: Json,
 ) {
     // For best-effort background work (auto-titling) that shouldn't make the caller wait for the
@@ -309,12 +310,11 @@ class ConversationRepository(
         // failure mode that caused stale, wrong-year forecasts to get treated as current before.
         history.add(0, chatMessage("system", currentDateSystemPrompt()))
 
-        // A user-authored instruction that applies to every conversation, not persisted as part
-        // of any one message — added fresh as the leading message on every request, the same way
-        // the old web-search injection used to be, rather than written into message history.
-        val systemPrompt = settingsRepository.currentSystemPrompt()
-        if (systemPrompt.isNotBlank()) {
-            history.add(1, chatMessage("system", systemPrompt))
+        // Every saved system prompt the user has selected as active (zero or more) — applies to
+        // every conversation, not persisted as part of any one message, added fresh as leading
+        // messages on every request rather than written into message history.
+        systemPromptRepository.currentActiveContents().forEachIndexed { index, content ->
+            history.add(1 + index, chatMessage("system", content))
         }
 
         // Tools: when enabled and configured in Settings, the model is offered "web_search",

@@ -10,8 +10,10 @@ import com.suzuri.lmdroid.data.location.DeviceLocationProvider
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
+import com.suzuri.lmdroid.data.repository.SystemPromptRepository
 import com.suzuri.lmdroid.data.settings.ApiKeyCipher
 import com.suzuri.lmdroid.data.settings.SettingsExporter
+import com.suzuri.lmdroid.data.settings.SettingsImporter
 import com.suzuri.lmdroid.data.settings.SettingsRepository
 import com.suzuri.lmdroid.data.websearch.BraveSearchClient
 import com.suzuri.lmdroid.data.websearch.WebPageFetcher
@@ -66,7 +68,9 @@ class AppContainer(context: Context) {
 
     val settingsRepository = SettingsRepository(appContext, apiKeyCipher, database.apiProfileDao())
 
-    val settingsExporter = SettingsExporter(database.apiProfileDao(), database.apiModelDao(), settingsRepository)
+    val settingsExporter = SettingsExporter(database.apiProfileDao(), database.apiModelDao(), database.systemPromptDao(), settingsRepository)
+
+    val settingsImporter = SettingsImporter(database.apiProfileDao(), database.apiModelDao(), database.systemPromptDao(), settingsRepository)
 
     val openAiApiClient = OpenAiApiClient(okHttpClient, json)
 
@@ -87,6 +91,8 @@ class AppContainer(context: Context) {
 
     val deviceLocationProvider = DeviceLocationProvider(appContext)
 
+    val systemPromptRepository = SystemPromptRepository(database.systemPromptDao(), settingsRepository)
+
     val conversationRepository = ConversationRepository(
         conversationDao = database.conversationDao(),
         messageDao = database.messageDao(),
@@ -98,6 +104,7 @@ class AppContainer(context: Context) {
         braveSearchClient = braveSearchClient,
         webPageFetcher = webPageFetcher,
         deviceLocationProvider = deviceLocationProvider,
+        systemPromptRepository = systemPromptRepository,
         json = json,
     )
 }

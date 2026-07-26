@@ -18,13 +18,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
+import com.suzuri.lmdroid.ui.settings.components.SettingsMenuRow
 
 /**
  * Settings → システム: choose which (profile, model) generates conversation titles and the
- * empty-state prompt suggestions, independently of the model used for chat itself.
+ * empty-state prompt suggestions, independently of the model used for chat itself, plus the
+ * settings backup actions (export/import a YAML snapshot of every setting).
  */
 @Composable
-fun SystemSettingsScreen(viewModel: SystemSettingsViewModel, modifier: Modifier = Modifier) {
+fun SystemSettingsScreen(
+    viewModel: SystemSettingsViewModel,
+    onExportSettings: () -> Unit,
+    onImportSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val uiState by viewModel.uiState.collectAsState()
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -58,6 +65,17 @@ fun SystemSettingsScreen(viewModel: SystemSettingsViewModel, modifier: Modifier 
                     modifier = Modifier.clickable { viewModel.onSelectModel(option) },
                 )
                 HorizontalDivider()
+            }
+            item {
+                SettingsMenuRow(
+                    title = stringResource(R.string.settings_export_title),
+                    onClick = onExportSettings,
+                )
+                HorizontalDivider()
+                SettingsMenuRow(
+                    title = stringResource(R.string.settings_import_title),
+                    onClick = onImportSettings,
+                )
             }
         }
     }

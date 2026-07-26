@@ -31,7 +31,8 @@ class SettingsExporterTest {
         chatSelection = ExportedModelSelection(profileId = 1, profileName = "ローカルサーバー", model = "gpt-4o-mini"),
         systemSelection = null,
         markdownEnabled = true,
-        systemPrompt = "常に日本語の敬語で回答してください",
+        systemPrompts = listOf(ExportedSystemPrompt(id = 1, name = "敬語", content = "常に日本語の敬語で回答してください")),
+        selectedSystemPromptIds = listOf(1),
         webSearch = ExportedWebSearchSettings(enabled = true, apiKey = apiKey, maxToolRounds = 3),
         locationEnabled = true,
     )
@@ -69,8 +70,30 @@ class SettingsExporterTest {
     }
 
     @Test
-    fun `a blank system prompt and no model selections still encode cleanly`() {
-        val export = sampleExport().copy(chatSelection = null, systemSelection = null, systemPrompt = "")
+    fun `round-trips multiple simultaneously active system prompts`() {
+        val export = sampleExport().copy(
+            systemPrompts = listOf(
+                ExportedSystemPrompt(id = 1, name = "敬語", content = "常に日本語の敬語で回答してください"),
+                ExportedSystemPrompt(id = 2, name = "簡潔", content = "簡潔に回答してください"),
+            ),
+            selectedSystemPromptIds = listOf(1, 2),
+        )
+
+        val yamlText = encodeSettingsExportToYaml(export)
+        val decoded = settingsExportYaml.decodeFromString(SettingsExport.serializer(), yamlText)
+
+        assertEquals(export, decoded)
+        assertEquals(listOf(1L, 2L), decoded.selectedSystemPromptIds)
+    }
+
+    @Test
+    fun `no system prompts and no model selections still encode cleanly`() {
+        val export = sampleExport().copy(
+            chatSelection = null,
+            systemSelection = null,
+            systemPrompts = emptyList(),
+            selectedSystemPromptIds = emptyList(),
+        )
 
         val yamlText = encodeSettingsExportToYaml(export)
         val decoded = settingsExportYaml.decodeFromString(SettingsExport.serializer(), yamlText)

@@ -4,6 +4,7 @@ import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
 import com.suzuri.lmdroid.data.db.ApiModelDao
 import com.suzuri.lmdroid.data.db.ApiProfileDao
+import com.suzuri.lmdroid.data.db.SystemPromptDao
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import java.time.Instant
@@ -11,8 +12,8 @@ import java.time.format.DateTimeFormatter
 
 /**
  * Serializes every user-configurable setting (API profiles + their registered models, chat/system
- * model selections, markdown preference, system prompt, and Web検索 settings) into a single YAML
- * document — used by Settings → 設定をエクスポート for backup/inspection purposes.
+ * model selections, markdown preference, system prompt profiles, and Web検索 settings) into a
+ * single YAML document — used by Settings → 設定をエクスポート for backup/inspection purposes.
  *
  * API keys are never written in plaintext: each field is copied exactly as it's already stored —
  * AES-256-GCM ciphertext + IV under [ApiKeyCipher]'s Android Keystore key (non-exportable, device-
@@ -24,6 +25,7 @@ import java.time.format.DateTimeFormatter
 class SettingsExporter(
     private val apiProfileDao: ApiProfileDao,
     private val apiModelDao: ApiModelDao,
+    private val systemPromptDao: SystemPromptDao,
     private val settingsRepository: SettingsRepository,
 ) {
     suspend fun exportToYaml(): String = encodeSettingsExportToYaml(buildExport())
@@ -48,13 +50,16 @@ class SettingsExporter(
         val systemSelection = settingsRepository.selectedSystemModel.first()
         val braveSearchKey = settingsRepository.currentBraveSearchApiKeyEncrypted()
 
+        val systemPrompts = systemPromptDao.observeAll().first()
+
         return SettingsExport(
             exportedAt = DateTimeFormatter.ISO_INSTANT.format(Instant.now()),
             apiProfiles = exportedProfiles,
             chatSelection = chatSelection?.toExported(profileNameById),
             systemSelection = systemSelection?.toExported(profileNameById),
             markdownEnabled = settingsRepository.currentChatSettings().markdownEnabled,
-            systemPrompt = settingsRepository.currentSystemPrompt(),
+            systemPrompts = systemPrompts.map { ExportedSystemPrompt(id = it.id, name = it.name, content = it.content) },
+            selectedSystemPromptIds = settingsRepository.currentSelectedSystemPromptIds().sorted(),
             webSearch = ExportedWebSearchSettings(
                 enabled = settingsRepository.currentBraveSearchEnabled(),
                 apiKey = braveSearchKey?.let { ExportedEncryptedValue(it.ciphertextBase64, it.ivBase64) },
@@ -91,9 +96,17 @@ data class SettingsExport(
     val chatSelection: ExportedModelSelection? = null,
     val systemSelection: ExportedModelSelection? = null,
     val markdownEnabled: Boolean,
-    val systemPrompt: String,
+    val systemPrompts: List<ExportedSystemPrompt> = emptyList(),
+    val selectedSystemPromptIds: List<Long> = emptyList(),
     val webSearch: ExportedWebSearchSettings,
     val locationEnabled: Boolean = false,
+)
+
+@Serializable
+data class ExportedSystemPrompt(
+    val id: Long,
+    val name: String,
+    val content: String,
 )
 
 @Serializable

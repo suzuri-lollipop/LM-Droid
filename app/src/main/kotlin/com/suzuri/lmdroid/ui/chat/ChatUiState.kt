@@ -29,6 +29,12 @@ data class PendingAttachmentUiModel(
     val mimeType: String,
 )
 
+/** One saved system prompt, as offered by the composer's selector dialog — see SystemPromptRepository. */
+data class SystemPromptOptionUiModel(
+    val id: Long,
+    val name: String,
+)
+
 /**
  * The empty-conversation suggestion rows go through this instead of a plain list so the UI can
  * show a loading skeleton while the LLM call is in flight, rather than flashing the generic
@@ -61,6 +67,8 @@ data class ChatUiState(
     val pendingAttachments: List<PendingAttachmentUiModel> = emptyList(),
     // True while the mic's long-press-to-record gesture is actively capturing audio.
     val isRecordingVoiceMessage: Boolean = false,
-    // App-wide instruction prepended to every conversation — see SettingsRepository.systemPrompt.
-    val systemPrompt: String = "",
+    // Every saved system prompt, and which ones (zero or more) are currently active — see
+    // SystemPromptRepository.
+    val systemPrompts: List<SystemPromptOptionUiModel> = emptyList(),
+    val selectedSystemPromptIds: Set<Long> = emptySet(),
 )

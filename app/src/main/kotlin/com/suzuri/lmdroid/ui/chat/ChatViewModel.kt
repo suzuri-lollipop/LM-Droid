@@ -12,6 +12,7 @@ import com.suzuri.lmdroid.data.db.ModelOptionRow
 import com.suzuri.lmdroid.data.db.ThinkingTimelineEntry
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
+import com.suzuri.lmdroid.data.repository.SystemPromptRepository
 import com.suzuri.lmdroid.data.settings.SettingsRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -35,6 +36,7 @@ class ChatViewModel(
     private val apiProfileRepository: ApiProfileRepository,
     private val attachmentFileStore: AttachmentFileStore,
     private val audioRecorder: AudioRecorder,
+    private val systemPromptRepository: SystemPromptRepository,
     private val json: Json,
 ) : ViewModel() {
 
@@ -81,8 +83,13 @@ class ChatViewModel(
         }
 
         viewModelScope.launch {
-            settingsRepository.systemPrompt.collect { prompt ->
-                _uiState.update { state -> state.copy(systemPrompt = prompt) }
+            combine(
+                systemPromptRepository.observePrompts(),
+                systemPromptRepository.selectedPromptIds,
+            ) { prompts, selectedIds ->
+                prompts.map { SystemPromptOptionUiModel(id = it.id, name = it.name) } to selectedIds
+            }.collect { (prompts, selectedIds) ->
+                _uiState.update { state -> state.copy(systemPrompts = prompts, selectedSystemPromptIds = selectedIds) }
             }
         }
 
@@ -263,10 +270,9 @@ class ChatViewModel(
         viewModelScope.launch { settingsRepository.saveMarkdownEnabled(enabled) }
     }
 
-    /** Saves the app-wide system prompt edited via [com.suzuri.lmdroid.ui.chat.components.SystemPromptDialog]. */
-    fun onSystemPromptChange(value: String) {
-        _uiState.update { it.copy(systemPrompt = value) }
-        viewModelScope.launch { settingsRepository.setSystemPrompt(value) }
+    /** Toggles whether a saved system prompt is active, from [com.suzuri.lmdroid.ui.chat.components.SystemPromptDialog] — several may be active simultaneously. */
+    fun onToggleSystemPrompt(id: Long) {
+        viewModelScope.launch { systemPromptRepository.togglePrompt(id) }
     }
 
     /** Switches which enabled profile/model pair chat uses, from the switcher shown on this screen. */
