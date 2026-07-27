@@ -29,7 +29,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -164,36 +163,33 @@ fun AssistScreen(
                     }
                     uiState.errorMessage != null -> {
                         Text(text = uiState.errorMessage.orEmpty(), color = MaterialTheme.colorScheme.error)
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedIconButton(onClick = ::beginListening) {
-                            Icon(imageVector = Icons.Filled.Mic, contentDescription = stringResource(R.string.assist_ask_follow_up))
+                        Spacer(Modifier.height(16.dp))
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            ListeningIndicator(
+                                isListening = false,
+                                onClick = ::beginListening,
+                                contentDescription = stringResource(R.string.assist_retry_listening),
+                            )
                         }
                     }
                     else -> {
                         AssistConversationContent(
                             isListening = voiceInputState.isListening,
+                            isStreaming = uiState.isStreaming,
                             transcript = uiState.transcript,
                             hasSent = uiState.hasSent,
                             assistantText = uiState.assistantText,
                             isAssistantError = uiState.isAssistantError,
                             markdownEnabled = uiState.markdownEnabled,
+                            onMicClick = {
+                                viewModel.onAskFollowUp()
+                                beginListening()
+                            },
                         )
 
                         if (uiState.hasSent && !uiState.isStreaming) {
-                            Spacer(Modifier.height(16.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                OutlinedIconButton(
-                                    onClick = {
-                                        viewModel.onAskFollowUp()
-                                        beginListening()
-                                    },
-                                ) {
-                                    Icon(imageVector = Icons.Filled.Mic, contentDescription = stringResource(R.string.assist_ask_follow_up))
-                                }
+                            Spacer(Modifier.height(8.dp))
+                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                                 TextButton(onClick = onOpenApp) {
                                     Text(stringResource(R.string.assist_open_in_app))
                                 }
@@ -209,11 +205,13 @@ fun AssistScreen(
 @Composable
 private fun AssistConversationContent(
     isListening: Boolean,
+    isStreaming: Boolean,
     transcript: String,
     hasSent: Boolean,
     assistantText: String,
     isAssistantError: Boolean,
     markdownEnabled: Boolean,
+    onMicClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -224,10 +222,18 @@ private fun AssistConversationContent(
                     .fillMaxWidth()
                     .padding(vertical = 12.dp),
             ) {
-                ListeningIndicator(isListening = isListening)
+                ListeningIndicator(
+                    isListening = isListening,
+                    onClick = onMicClick,
+                    contentDescription = stringResource(R.string.assist_retry_listening),
+                )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = transcript.ifBlank { stringResource(R.string.assist_listening_hint) },
+                    text = when {
+                        transcript.isNotBlank() -> transcript
+                        isListening -> stringResource(R.string.assist_listening_hint)
+                        else -> stringResource(R.string.assist_no_speech_detected)
+                    },
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (transcript.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center,
@@ -256,13 +262,37 @@ private fun AssistConversationContent(
                 }
                 else -> Text(text = assistantText, color = MaterialTheme.colorScheme.onSurface)
             }
+
+            // Reuses the exact same mic indicator shown before the first message was sent
+            // (rather than a separate button elsewhere), so there's only ever one mic control
+            // on screen — tapping it asks a follow-up in the same conversation.
+            if (!isStreaming) {
+                Spacer(Modifier.height(16.dp))
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    ListeningIndicator(
+                        isListening = isListening,
+                        onClick = onMicClick,
+                        contentDescription = stringResource(R.string.assist_ask_follow_up),
+                    )
+                }
+            }
         }
     }
 }
 
-/** A gently pulsing mic while actively listening; sits still (but still visible) once speech has ended and a result is pending. */
+/**
+ * The one mic control shown throughout the whole overlay — pulses gently while actively
+ * listening; tapping it (re)starts listening, whether that's the very first prompt, a retry after
+ * silence/an error, or a follow-up after a reply. Reused as-is everywhere rather than introducing
+ * a second, smaller mic button, so there's only ever one mic affordance on screen at a time.
+ */
 @Composable
-private fun ListeningIndicator(isListening: Boolean, modifier: Modifier = Modifier) {
+private fun ListeningIndicator(
+    isListening: Boolean,
+    onClick: () -> Unit,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
     val transition = rememberInfiniteTransition(label = "assist-listening")
     val scale by transition.animateFloat(
         initialValue = 0.9f,
@@ -275,12 +305,13 @@ private fun ListeningIndicator(isListening: Boolean, modifier: Modifier = Modifi
             .size(64.dp)
             .scale(if (isListening) scale else 1f)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer),
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .clickable(enabled = !isListening, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = Icons.Filled.Mic,
-            contentDescription = null,
+            contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.onPrimaryContainer,
             modifier = Modifier.size(28.dp),
         )

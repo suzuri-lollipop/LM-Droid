@@ -38,7 +38,9 @@
     <string name="assist_title">アシスタント</string>
     <string name="assist_close">閉じる</string>
     <string name="assist_listening_hint">お話しください</string>
+    <string name="assist_no_speech_detected">聞き取れませんでした。マイクをタップしてもう一度お試しください</string>
     <string name="assist_ask_follow_up">続けて質問する</string>
+    <string name="assist_retry_listening">もう一度試す</string>
     <string name="assist_open_in_app">アプリで開く</string>
 
     <string name="settings_title">設定</string>
