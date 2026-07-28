@@ -1,23 +1,30 @@
-# Walkthrough - Fix Experimental Material API and Weight Imports
+# Walkthrough - Earphone AI Shortcut Support
 
-I have fixed the compilation errors in the project. The primary issue was the usage of the experimental `TopAppBar` API in Material 3 without an `@OptIn` annotation. Additionally, I resolved internal access errors related to incorrect `weight` modifier imports.
+I have updated the application to support launching via earphone AI shortcut keys (Voice Command) and long-press search gestures.
 
 ## Changes Made
 
-### UI Components
+### Android Manifest
 
-#### [MainActivity.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/MainActivity.kt)
-- Added `@OptIn(ExperimentalMaterial3Api::class)` to the `LmDroidApp` composable to allow the use of `TopAppBar`.
-- Added the necessary import for `ExperimentalMaterial3Api`.
+#### [AndroidManifest.xml](file:///C:/home/suzuri/projects/lm-droid/app/src/main/AndroidManifest.xml)
+- Registered `AssistActivity` to handle `android.intent.action.VOICE_COMMAND`. This is the standard intent triggered by Bluetooth headsets when their AI/Voice button is pressed.
+- Added `android.intent.action.SEARCH_LONG_PRESS` for compatibility with older devices and headsets.
 
-#### [ChatScreen.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/ui/chat/ChatScreen.kt) and [ChatInputBar.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/ui/chat/components/ChatInputBar.kt)
-- Removed `import androidx.compose.foundation.layout.weight` which was causing a "Cannot access internal property" error. The `weight` modifier is correctly provided by the `ColumnScope` or `RowScope` without this explicit and incorrect top-level import.
+### Assist Activity
+
+#### [AssistActivity.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/AssistActivity.kt)
+- Added `onNewIntent` override to correctly handle the activity's lifecycle as a `singleInstance`. This ensures that if the assistant is triggered multiple times while the window is still open, the intent is properly updated.
 
 ## Verification Results
 
 ### Automated Tests
-- Successfully ran `./gradlew :app:compileDebugKotlin` which now passes without errors.
+- Successfully ran `./gradlew :app:assembleDebug`.
 
 ```
 Build finished successfully.
 ```
+
+## How to use
+1.  **Set as Default Assistant**: Ensure LM Droid is set as your device's "Digital Assistant App" (App Settings -> Assistant).
+2.  **Use Earphones**: Long-press the "AI" or "Voice" button on your Bluetooth earphones.
+3.  **Result**: The LM Droid assistant overlay should appear and start listening for your voice immediately.

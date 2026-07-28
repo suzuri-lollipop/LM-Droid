@@ -38,4 +38,13 @@ class AssistActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // If the activity is already on screen, singleInstance means it won't be recreated.
+        // The current AssistScreen implementation starts listening in a LaunchedEffect(Unit),
+        // so it won't automatically restart unless we trigger a state change.
+        // For now, let's just update the intent.
+    }
 }

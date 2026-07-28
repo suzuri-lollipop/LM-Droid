@@ -1,0 +1,3 @@
+- [x] Add `VOICE_COMMAND` and `SEARCH_LONG_PRESS` intents to `AndroidManifest.xml`
+- [x] Add `onNewIntent` handling to `AssistActivity.kt`
+- [x] Verify the build
