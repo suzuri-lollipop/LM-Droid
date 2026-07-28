@@ -15,7 +15,11 @@ import com.suzuri.lmdroid.data.db.SystemPromptEntity
  * built during import re-points the imported model/system-prompt selections at the new rows. The
  * remaining, singular app-wide settings (markdown, Web検索, 位置情報, model selections) are applied
  * as an outright overwrite of whatever's currently set, since restoring a backup is expected to
- * reproduce the exported state exactly.
+ * reproduce the exported state exactly — except the chat model selection specifically falls back
+ * to the first usable imported profile when the export's own selection is missing or unresolvable
+ * (see [fallbackChatSelection]), since that one has no further fallback of its own the way
+ * system/assistant selections fall back to it, and leaving it unset would strand an otherwise
+ * successfully imported profile behind a chat screen that still reads as "not registered."
  *
  * API keys are restored the same way they were exported: the ciphertext + IV are copied verbatim,
  * never decrypted here. This only decrypts successfully later if the importing device holds the
@@ -66,11 +70,17 @@ class SettingsImporter(
             promptIdMap[prompt.id] = newId
         }
 
-        export.chatSelection?.let { selection ->
-            profileIdMap[selection.profileId]?.let { newProfileId ->
-                settingsRepository.setSelectedChatModel(newProfileId, selection.model)
-            }
-        }
+        // Unlike systemSelection/assistantSelection (which are meant to fall back to chatSelection
+        // when unset), there's nothing left for chatSelection itself to fall back to — if it's
+        // missing, or its profile reference doesn't resolve (e.g. an old export whose chatSelection
+        // predates a later schema change), leaving nothing selected would show "APIキー未登録" on
+        // the chat screen even though a perfectly usable profile was just imported. So this picks
+        // something usable from what was actually imported rather than leaving chat unusable.
+        val resolvedChatSelection = export.chatSelection
+            ?.let { selection -> profileIdMap[selection.profileId]?.let { SelectedModel(it, selection.model) } }
+            ?: fallbackChatSelection(export.apiProfiles, profileIdMap)
+        resolvedChatSelection?.let { settingsRepository.setSelectedChatModel(it.profileId, it.model) }
+
         val systemSelection = export.systemSelection
         if (systemSelection != null) {
             profileIdMap[systemSelection.profileId]?.let { newProfileId ->
@@ -109,3 +119,18 @@ class SettingsImporter(
  */
 fun decodeSettingsExportFromYaml(yamlText: String): SettingsExport =
     settingsExportYaml.decodeFromString(SettingsExport.serializer(), yamlText)
+
+/**
+ * The first enabled, model-bearing OpenAI-compatible profile that was actually imported — a
+ * reasonable default chat selection when the export's own chatSelection is missing or doesn't
+ * resolve through [profileIdMap] (see [SettingsImporter]'s doc comment for why chatSelection
+ * specifically needs this fallback). Kept as a free function, like [decodeSettingsExportFromYaml],
+ * so this is unit-testable without needing a real [SettingsRepository].
+ */
+fun fallbackChatSelection(apiProfiles: List<ExportedApiProfile>, profileIdMap: Map<Long, Long>): SelectedModel? {
+    val profile = apiProfiles.firstOrNull { profile ->
+        profile.providerType == ApiProfileEntity.PROVIDER_OPENAI_COMPATIBLE && profile.enabled && profile.models.isNotEmpty()
+    } ?: return null
+    val newProfileId = profileIdMap[profile.id] ?: return null
+    return SelectedModel(profileId = newProfileId, model = profile.models.first())
+}

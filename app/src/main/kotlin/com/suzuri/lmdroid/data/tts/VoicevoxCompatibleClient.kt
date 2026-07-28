@@ -25,10 +25,11 @@ class VoicevoxCompatibleClient(private val okHttpClient: OkHttpClient) {
             try {
                 val audioQueryJson = requestAudioQuery(baseUrl, text, speakerId)
                     ?: return@withContext Result.failure(IOException("audio_query returned an empty body"))
-                val audioBytes = requestSynthesis(baseUrl, audioQueryJson, speakerId)
+                val audioBytes = requestSynthesis(baseUrl, audioQueryJson, speakerId, text)
                     ?: return@withContext Result.failure(IOException("synthesis returned an empty body"))
                 Result.success(audioBytes)
             } catch (e: IOException) {
+                Log.w(TAG, "synthesize: network error for speakerId=$speakerId, text=\"${text.take(LOGGED_TEXT_LENGTH)}\"", e)
                 Result.failure(e)
             }
         }
@@ -60,14 +61,22 @@ class VoicevoxCompatibleClient(private val okHttpClient: OkHttpClient) {
         val request = Request.Builder().url(url).post("".toRequestBody(null)).build()
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                Log.w(TAG, "audio_query returned HTTP ${response.code}: ${response.body?.string()?.take(300)}")
+                Log.w(
+                    TAG,
+                    "audio_query failed: HTTP ${response.code} for speakerId=$speakerId, " +
+                        "text=\"${text.take(LOGGED_TEXT_LENGTH)}\": ${response.body.string().take(300)}",
+                )
                 return null
             }
-            return response.body?.string()
+            return response.body.string()
         }
     }
 
-    private fun requestSynthesis(baseUrl: String, audioQueryJson: String, speakerId: Int): ByteArray? {
+    // [text] is only carried through for the failure log below — the engine itself, unaware of
+    // where synthesis actually fails (audio_query vs. synthesis), so this is what tells us which
+    // one crashed on which content, e.g. the Japanese-tokenizer encoding bug in AivisSpeech Engine
+    // (style_bert_vits2's BERT feature extraction) that motivated this logging in the first place.
+    private fun requestSynthesis(baseUrl: String, audioQueryJson: String, speakerId: Int, text: String): ByteArray? {
         val url = "${baseUrl.trimEnd('/')}/synthesis".toHttpUrl().newBuilder()
             .addQueryParameter("speaker", speakerId.toString())
             .build()
@@ -77,15 +86,24 @@ class VoicevoxCompatibleClient(private val okHttpClient: OkHttpClient) {
             .build()
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                Log.w(TAG, "synthesis returned HTTP ${response.code}")
+                Log.w(
+                    TAG,
+                    "synthesis failed: HTTP ${response.code} for speakerId=$speakerId, " +
+                        "text=\"${text.take(LOGGED_TEXT_LENGTH)}\": ${response.body.string().take(300)}",
+                )
                 return null
             }
-            return response.body?.bytes()
+            return response.body.bytes()
         }
     }
 
     companion object {
         private const val TAG = "VoicevoxCompatibleClient"
+
+        // Generous relative to the 300-char cap used elsewhere in this file for response bodies —
+        // pinpointing which content triggers a server-side failure needs enough of the actual
+        // synthesized text to spot the culprit, even well into a longer assistant reply.
+        private const val LOGGED_TEXT_LENGTH = 500
 
         // VOICEVOX Engine's own documented default local port (AivisSpeech Engine defaults to
         // :10101 instead) — just a starting point prefilled for a newly created profile; the user

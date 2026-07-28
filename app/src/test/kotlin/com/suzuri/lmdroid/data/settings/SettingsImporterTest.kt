@@ -160,4 +160,61 @@ class SettingsImporterTest {
         assertEquals(null, decoded.webSearch.selectedProfileId)
         assertEquals("ローカルサーバー", decoded.apiProfiles.single().name)
     }
+
+    @Test
+    fun `fallbackChatSelection picks the first enabled model-bearing OpenAI-compatible profile`() {
+        val apiProfiles = listOf(
+            ExportedApiProfile(
+                id = 1,
+                name = "Brave Search",
+                providerType = ApiProfileEntity.PROVIDER_BRAVE_SEARCH,
+                baseUrl = "https://api.search.brave.com",
+                enabled = true,
+                models = emptyList(),
+            ),
+            ExportedApiProfile(
+                id = 2,
+                name = "ローカルサーバー",
+                baseUrl = "http://localhost:8080/v1",
+                enabled = true,
+                models = listOf("gpt-4o-mini", "gpt-4o"),
+            ),
+        )
+        val profileIdMap = mapOf(1L to 101L, 2L to 102L)
+
+        val selection = fallbackChatSelection(apiProfiles, profileIdMap)
+
+        assertEquals(SelectedModel(profileId = 102L, model = "gpt-4o-mini"), selection)
+    }
+
+    @Test
+    fun `fallbackChatSelection skips a disabled profile even if it has models`() {
+        val apiProfiles = listOf(
+            ExportedApiProfile(id = 1, name = "無効化済み", baseUrl = "http://localhost:8080/v1", enabled = false, models = listOf("gpt-4o-mini")),
+            ExportedApiProfile(id = 2, name = "有効", baseUrl = "http://localhost:8081/v1", enabled = true, models = listOf("gpt-4o")),
+        )
+        val profileIdMap = mapOf(1L to 101L, 2L to 102L)
+
+        val selection = fallbackChatSelection(apiProfiles, profileIdMap)
+
+        assertEquals(SelectedModel(profileId = 102L, model = "gpt-4o"), selection)
+    }
+
+    @Test
+    fun `fallbackChatSelection returns null when nothing usable was imported`() {
+        val apiProfiles = listOf(
+            ExportedApiProfile(
+                id = 1,
+                name = "VOICEVOX",
+                providerType = ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE,
+                baseUrl = "http://127.0.0.1:50021",
+                enabled = true,
+                models = emptyList(),
+            ),
+            ExportedApiProfile(id = 2, name = "モデル未取得", baseUrl = "http://localhost:8080/v1", enabled = true, models = emptyList()),
+        )
+        val profileIdMap = mapOf(1L to 101L, 2L to 102L)
+
+        assertEquals(null, fallbackChatSelection(apiProfiles, profileIdMap))
+    }
 }
