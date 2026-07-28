@@ -104,7 +104,9 @@ fun AssistScreen(
 
     // Zero-tap start: the whole point of the power-button-long-press gesture is to go straight
     // into listening without also having to tap a mic button first.
-    LaunchedEffect(Unit) { beginListening() }
+    // We react to uiState.triggerCount so that subsequent external triggers (e.g. earphone button)
+    // while the overlay is already open will restart the listening process.
+    LaunchedEffect(uiState.triggerCount) { beginListening() }
 
     Box(
         modifier = modifier

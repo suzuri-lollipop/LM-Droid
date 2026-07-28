@@ -21,4 +21,5 @@ data class AssistUiState(
     // supplies the localized message, mirroring ChatUiState's own apiKeyMissing flag.
     val apiKeyMissing: Boolean = false,
     val errorMessage: String? = null,
+    val triggerCount: Int = 0,
 )

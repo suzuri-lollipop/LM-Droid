@@ -1,3 +1,5 @@
-- [x] Add `VOICE_COMMAND` and `SEARCH_LONG_PRESS` intents to `AndroidManifest.xml`
-- [x] Add `onNewIntent` handling to `AssistActivity.kt`
+- [x] Add `triggerCount` to `AssistUiState.kt`
+- [x] Add `onRetry()` to `AssistViewModel.kt`
+- [x] Update `AssistActivity.kt` to trigger `onRetry()` on new intents
+- [x] Update `AssistScreen.kt` to react to `triggerCount`
 - [x] Verify the build

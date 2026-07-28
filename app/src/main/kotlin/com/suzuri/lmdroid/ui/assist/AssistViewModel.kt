@@ -75,6 +75,22 @@ class AssistViewModel(
         _uiState.update { it.copy(transcript = "", errorMessage = null, apiKeyMissing = false) }
     }
 
+    /** Resets the UI state and increments triggerCount to signal AssistScreen to start listening again. Used when triggered by an external intent (e.g. earphone button). */
+    fun onRetry() {
+        _uiState.update {
+            it.copy(
+                transcript = "",
+                hasSent = false,
+                assistantText = "",
+                isAssistantError = false,
+                isStreaming = false,
+                errorMessage = null,
+                apiKeyMissing = false,
+                triggerCount = it.triggerCount + 1,
+            )
+        }
+    }
+
     private fun send(text: String) {
         if (_uiState.value.isStreaming) return
         _uiState.update {

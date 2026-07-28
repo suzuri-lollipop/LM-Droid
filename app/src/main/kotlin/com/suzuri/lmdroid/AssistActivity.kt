@@ -4,7 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.ViewModelProvider
 import com.suzuri.lmdroid.ui.ViewModelFactory
 import com.suzuri.lmdroid.ui.assist.AssistScreen
 import com.suzuri.lmdroid.ui.assist.AssistViewModel
@@ -18,15 +18,17 @@ import com.suzuri.lmdroid.ui.theme.LmDroidTheme
  * not switch full-screen into this app's own task.
  */
 class AssistActivity : ComponentActivity() {
+    private lateinit var viewModel: AssistViewModel
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val container = (application as LmDroidApplication).container
         val viewModelFactory = ViewModelFactory(container)
+        viewModel = ViewModelProvider(this, viewModelFactory)[AssistViewModel::class.java]
 
         setContent {
             LmDroidTheme {
-                val viewModel: AssistViewModel = viewModel(factory = viewModelFactory)
                 AssistScreen(
                     viewModel = viewModel,
                     onOpenApp = {
@@ -43,8 +45,8 @@ class AssistActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         // If the activity is already on screen, singleInstance means it won't be recreated.
-        // The current AssistScreen implementation starts listening in a LaunchedEffect(Unit),
-        // so it won't automatically restart unless we trigger a state change.
-        // For now, let's just update the intent.
+        // We call onRetry() to reset the state and increment triggerCount, which signals
+        // AssistScreen's LaunchedEffect to start listening again.
+        viewModel.onRetry()
     }
 }
