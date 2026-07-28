@@ -17,6 +17,11 @@ data class AssistUiState(
     val isAssistantError: Boolean = false,
     val isStreaming: Boolean = false,
     val markdownEnabled: Boolean = true,
+    // The (profile, model) pair this session is actually using — see
+    // SettingsRepository.assistantSettings — shown in place of the static "アシスタント" title
+    // (see AssistScreen) so it's clear which one replies came from. Null only when no chat
+    // profile is configured at all yet, in which case the title falls back to the static label.
+    val modelProfileName: String? = null,
     // Set when ConversationRepository.SendResult.ApiKeyMissing comes back — the caller (AssistScreen)
     // supplies the localized message, mirroring ChatUiState's own apiKeyMissing flag.
     val apiKeyMissing: Boolean = false,

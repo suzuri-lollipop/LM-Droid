@@ -6,15 +6,22 @@ import android.content.Intent
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,11 +38,14 @@ import com.suzuri.lmdroid.R
  * older versions fall back to the legacy "Assist & voice input" settings screen, best-effort,
  * since not every OEM skin still exposes it. Which physical gesture (power-button long-press,
  * home long-press, a swipe, ...) actually triggers assist is a device/OEM setting this app has no
- * control over — registering here only makes the app *eligible* to be chosen.
+ * control over — registering here only makes the app *eligible* to be chosen. Also picks which
+ * (profile, model) the assistant overlay itself replies with (see [AssistantSettingsViewModel]),
+ * independently of whatever's active for chat.
  */
 @Composable
-fun AssistantSettingsScreen(modifier: Modifier = Modifier) {
+fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val uiState by viewModel.uiState.collectAsState()
 
     fun isRoleHeld(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
@@ -54,6 +64,7 @@ fun AssistantSettingsScreen(modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {
         Text(
@@ -88,6 +99,37 @@ fun AssistantSettingsScreen(modifier: Modifier = Modifier) {
             },
         ) {
             Text(stringResource(R.string.assistant_settings_set_button))
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))
+
+        Text(
+            text = stringResource(R.string.assistant_settings_model_description),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.settings_system_use_chat_model)) },
+            leadingContent = {
+                RadioButton(selected = uiState.selectedModel == null, onClick = viewModel::onUseChatModel)
+            },
+            modifier = Modifier.clickable { viewModel.onUseChatModel() },
+        )
+        HorizontalDivider()
+        uiState.availableModels.forEach { option ->
+            val isSelected = uiState.selectedModel?.profileId == option.profileId &&
+                uiState.selectedModel?.model == option.modelId
+            ListItem(
+                headlineContent = { Text(option.modelId) },
+                supportingContent = { Text(option.profileName) },
+                leadingContent = {
+                    RadioButton(selected = isSelected, onClick = { viewModel.onSelectModel(option) })
+                },
+                modifier = Modifier.clickable { viewModel.onSelectModel(option) },
+            )
+            HorizontalDivider()
         }
     }
 }

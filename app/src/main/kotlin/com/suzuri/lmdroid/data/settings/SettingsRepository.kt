@@ -24,12 +24,12 @@ private val Context.settingsDataStore by preferencesDataStore(name = "settings")
 data class SelectedModel(val profileId: Long, val model: String)
 
 /**
- * Resolves which (profile, model) pair is used for (a) the chat screen — adjustable there — and
+ * Resolves which (profile, model) pair is used for (a) the chat screen — adjustable there —
  * (b) background "system" tasks (auto-titling, prompt suggestions) — adjustable from Settings →
- * システム, falling back to the chat selection when not explicitly overridden. Also tracks
- * app-wide preferences unrelated to any one profile, like [AppSettings.markdownEnabled], the
- * Web検索 on/off toggle, and which registered [ApiProfileEntity] (providerType ==
- * PROVIDER_BRAVE_SEARCH) is currently active for it.
+ * システム — and (c) the assistant overlay (Settings → アシスタント), all falling back to the chat
+ * selection when not explicitly overridden. Also tracks app-wide preferences unrelated to any one
+ * profile, like [AppSettings.markdownEnabled], the Web検索 on/off toggle, and which registered
+ * [ApiProfileEntity] (providerType == PROVIDER_BRAVE_SEARCH) is currently active for it.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsRepository(
@@ -43,6 +43,9 @@ class SettingsRepository(
     val selectedSystemModel: Flow<SelectedModel?> =
         context.settingsDataStore.data.map { it.toSelectedModel(KEY_SYSTEM_PROFILE_ID, KEY_SYSTEM_MODEL) }
 
+    val selectedAssistantModel: Flow<SelectedModel?> =
+        context.settingsDataStore.data.map { it.toSelectedModel(KEY_ASSISTANT_PROFILE_ID, KEY_ASSISTANT_MODEL) }
+
     private val markdownEnabledFlow: Flow<Boolean> =
         context.settingsDataStore.data.map { it[KEY_MARKDOWN_ENABLED] ?: true }
 
@@ -53,9 +56,16 @@ class SettingsRepository(
         if (systemSelected != null) resolve(systemSelected) else chatSettings
     }
 
+    /** Falls back to the chat selection when no assistant-specific override has been chosen — see AssistViewModel, which uses this instead of [chatSettings] for the assistant overlay's replies. */
+    val assistantSettings: Flow<AppSettings> = selectedAssistantModel.flatMapLatest { assistantSelected ->
+        if (assistantSelected != null) resolve(assistantSelected) else chatSettings
+    }
+
     suspend fun currentChatSettings(): AppSettings = chatSettings.first()
 
     suspend fun currentSystemSettings(): AppSettings = systemSettings.first()
+
+    suspend fun currentAssistantSettings(): AppSettings = assistantSettings.first()
 
     suspend fun setSelectedChatModel(profileId: Long, model: String) {
         context.settingsDataStore.edit { prefs ->
@@ -73,6 +83,19 @@ class SettingsRepository(
             } else {
                 prefs.remove(KEY_SYSTEM_PROFILE_ID)
                 prefs.remove(KEY_SYSTEM_MODEL)
+            }
+        }
+    }
+
+    /** Null clears the override, falling back to the chat selection again. */
+    suspend fun setSelectedAssistantModel(profileId: Long?, model: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (profileId != null && model != null) {
+                prefs[KEY_ASSISTANT_PROFILE_ID] = profileId
+                prefs[KEY_ASSISTANT_MODEL] = model
+            } else {
+                prefs.remove(KEY_ASSISTANT_PROFILE_ID)
+                prefs.remove(KEY_ASSISTANT_MODEL)
             }
         }
     }
@@ -203,7 +226,7 @@ class SettingsRepository(
         } else {
             null
         }
-        return AppSettings(apiKey = apiKey, model = model, baseUrl = baseUrl, markdownEnabled = markdownEnabled)
+        return AppSettings(apiKey = apiKey, model = model, baseUrl = baseUrl, markdownEnabled = markdownEnabled, profileName = name)
     }
 
     private companion object {
@@ -211,6 +234,8 @@ class SettingsRepository(
         val KEY_CHAT_MODEL = stringPreferencesKey("chat_model")
         val KEY_SYSTEM_PROFILE_ID = longPreferencesKey("system_profile_id")
         val KEY_SYSTEM_MODEL = stringPreferencesKey("system_model")
+        val KEY_ASSISTANT_PROFILE_ID = longPreferencesKey("assistant_profile_id")
+        val KEY_ASSISTANT_MODEL = stringPreferencesKey("assistant_model")
         val KEY_MARKDOWN_ENABLED = booleanPreferencesKey("markdown_enabled")
         val KEY_BRAVE_SEARCH_ENABLED = booleanPreferencesKey("brave_search_enabled")
         val KEY_SELECTED_WEB_SEARCH_PROFILE_ID = longPreferencesKey("selected_web_search_profile_id")

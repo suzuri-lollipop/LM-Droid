@@ -58,6 +58,7 @@ import com.suzuri.lmdroid.ui.navigation.Screen
 import com.suzuri.lmdroid.ui.settings.ApiProfileListScreen
 import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
 import com.suzuri.lmdroid.ui.settings.AssistantSettingsScreen
+import com.suzuri.lmdroid.ui.settings.AssistantSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditScreen
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.LocationSettingsScreen
@@ -136,6 +137,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val locationSettingsViewModel: LocationSettingsViewModel = viewModel(factory = viewModelFactory)
     val systemPromptListViewModel: SystemPromptListViewModel = viewModel(factory = viewModelFactory)
     val systemPromptEditViewModel: SystemPromptEditViewModel = viewModel(factory = viewModelFactory)
+    val assistantSettingsViewModel: AssistantSettingsViewModel = viewModel(factory = viewModelFactory)
     val historyViewModel: HistoryViewModel = viewModel(factory = viewModelFactory)
     val settingsExportViewModel: SettingsExportViewModel = viewModel(factory = viewModelFactory)
     val settingsImportViewModel: SettingsImportViewModel = viewModel(factory = viewModelFactory)
@@ -437,7 +439,10 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                             }
                         }
                         SettingsRoute.Assistant -> {
-                            AssistantSettingsScreen(modifier = Modifier.padding(innerPadding))
+                            AssistantSettingsScreen(
+                                viewModel = assistantSettingsViewModel,
+                                modifier = Modifier.padding(innerPadding),
+                            )
                         }
                     }
                 }

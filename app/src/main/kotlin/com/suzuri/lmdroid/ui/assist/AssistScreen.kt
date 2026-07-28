@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.mikepenz.markdown.m3.Markdown
@@ -143,7 +144,16 @@ fun AssistScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(stringResource(R.string.assist_title), style = MaterialTheme.typography.titleMedium)
+                    // Shows which (profile, model) is actually answering (see Settings →
+                    // アシスタント) instead of a static label, falling back to it only when no
+                    // chat profile is configured at all yet.
+                    Text(
+                        text = uiState.modelProfileName ?: stringResource(R.string.assist_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Filled.Close,

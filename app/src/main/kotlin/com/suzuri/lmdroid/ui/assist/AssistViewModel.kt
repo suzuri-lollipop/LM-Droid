@@ -22,7 +22,11 @@ import kotlinx.coroutines.launch
  * Backs the assistant overlay (AssistActivity): a single voice question sent through the exact
  * same [ConversationRepository.sendUserMessage] path as the main chat screen, so it shows up as a
  * normal conversation afterward — just a smaller, one-shot version of ChatViewModel's send/observe
- * pattern (no attachments, model switcher, or system prompts here).
+ * pattern (no attachments, model switcher, or system prompts here). Uses
+ * [SettingsRepository.currentAssistantSettings] rather than the plain chat selection, so Settings
+ * → アシスタント can point this at a different (profile, model) pair (falling back to chat's own
+ * selection when not overridden) — see [AssistUiState.modelProfileName], shown in place of the
+ * static "アシスタント" title so it's clear which one is answering.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AssistViewModel(
@@ -46,7 +50,8 @@ class AssistViewModel(
 
     init {
         viewModelScope.launch {
-            _uiState.update { it.copy(markdownEnabled = settingsRepository.currentChatSettings().markdownEnabled) }
+            val settings = settingsRepository.currentAssistantSettings()
+            _uiState.update { it.copy(markdownEnabled = settings.markdownEnabled, modelProfileName = settings.profileName) }
         }
 
         viewModelScope.launch {
@@ -110,7 +115,8 @@ class AssistViewModel(
         }
         viewModelScope.launch {
             val id = ensureConversationId()
-            val result = conversationRepository.sendUserMessage(id, text)
+            val settings = settingsRepository.currentAssistantSettings()
+            val result = conversationRepository.sendUserMessage(id, text, settingsOverride = settings)
             when (result) {
                 is ConversationRepository.SendResult.Success -> Unit
                 is ConversationRepository.SendResult.ApiKeyMissing -> _uiState.update { it.copy(apiKeyMissing = true) }

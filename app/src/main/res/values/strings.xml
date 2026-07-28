@@ -120,6 +120,7 @@
     <string name="assistant_settings_status_held">現在、このアプリがデバイスのアシスタントに設定されています</string>
     <string name="assistant_settings_status_not_held">現在、このアプリはデバイスのアシスタントに設定されていません</string>
     <string name="assistant_settings_set_button">デジタルアシスタントに設定</string>
+    <string name="assistant_settings_model_description">アシスタントモードで使うモデルを選択します。未選択の場合はチャットで選択中のモデルが使われます。</string>
 
     <string name="history_title">履歴</string>
     <string name="history_new_conversation">新しい会話</string>

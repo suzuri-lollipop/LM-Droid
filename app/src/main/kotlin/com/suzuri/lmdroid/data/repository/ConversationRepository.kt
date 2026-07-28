@@ -178,8 +178,12 @@ class ConversationRepository(
         conversationId: Long,
         userText: String,
         attachments: List<SavedAttachment> = emptyList(),
+        // Lets a caller other than the main chat screen (namely AssistViewModel, via
+        // SettingsRepository.currentAssistantSettings()) resolve a different (profile, model) pair
+        // than the chat selection — null (the default) keeps ChatViewModel's existing behavior.
+        settingsOverride: AppSettings? = null,
     ): SendResult {
-        val settings = settingsRepository.currentChatSettings()
+        val settings = settingsOverride ?: settingsRepository.currentChatSettings()
         val apiKey = settings.apiKey
         if (apiKey.isNullOrBlank()) {
             return SendResult.ApiKeyMissing
