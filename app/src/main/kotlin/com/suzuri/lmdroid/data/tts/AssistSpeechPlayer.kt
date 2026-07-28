@@ -26,19 +26,22 @@ class AssistSpeechPlayer(
     private var mediaPlayer: MediaPlayer? = null
 
     suspend fun speak(text: String) {
-        if (text.isBlank()) return
+        // The assistant overlay's replies are Markdown (see AssistScreen's own rendering) — spoken
+        // aloud as-is, both TTS backends would narrate every **/#/`` as a literal character.
+        val spokenText = markdownToSpeechText(text)
+        if (spokenText.isBlank()) return
         val profile = settingsRepository.currentTtsProfile()
         if (profile == null) {
-            onDeviceSpeechSynthesizer.speak(text)
+            onDeviceSpeechSynthesizer.speak(spokenText)
             return
         }
 
         val speakerId = profile.voicevoxSpeakerId ?: ApiProfileEntity.DEFAULT_VOICEVOX_SPEAKER_ID
-        val result = voicevoxCompatibleClient.synthesize(profile.baseUrl, text, speakerId)
+        val result = voicevoxCompatibleClient.synthesize(profile.baseUrl, spokenText, speakerId)
         val audioBytes = result.getOrNull()
         if (audioBytes == null) {
             Log.w(TAG, "speak: VOICEVOX-compatible synthesis failed, falling back to on-device voice", result.exceptionOrNull())
-            onDeviceSpeechSynthesizer.speak(text)
+            onDeviceSpeechSynthesizer.speak(spokenText)
             return
         }
         playWav(audioBytes)
