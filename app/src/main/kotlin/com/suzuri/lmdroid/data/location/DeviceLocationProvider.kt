@@ -28,10 +28,13 @@ data class DeviceLocation(
  * Fetches the device's current location for the "get_current_location" tool (see
  * ConversationRepository) — plain android.location APIs rather than Google Play Services'
  * FusedLocationProviderClient, since this project doesn't otherwise depend on Play Services.
- * Returns null (never throws) whenever a location genuinely can't be obtained: permission not
- * granted, no provider enabled, or no fix within [LOCATION_TIMEOUT_MS] (e.g. indoors with GPS
- * only and no network fallback) — the caller feeds that back to the model as "unavailable" so the
- * reply doesn't fail outright over something as inherently flaky as a location fix.
+ * Prefers a fresh fix but falls back to the last-known location (see [DeviceLocationProvider]'s
+ * private requestLocation()) when one can't be obtained in time — GPS commonly can't complete
+ * within [LOCATION_TIMEOUT_MS] indoors, and this device may have no other provider registered.
+ * Returns null (never throws) only when a location genuinely can't be obtained at all: permission
+ * not granted, no provider enabled, or no fix (fresh or last-known) exists — the caller feeds that
+ * back to the model as "unavailable" so the reply doesn't fail outright over something as
+ * inherently flaky as a location fix.
  */
 class DeviceLocationProvider(private val context: Context) {
 
@@ -40,9 +43,9 @@ class DeviceLocationProvider(private val context: Context) {
             Log.w(TAG, "getCurrentLocation: no location permission granted")
             return null
         }
-        val location = withTimeoutOrNull(LOCATION_TIMEOUT_MS) { requestLocation() }
+        val location = requestLocation()
         if (location == null) {
-            Log.w(TAG, "getCurrentLocation: no fix obtained (disabled provider, or timed out)")
+            Log.w(TAG, "getCurrentLocation: no fix obtained (disabled provider, no signal, or timed out)")
             return null
         }
         return DeviceLocation(
@@ -56,7 +59,17 @@ class DeviceLocationProvider(private val context: Context) {
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-    @Suppress("DEPRECATION") // requestSingleUpdate has no replacement usable down to minSdk 26 (getCurrentLocation() is API 30+).
+    /**
+     * A fresh GPS fix commonly can't be obtained within [LOCATION_TIMEOUT_MS] at all — GPS needs a
+     * relatively clear sky view, which most indoor use (the common case for a chat app) doesn't
+     * have, and this project deliberately avoids Play Services' FusedLocationProviderClient (see
+     * the class doc comment), so there's no network/wifi-based fallback provider on many modern
+     * devices, where the legacy LocationManager.NETWORK_PROVIDER is often no longer registered at
+     * all. So: try [LocationManager.getLastKnownLocation] first (instant, no timeout needed) and
+     * return it immediately if recent enough; otherwise attempt a fresh fix, but fall back to that
+     * same last-known location (even if stale) if the fresh attempt times out — approximate-but-
+     * present beats failing outright.
+     */
     private suspend fun requestLocation(): Location? {
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
         if (locationManager == null) {
@@ -68,11 +81,31 @@ class DeviceLocationProvider(private val context: Context) {
             Log.w(TAG, "requestLocation: no usable provider is enabled (is Location turned on in system settings?)")
             return null
         }
-        Log.d(TAG, "requestLocation: requesting a single update from $provider")
 
-        return suspendCancellableCoroutine { continuation ->
+        val lastKnown = runCatching { locationManager.getLastKnownLocation(provider) }
+            .onFailure { e -> Log.w(TAG, "getLastKnownLocation failed", e) }
+            .getOrNull()
+        val lastKnownAgeMs = lastKnown?.let { System.currentTimeMillis() - it.time }
+        if (lastKnown != null && lastKnownAgeMs != null && lastKnownAgeMs in 0..FRESH_ENOUGH_MS) {
+            Log.d(TAG, "requestLocation: using last-known fix from $provider (${lastKnownAgeMs}ms old)")
+            return lastKnown
+        }
+
+        Log.d(TAG, "requestLocation: requesting a fresh update from $provider")
+        val freshLocation = withTimeoutOrNull(LOCATION_TIMEOUT_MS) { awaitSingleUpdate(locationManager, provider) }
+        if (freshLocation != null) return freshLocation
+
+        if (lastKnown != null) {
+            Log.d(TAG, "requestLocation: fresh fix unavailable, falling back to stale last-known (${lastKnownAgeMs}ms old)")
+        }
+        return lastKnown
+    }
+
+    @Suppress("DEPRECATION") // requestSingleUpdate has no replacement usable down to minSdk 26 (getCurrentLocation() is API 30+).
+    private suspend fun awaitSingleUpdate(locationManager: LocationManager, provider: String): Location? =
+        suspendCancellableCoroutine { continuation ->
             val listener = LocationListener { location ->
-                Log.d(TAG, "requestLocation: got a fix from $provider")
+                Log.d(TAG, "requestLocation: got a fresh fix from $provider")
                 if (continuation.isActive) continuation.resume(location)
             }
             try {
@@ -86,7 +119,6 @@ class DeviceLocationProvider(private val context: Context) {
             }
             continuation.invokeOnCancellation { locationManager.removeUpdates(listener) }
         }
-    }
 
     /**
      * Prefers GPS for precision, falling back to network-based positioning (faster indoors/
@@ -122,5 +154,6 @@ class DeviceLocationProvider(private val context: Context) {
     private companion object {
         const val TAG = "DeviceLocationProvider"
         const val LOCATION_TIMEOUT_MS = 10_000L
+        const val FRESH_ENOUGH_MS = 5 * 60 * 1000L
     }
 }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -242,12 +243,27 @@ private fun AssistConversationContent(
                 )
             }
         } else {
-            Text(
-                text = transcript,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(12.dp))
+            // Same bubble treatment as the main chat's own UserBubble (see MessageBubble.kt) —
+            // right-aligned, primary-colored, rounded — so "this is what you said" reads
+            // instantly from the shape alone, the same way it already does in the full app,
+            // rather than introducing a new "あなた"/"アシスタント" label convention here.
+            Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 280.dp)
+                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(18.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Text(
+                        text = transcript,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
             when {
                 isAssistantError -> Text(
                     text = assistantText.ifBlank { "…" },
