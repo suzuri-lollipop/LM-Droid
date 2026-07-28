@@ -15,6 +15,9 @@ import com.suzuri.lmdroid.data.settings.ApiKeyCipher
 import com.suzuri.lmdroid.data.settings.SettingsExporter
 import com.suzuri.lmdroid.data.settings.SettingsImporter
 import com.suzuri.lmdroid.data.settings.SettingsRepository
+import com.suzuri.lmdroid.data.tts.AssistSpeechPlayer
+import com.suzuri.lmdroid.data.tts.OnDeviceSpeechSynthesizer
+import com.suzuri.lmdroid.data.tts.VoicevoxCompatibleClient
 import com.suzuri.lmdroid.data.websearch.BraveSearchClient
 import com.suzuri.lmdroid.data.websearch.WebPageFetcher
 import kotlinx.serialization.json.Json
@@ -90,6 +93,12 @@ class AppContainer(context: Context) {
     val webPageFetcher = WebPageFetcher(okHttpClient)
 
     val deviceLocationProvider = DeviceLocationProvider(appContext)
+
+    val voicevoxCompatibleClient = VoicevoxCompatibleClient(okHttpClient)
+
+    val onDeviceSpeechSynthesizer = OnDeviceSpeechSynthesizer(appContext)
+
+    val assistSpeechPlayer = AssistSpeechPlayer(appContext, settingsRepository, voicevoxCompatibleClient, onDeviceSpeechSynthesizer)
 
     val systemPromptRepository = SystemPromptRepository(database.systemPromptDao(), settingsRepository)
 

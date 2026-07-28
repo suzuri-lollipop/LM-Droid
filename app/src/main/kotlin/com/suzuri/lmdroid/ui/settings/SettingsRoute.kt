@@ -11,8 +11,10 @@ enum class SettingsRoute {
     ApiSettings,
     OpenAiCompatible,
     BraveSearchProfile,
+    VoicevoxProfile,
     System,
     WebSearch,
+    Voice,
     Location,
     SystemPromptList,
     SystemPromptEdit,
@@ -24,8 +26,10 @@ fun SettingsRoute.parent(): SettingsRoute? = when (this) {
     SettingsRoute.ApiSettings -> SettingsRoute.Root
     SettingsRoute.OpenAiCompatible -> SettingsRoute.ApiSettings
     SettingsRoute.BraveSearchProfile -> SettingsRoute.ApiSettings
+    SettingsRoute.VoicevoxProfile -> SettingsRoute.ApiSettings
     SettingsRoute.System -> SettingsRoute.Root
     SettingsRoute.WebSearch -> SettingsRoute.Root
+    SettingsRoute.Voice -> SettingsRoute.Root
     SettingsRoute.Location -> SettingsRoute.Root
     SettingsRoute.SystemPromptList -> SettingsRoute.Root
     SettingsRoute.SystemPromptEdit -> SettingsRoute.SystemPromptList

@@ -150,6 +150,23 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs -> prefs[KEY_LOCATION_ENABLED] = enabled }
     }
 
+    /** Which registered [ApiProfileEntity] (providerType == PROVIDER_VOICEVOX_COMPATIBLE) reads the assistant overlay's replies aloud (see AssistSpeechPlayer) — null means this device's own built-in text-to-speech. */
+    val selectedTtsProfileId: Flow<Long?> = context.settingsDataStore.data.map { it[KEY_SELECTED_TTS_PROFILE_ID] }
+
+    suspend fun currentSelectedTtsProfileId(): Long? = selectedTtsProfileId.first()
+
+    suspend fun setSelectedTtsProfileId(id: Long?) {
+        context.settingsDataStore.edit { prefs ->
+            if (id == null) prefs.remove(KEY_SELECTED_TTS_PROFILE_ID) else prefs[KEY_SELECTED_TTS_PROFILE_ID] = id
+        }
+    }
+
+    /** The active VOICEVOX-compatible profile, or null when none is selected (or the selected one was since deleted) — AssistSpeechPlayer falls back to on-device speech in that case. */
+    suspend fun currentTtsProfile(): ApiProfileEntity? {
+        val id = currentSelectedTtsProfileId() ?: return null
+        return apiProfileDao.getById(id)
+    }
+
     private fun resolve(selected: SelectedModel?): Flow<AppSettings> {
         if (selected == null) {
             return markdownEnabledFlow.map { markdownEnabled ->
@@ -200,5 +217,6 @@ class SettingsRepository(
         val KEY_WEB_SEARCH_MAX_TOOL_ROUNDS = intPreferencesKey("web_search_max_tool_rounds")
         val KEY_SELECTED_SYSTEM_PROMPT_IDS = stringSetPreferencesKey("selected_system_prompt_ids")
         val KEY_LOCATION_ENABLED = booleanPreferencesKey("location_enabled")
+        val KEY_SELECTED_TTS_PROFILE_ID = longPreferencesKey("selected_tts_profile_id")
     }
 }

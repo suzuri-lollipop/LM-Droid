@@ -8,6 +8,7 @@ import com.suzuri.lmdroid.data.db.ModelOptionRow
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.settings.ApiKeyCipher
 import com.suzuri.lmdroid.data.settings.AppSettings
+import com.suzuri.lmdroid.data.tts.VoicevoxCompatibleClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -39,8 +40,17 @@ class ApiProfileRepository(
             ApiProfileEntity(
                 name = name.ifBlank { "新しいプロファイル" },
                 providerType = providerType,
-                baseUrl = AppSettings.DEFAULT_BASE_URL,
+                baseUrl = if (providerType == ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE) {
+                    VoicevoxCompatibleClient.DEFAULT_BASE_URL
+                } else {
+                    AppSettings.DEFAULT_BASE_URL
+                },
                 createdAt = System.currentTimeMillis(),
+                voicevoxSpeakerId = if (providerType == ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE) {
+                    ApiProfileEntity.DEFAULT_VOICEVOX_SPEAKER_ID
+                } else {
+                    null
+                },
             ),
         )
     }
@@ -55,6 +65,18 @@ class ApiProfileRepository(
                 apiKeyCiphertext = encrypted?.ciphertextBase64,
                 apiKeyIv = encrypted?.ivBase64,
                 baseUrl = baseUrl.ifBlank { AppSettings.DEFAULT_BASE_URL },
+            ),
+        )
+    }
+
+    /** Same as [updateProfile] but for a PROVIDER_VOICEVOX_COMPATIBLE profile — a local, unauthenticated server, so there's a speaker id to persist and no API key. */
+    suspend fun updateVoicevoxProfile(id: Long, name: String, baseUrl: String, speakerId: Int) {
+        val existing = apiProfileDao.getById(id) ?: return
+        apiProfileDao.update(
+            existing.copy(
+                name = name.ifBlank { existing.name },
+                baseUrl = baseUrl.ifBlank { existing.baseUrl },
+                voicevoxSpeakerId = speakerId,
             ),
         )
     }

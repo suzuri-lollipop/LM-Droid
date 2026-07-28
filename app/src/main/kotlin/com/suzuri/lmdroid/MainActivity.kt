@@ -74,6 +74,10 @@ import com.suzuri.lmdroid.ui.settings.SystemPromptListScreen
 import com.suzuri.lmdroid.ui.settings.SystemPromptListViewModel
 import com.suzuri.lmdroid.ui.settings.SystemSettingsScreen
 import com.suzuri.lmdroid.ui.settings.SystemSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.VoiceSettingsScreen
+import com.suzuri.lmdroid.ui.settings.VoiceSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.VoicevoxProfileEditScreen
+import com.suzuri.lmdroid.ui.settings.VoicevoxProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.WebSearchSettingsScreen
 import com.suzuri.lmdroid.ui.settings.WebSearchSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.parent
@@ -108,10 +112,11 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     // Tracked separately from currentScreen so leaving and re-entering Chat doesn't reset how
     // deep the user was in Settings.
     var settingsRoute by rememberSaveable { mutableStateOf(SettingsRoute.Root) }
-    // Which profile OpenAiCompatibleScreen/BraveSearchProfileEditScreen is editing — only
-    // meaningful while settingsRoute is OpenAiCompatible or BraveSearchProfile; always set to a
-    // real, already-created profile id just before navigating there (profiles are created
-    // immediately when added, so there's no "editing a new/unsaved profile" state to represent here).
+    // Which profile OpenAiCompatibleScreen/BraveSearchProfileEditScreen/VoicevoxProfileEditScreen
+    // is editing — only meaningful while settingsRoute is OpenAiCompatible, BraveSearchProfile, or
+    // VoicevoxProfile; always set to a real, already-created profile id just before navigating
+    // there (profiles are created immediately when added, so there's no "editing a new/unsaved
+    // profile" state to represent here).
     var editingProfileId by rememberSaveable { mutableStateOf<Long?>(null) }
     // Same idea as editingProfileId, but for SystemPromptEdit — always set to a real,
     // already-created prompt id just before navigating there (prompts are created immediately
@@ -123,9 +128,11 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val chatViewModel: ChatViewModel = viewModel(factory = viewModelFactory)
     val settingsViewModel: SettingsViewModel = viewModel(factory = viewModelFactory)
     val braveSearchProfileEditViewModel: BraveSearchProfileEditViewModel = viewModel(factory = viewModelFactory)
+    val voicevoxProfileEditViewModel: VoicevoxProfileEditViewModel = viewModel(factory = viewModelFactory)
     val apiProfileListViewModel: ApiProfileListViewModel = viewModel(factory = viewModelFactory)
     val systemSettingsViewModel: SystemSettingsViewModel = viewModel(factory = viewModelFactory)
     val webSearchSettingsViewModel: WebSearchSettingsViewModel = viewModel(factory = viewModelFactory)
+    val voiceSettingsViewModel: VoiceSettingsViewModel = viewModel(factory = viewModelFactory)
     val locationSettingsViewModel: LocationSettingsViewModel = viewModel(factory = viewModelFactory)
     val systemPromptListViewModel: SystemPromptListViewModel = viewModel(factory = viewModelFactory)
     val systemPromptEditViewModel: SystemPromptEditViewModel = viewModel(factory = viewModelFactory)
@@ -246,8 +253,10 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.ApiSettings -> stringResource(R.string.settings_api_category_title)
                                     SettingsRoute.OpenAiCompatible -> stringResource(R.string.settings_openai_compatible_title)
                                     SettingsRoute.BraveSearchProfile -> stringResource(R.string.settings_brave_search_title)
+                                    SettingsRoute.VoicevoxProfile -> stringResource(R.string.settings_voicevox_title)
                                     SettingsRoute.System -> stringResource(R.string.settings_system_category_title)
                                     SettingsRoute.WebSearch -> stringResource(R.string.settings_websearch_category_title)
+                                    SettingsRoute.Voice -> stringResource(R.string.settings_voice_category_title)
                                     SettingsRoute.Location -> stringResource(R.string.settings_location_category_title)
                                     SettingsRoute.SystemPromptList -> stringResource(R.string.settings_system_prompt_category_title)
                                     SettingsRoute.SystemPromptEdit -> stringResource(R.string.settings_system_prompt_category_title)
@@ -330,6 +339,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 onNavigateToApiSettings = { settingsRoute = SettingsRoute.ApiSettings },
                                 onNavigateToSystem = { settingsRoute = SettingsRoute.System },
                                 onNavigateToWebSearch = { settingsRoute = SettingsRoute.WebSearch },
+                                onNavigateToVoice = { settingsRoute = SettingsRoute.Voice },
                                 onNavigateToLocation = { settingsRoute = SettingsRoute.Location },
                                 onNavigateToSystemPrompts = { settingsRoute = SettingsRoute.SystemPromptList },
                                 onNavigateToAssistant = { settingsRoute = SettingsRoute.Assistant },
@@ -341,10 +351,10 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 viewModel = apiProfileListViewModel,
                                 onNavigateToProfile = { id, providerType ->
                                     editingProfileId = id
-                                    settingsRoute = if (providerType == ApiProfileEntity.PROVIDER_BRAVE_SEARCH) {
-                                        SettingsRoute.BraveSearchProfile
-                                    } else {
-                                        SettingsRoute.OpenAiCompatible
+                                    settingsRoute = when (providerType) {
+                                        ApiProfileEntity.PROVIDER_BRAVE_SEARCH -> SettingsRoute.BraveSearchProfile
+                                        ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE -> SettingsRoute.VoicevoxProfile
+                                        else -> SettingsRoute.OpenAiCompatible
                                     }
                                 },
                                 modifier = Modifier.padding(innerPadding),
@@ -370,6 +380,16 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 )
                             }
                         }
+                        SettingsRoute.VoicevoxProfile -> {
+                            val id = editingProfileId
+                            if (id != null) {
+                                VoicevoxProfileEditScreen(
+                                    viewModel = voicevoxProfileEditViewModel,
+                                    profileId = id,
+                                    modifier = Modifier.padding(innerPadding),
+                                )
+                            }
+                        }
                         SettingsRoute.System -> {
                             SystemSettingsScreen(
                                 viewModel = systemSettingsViewModel,
@@ -381,6 +401,12 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                         SettingsRoute.WebSearch -> {
                             WebSearchSettingsScreen(
                                 viewModel = webSearchSettingsViewModel,
+                                modifier = Modifier.padding(innerPadding),
+                            )
+                        }
+                        SettingsRoute.Voice -> {
+                            VoiceSettingsScreen(
+                                viewModel = voiceSettingsViewModel,
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }

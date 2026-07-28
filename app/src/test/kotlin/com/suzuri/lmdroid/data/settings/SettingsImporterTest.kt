@@ -57,6 +57,11 @@ class SettingsImporterTest {
         assertEquals(listOf(1L), decoded.selectedSystemPromptIds)
         assertEquals("敬語", decoded.systemPrompts.single().name)
         assertEquals(3, decoded.webSearch.maxToolRounds)
+        // Neither voicevoxSpeakerId nor the whole tts section exists in the literal YAML above —
+        // confirms an export from before the TTS feature existed still decodes cleanly, defaulting
+        // to "no speaker id"/"no tts profile selected" (i.e. this device's own on-device speech).
+        assertEquals(null, decoded.apiProfiles[0].voicevoxSpeakerId)
+        assertEquals(null, decoded.tts.selectedProfileId)
     }
 
     @Test
@@ -72,6 +77,16 @@ class SettingsImporterTest {
                     apiKey = ExportedEncryptedValue(ciphertext = "c1phertext==", iv = "1v=="),
                     models = listOf("gpt-4o-mini"),
                 ),
+                ExportedApiProfile(
+                    id = 2,
+                    name = "VOICEVOX",
+                    providerType = ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE,
+                    baseUrl = "http://127.0.0.1:50021",
+                    enabled = true,
+                    apiKey = null,
+                    models = emptyList(),
+                    voicevoxSpeakerId = 3,
+                ),
             ),
             chatSelection = ExportedModelSelection(profileId = 1, profileName = "ローカルサーバー", model = "gpt-4o-mini"),
             systemSelection = null,
@@ -80,10 +95,13 @@ class SettingsImporterTest {
             selectedSystemPromptIds = listOf(1),
             webSearch = ExportedWebSearchSettings(enabled = true, selectedProfileId = null, maxToolRounds = 3),
             locationEnabled = true,
+            tts = ExportedTtsSettings(selectedProfileId = 2),
         )
 
         val decoded = decodeSettingsExportFromYaml(encodeSettingsExportToYaml(original))
 
         assertEquals(original, decoded)
+        assertEquals(2L, decoded.tts.selectedProfileId)
+        assertEquals(3, decoded.apiProfiles[1].voicevoxSpeakerId)
     }
 }

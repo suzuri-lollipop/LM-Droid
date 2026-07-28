@@ -13,7 +13,7 @@ import java.time.format.DateTimeFormatter
 
 /**
  * Serializes every user-configurable setting (API profiles + their registered models, chat/system
- * model selections, markdown preference, system prompt profiles, and Web検索 settings) into a
+ * model selections, markdown preference, system prompt profiles, and Web検索/音声 settings) into a
  * single YAML document — used by Settings → 設定をエクスポート for backup/inspection purposes.
  *
  * API keys are never written in plaintext: each field is copied exactly as it's already stored —
@@ -44,6 +44,7 @@ class SettingsExporter(
                 enabled = profile.enabled,
                 apiKey = exportedEncryptedValueOf(profile.apiKeyCiphertext, profile.apiKeyIv),
                 models = models.map { it.modelId },
+                voicevoxSpeakerId = profile.voicevoxSpeakerId,
             )
         }
         val profileNameById = profiles.associate { it.id to it.name }
@@ -67,6 +68,7 @@ class SettingsExporter(
                 maxToolRounds = settingsRepository.currentWebSearchMaxToolRounds(),
             ),
             locationEnabled = settingsRepository.currentLocationEnabled(),
+            tts = ExportedTtsSettings(selectedProfileId = settingsRepository.currentSelectedTtsProfileId()),
         )
     }
 
@@ -101,6 +103,7 @@ data class SettingsExport(
     val selectedSystemPromptIds: List<Long> = emptyList(),
     val webSearch: ExportedWebSearchSettings,
     val locationEnabled: Boolean = false,
+    val tts: ExportedTtsSettings = ExportedTtsSettings(),
 )
 
 @Serializable
@@ -121,6 +124,8 @@ data class ExportedApiProfile(
     val enabled: Boolean,
     val apiKey: ExportedEncryptedValue? = null,
     val models: List<String>,
+    // Only meaningful for PROVIDER_VOICEVOX_COMPATIBLE.
+    val voicevoxSpeakerId: Int? = null,
 )
 
 @Serializable
@@ -137,6 +142,13 @@ data class ExportedWebSearchSettings(
     // travels with that profile's own apiKey field, not duplicated here.
     val selectedProfileId: Long? = null,
     val maxToolRounds: Int,
+)
+
+@Serializable
+data class ExportedTtsSettings(
+    // Points at one of apiProfiles above (providerType == PROVIDER_VOICEVOX_COMPATIBLE) — null
+    // means the assistant overlay speaks with this device's own built-in text-to-speech.
+    val selectedProfileId: Long? = null,
 )
 
 /** AES-256-GCM ciphertext + IV, both base64 — see [ApiKeyCipher]. Decryptable only via this exact app install's Android Keystore key. */

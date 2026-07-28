@@ -38,6 +38,17 @@ class SettingsExporterTest {
                 apiKey = apiKey,
                 models = emptyList(),
             ),
+            ExportedApiProfile(
+                id = 3,
+                name = "VOICEVOX",
+                providerType = ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE,
+                baseUrl = "http://127.0.0.1:50021",
+                enabled = true,
+                // Unauthenticated local server — no API key, unlike the other two profiles.
+                apiKey = null,
+                models = emptyList(),
+                voicevoxSpeakerId = 3,
+            ),
         ),
         chatSelection = ExportedModelSelection(profileId = 1, profileName = "ローカルサーバー", model = "gpt-4o-mini"),
         systemSelection = null,
@@ -46,6 +57,7 @@ class SettingsExporterTest {
         selectedSystemPromptIds = listOf(1),
         webSearch = ExportedWebSearchSettings(enabled = true, selectedProfileId = 2, maxToolRounds = 3),
         locationEnabled = true,
+        tts = ExportedTtsSettings(selectedProfileId = 3),
     )
 
     @Test
@@ -107,6 +119,30 @@ class SettingsExporterTest {
         val braveProfile = decoded.apiProfiles.single { it.id == 2L }
         assertEquals(ApiProfileEntity.PROVIDER_BRAVE_SEARCH, braveProfile.providerType)
         assertEquals(2L, decoded.webSearch.selectedProfileId)
+    }
+
+    @Test
+    fun `round-trips a VOICEVOX profile's speaker id and the selected tts profile pointer`() {
+        val decoded = settingsExportYaml.decodeFromString(
+            SettingsExport.serializer(),
+            encodeSettingsExportToYaml(sampleExport()),
+        )
+
+        val voicevoxProfile = decoded.apiProfiles.single { it.id == 3L }
+        assertEquals(ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE, voicevoxProfile.providerType)
+        assertEquals(3, voicevoxProfile.voicevoxSpeakerId)
+        assertEquals(3L, decoded.tts.selectedProfileId)
+    }
+
+    @Test
+    fun `no tts profile selected still encodes and decodes as null (on-device speech)`() {
+        val export = sampleExport().copy(tts = ExportedTtsSettings(selectedProfileId = null))
+
+        val yamlText = encodeSettingsExportToYaml(export)
+        val decoded = settingsExportYaml.decodeFromString(SettingsExport.serializer(), yamlText)
+
+        assertEquals(export, decoded)
+        assertEquals(null, decoded.tts.selectedProfileId)
     }
 
     @Test

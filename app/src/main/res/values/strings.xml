@@ -47,6 +47,7 @@
     <string name="settings_api_category_title">API設定</string>
     <string name="settings_openai_compatible_title">OpenAI Compatible</string>
     <string name="settings_brave_search_title">Brave Search</string>
+    <string name="settings_voicevox_title">VOICEVOX互換</string>
     <string name="settings_api_key_label">OpenAI APIキー</string>
     <string name="settings_api_key_placeholder">sk-...</string>
     <string name="settings_base_url_label">APIのURL</string>
@@ -91,6 +92,13 @@
     <string name="websearch_max_rounds_description">空欄または0の場合、AIが必要と判断する限り検索を繰り返せます。</string>
     <string name="websearch_profile_label">使用するプロファイル</string>
     <string name="websearch_profile_empty_message">まだBrave Search用のプロファイルがありません。「API設定」から追加してください。</string>
+
+    <string name="settings_voice_category_title">音声</string>
+    <string name="voice_profile_label">使用する音声</string>
+    <string name="voice_on_device_option">この端末の音声合成を使う</string>
+    <string name="voice_profile_empty_message">まだVOICEVOX互換のプロファイルがありません。「API設定」から追加してください。</string>
+    <string name="voicevox_speaker_id_label">話者ID</string>
+    <string name="voicevox_speaker_id_description">VOICEVOXやAivisSpeechの管理画面で確認できる話者(スピーカー)のIDを入力してください。</string>
 
     <string name="settings_location_category_title">位置情報</string>
     <string name="location_enable_label">位置情報を使用する</string>

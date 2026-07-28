@@ -6,11 +6,14 @@ import androidx.lifecycle.viewModelScope
 import com.suzuri.lmdroid.data.db.MessageRole
 import com.suzuri.lmdroid.data.repository.ConversationRepository
 import com.suzuri.lmdroid.data.settings.SettingsRepository
+import com.suzuri.lmdroid.data.tts.AssistSpeechPlayer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -25,6 +28,7 @@ import kotlinx.coroutines.launch
 class AssistViewModel(
     private val conversationRepository: ConversationRepository,
     private val settingsRepository: SettingsRepository,
+    private val assistSpeechPlayer: AssistSpeechPlayer,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AssistUiState())
@@ -33,6 +37,12 @@ class AssistViewModel(
     // Created lazily on the first send (see ensureConversationId) and reused for any follow-up
     // question asked without leaving the overlay, so a follow-up continues the same conversation.
     private val conversationId = MutableStateFlow<Long?>(null)
+
+    // The in-flight (or just-finished) speak() call for the latest reply — cancelling it (rather
+    // than calling AssistSpeechPlayer.stop() directly) is what actually unblocks its suspended
+    // synthesis/playback call via invokeOnCancellation, so a follow-up question or a retry doesn't
+    // keep talking over the user.
+    private var speechJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -72,11 +82,13 @@ class AssistViewModel(
 
     /** Clears the previous turn's transcript/error so the overlay reads as "ready to listen again" — the conversation id itself is untouched, so this continues the same conversation. */
     fun onAskFollowUp() {
+        speechJob?.cancel()
         _uiState.update { it.copy(transcript = "", errorMessage = null, apiKeyMissing = false) }
     }
 
     /** Resets the UI state and increments triggerCount to signal AssistScreen to start listening again. Used when triggered by an external intent (e.g. earphone button). */
     fun onRetry() {
+        speechJob?.cancel()
         _uiState.update {
             it.copy(
                 transcript = "",
@@ -98,7 +110,8 @@ class AssistViewModel(
         }
         viewModelScope.launch {
             val id = ensureConversationId()
-            when (val result = conversationRepository.sendUserMessage(id, text)) {
+            val result = conversationRepository.sendUserMessage(id, text)
+            when (result) {
                 is ConversationRepository.SendResult.Success -> Unit
                 is ConversationRepository.SendResult.ApiKeyMissing -> _uiState.update { it.copy(apiKeyMissing = true) }
                 is ConversationRepository.SendResult.Error -> {
@@ -106,7 +119,12 @@ class AssistViewModel(
                     _uiState.update { it.copy(errorMessage = result.message) }
                 }
             }
+            // Flips the UI to "done" immediately rather than waiting for speech playback to
+            // finish — the reply is already fully shown, and speaking it is a background effect.
             _uiState.update { it.copy(isStreaming = false) }
+            if (result is ConversationRepository.SendResult.Success) {
+                speechJob = viewModelScope.launch { speakLatestReply(id) }
+            }
         }
     }
 
@@ -115,6 +133,18 @@ class AssistViewModel(
         val newId = conversationRepository.createNewConversation()
         conversationId.value = newId
         return newId
+    }
+
+    /**
+     * Reads the just-committed reply straight from the DB (a fresh Flow.first(), not
+     * uiState.assistantText) so this always speaks the final text even if the ViewModel's own
+     * message-flow collector (see init) hasn't yet caught up with the last throttled write.
+     */
+    private suspend fun speakLatestReply(conversationId: Long) {
+        val entities = conversationRepository.observeMessages(conversationId).first()
+        val lastAssistantMessage = entities.lastOrNull { it.message.role == MessageRole.ASSISTANT } ?: return
+        if (lastAssistantMessage.message.isError || lastAssistantMessage.message.content.isBlank()) return
+        assistSpeechPlayer.speak(lastAssistantMessage.message.content)
     }
 
     private companion object {

@@ -48,6 +48,7 @@ class SettingsImporter(
                     // Preserves the exported ordering (observeAll() sorts by createdAt) even if
                     // this loop runs fast enough for currentTimeMillis() to repeat.
                     createdAt = baseProfileTime + index,
+                    voicevoxSpeakerId = profile.voicevoxSpeakerId,
                 ),
             )
             profileIdMap[profile.id] = newId
@@ -87,6 +88,8 @@ class SettingsImporter(
         settingsRepository.setWebSearchMaxToolRounds(export.webSearch.maxToolRounds)
 
         settingsRepository.setLocationEnabled(export.locationEnabled)
+
+        settingsRepository.setSelectedTtsProfileId(export.tts.selectedProfileId?.let { profileIdMap[it] })
     }
 }
 

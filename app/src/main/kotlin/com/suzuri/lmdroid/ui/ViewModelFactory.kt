@@ -15,6 +15,8 @@ import com.suzuri.lmdroid.ui.settings.SettingsViewModel
 import com.suzuri.lmdroid.ui.settings.SystemPromptEditViewModel
 import com.suzuri.lmdroid.ui.settings.SystemPromptListViewModel
 import com.suzuri.lmdroid.ui.settings.SystemSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.VoiceSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.VoicevoxProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.WebSearchSettingsViewModel
 
 class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.Factory {
@@ -46,6 +48,12 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
         modelClass.isAssignableFrom(BraveSearchProfileEditViewModel::class.java) ->
             BraveSearchProfileEditViewModel(container.apiProfileRepository, container.braveSearchClient) as T
 
+        modelClass.isAssignableFrom(VoicevoxProfileEditViewModel::class.java) ->
+            VoicevoxProfileEditViewModel(container.apiProfileRepository, container.voicevoxCompatibleClient) as T
+
+        modelClass.isAssignableFrom(VoiceSettingsViewModel::class.java) ->
+            VoiceSettingsViewModel(container.settingsRepository, container.apiProfileRepository) as T
+
         modelClass.isAssignableFrom(HistoryViewModel::class.java) ->
             HistoryViewModel(container.conversationRepository) as T
 
@@ -65,7 +73,7 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
             SystemPromptEditViewModel(container.systemPromptRepository) as T
 
         modelClass.isAssignableFrom(AssistViewModel::class.java) ->
-            AssistViewModel(container.conversationRepository, container.settingsRepository) as T
+            AssistViewModel(container.conversationRepository, container.settingsRepository, container.assistSpeechPlayer) as T
 
         else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }
