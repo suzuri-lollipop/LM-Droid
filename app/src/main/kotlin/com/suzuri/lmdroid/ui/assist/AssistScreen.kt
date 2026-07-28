@@ -8,18 +8,22 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -110,16 +114,23 @@ fun AssistScreen(
     // while the overlay is already open will restart the listening process.
     LaunchedEffect(uiState.triggerCount) { beginListening() }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.32f))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
         contentAlignment = Alignment.BottomCenter,
     ) {
+        // Bounded rather than left to wrap-content: a long reply would otherwise grow the sheet
+        // past the top of the screen (BottomCenter anchors its bottom edge, so the overflow was
+        // silently clipped off-screen instead of ever being reachable). Capped short of the full
+        // height so a sliver of the scrim stays visible, keeping the bottom-sheet feel.
+        val maxSheetHeight = maxHeight * 0.9f
+
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(max = maxSheetHeight)
                 .navigationBarsPadding()
                 // Absorbs taps so they don't fall through to the scrim's onDismiss behind it.
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}),
@@ -165,46 +176,55 @@ fun AssistScreen(
 
                 Spacer(Modifier.height(8.dp))
 
-                when {
-                    uiState.apiKeyMissing -> {
-                        Text(
-                            text = stringResource(R.string.chat_api_key_missing_message),
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Button(onClick = onOpenApp) { Text(stringResource(R.string.chat_go_to_settings)) }
-                    }
-                    uiState.errorMessage != null -> {
-                        Text(text = uiState.errorMessage.orEmpty(), color = MaterialTheme.colorScheme.error)
-                        Spacer(Modifier.height(16.dp))
-                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            ListeningIndicator(
-                                isListening = false,
-                                onClick = ::beginListening,
-                                contentDescription = stringResource(R.string.assist_retry_listening),
+                // Only this part scrolls — the drag handle/title/close button above stay pinned,
+                // and weight(fill = false) keeps a short reply's sheet compact instead of always
+                // stretching to maxSheetHeight.
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    when {
+                        uiState.apiKeyMissing -> {
+                            Text(
+                                text = stringResource(R.string.chat_api_key_missing_message),
+                                color = MaterialTheme.colorScheme.error,
                             )
+                            Spacer(Modifier.height(12.dp))
+                            Button(onClick = onOpenApp) { Text(stringResource(R.string.chat_go_to_settings)) }
                         }
-                    }
-                    else -> {
-                        AssistConversationContent(
-                            isListening = voiceInputState.isListening,
-                            isStreaming = uiState.isStreaming,
-                            transcript = uiState.transcript,
-                            hasSent = uiState.hasSent,
-                            assistantText = uiState.assistantText,
-                            isAssistantError = uiState.isAssistantError,
-                            markdownEnabled = uiState.markdownEnabled,
-                            onMicClick = {
-                                viewModel.onAskFollowUp()
-                                beginListening()
-                            },
-                        )
-
-                        if (uiState.hasSent && !uiState.isStreaming) {
-                            Spacer(Modifier.height(8.dp))
+                        uiState.errorMessage != null -> {
+                            Text(text = uiState.errorMessage.orEmpty(), color = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.height(16.dp))
                             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                TextButton(onClick = onOpenApp) {
-                                    Text(stringResource(R.string.assist_open_in_app))
+                                ListeningIndicator(
+                                    isListening = false,
+                                    onClick = ::beginListening,
+                                    contentDescription = stringResource(R.string.assist_retry_listening),
+                                )
+                            }
+                        }
+                        else -> {
+                            AssistConversationContent(
+                                isListening = voiceInputState.isListening,
+                                isStreaming = uiState.isStreaming,
+                                transcript = uiState.transcript,
+                                hasSent = uiState.hasSent,
+                                assistantText = uiState.assistantText,
+                                isAssistantError = uiState.isAssistantError,
+                                markdownEnabled = uiState.markdownEnabled,
+                                onMicClick = {
+                                    viewModel.onAskFollowUp()
+                                    beginListening()
+                                },
+                            )
+
+                            if (uiState.hasSent && !uiState.isStreaming) {
+                                Spacer(Modifier.height(8.dp))
+                                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    TextButton(onClick = onOpenApp) {
+                                        Text(stringResource(R.string.assist_open_in_app))
+                                    }
                                 }
                             }
                         }
