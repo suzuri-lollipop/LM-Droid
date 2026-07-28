@@ -1,5 +1,6 @@
 package com.suzuri.lmdroid.data.settings
 
+import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -39,7 +40,7 @@ class SettingsImporterTest {
               - 1
             webSearch:
               enabled: true
-              apiKey: null
+              selectedProfileId: null
               maxToolRounds: 3
             locationEnabled: true
         """.trimIndent()
@@ -48,6 +49,9 @@ class SettingsImporterTest {
 
         assertEquals(1, decoded.apiProfiles.size)
         assertEquals("ローカルサーバー", decoded.apiProfiles[0].name)
+        // Not present in the literal YAML above — confirms an export from before providerType
+        // existed still decodes cleanly, defaulting to the (formerly sole) LLM provider type.
+        assertEquals(ApiProfileEntity.PROVIDER_OPENAI_COMPATIBLE, decoded.apiProfiles[0].providerType)
         assertEquals("c1phertext==", decoded.apiProfiles[0].apiKey?.ciphertext)
         assertEquals(listOf("gpt-4o-mini"), decoded.apiProfiles[0].models)
         assertEquals(listOf(1L), decoded.selectedSystemPromptIds)
@@ -74,7 +78,7 @@ class SettingsImporterTest {
             markdownEnabled = true,
             systemPrompts = listOf(ExportedSystemPrompt(id = 1, name = "敬語", content = "常に日本語の敬語で回答してください")),
             selectedSystemPromptIds = listOf(1),
-            webSearch = ExportedWebSearchSettings(enabled = true, apiKey = null, maxToolRounds = 3),
+            webSearch = ExportedWebSearchSettings(enabled = true, selectedProfileId = null, maxToolRounds = 3),
             locationEnabled = true,
         )
 

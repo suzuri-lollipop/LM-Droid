@@ -2,24 +2,28 @@ package com.suzuri.lmdroid.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.suzuri.lmdroid.data.db.ApiProfileEntity
+import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.settings.SettingsRepository
-import com.suzuri.lmdroid.data.websearch.BraveSearchClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Settings → Web検索: the on/off toggle and API key for the "web_search" tool (see
- * ConversationRepository) — when on, the model is offered the tool and decides for itself whether
- * to call it; the app never searches unconditionally. [maxToolRounds] caps how many times one
- * reply can round-trip through the tool before it's forced to answer with what it has, in case
- * the model won't stop calling it — blank/0 means no user-configured cap.
+ * Settings → Web検索: the on/off toggle for the "web_search"/"fetch_webpage" tools (see
+ * ConversationRepository) plus which registered Brave Search profile (see API設定,
+ * ApiProfileEntity.PROVIDER_BRAVE_SEARCH) supplies the API key — credentials themselves are
+ * managed there, not here, the same way chat model selection points at an API profile without
+ * re-exposing its key on the chat screen. [maxToolRounds] caps how many times one reply can
+ * round-trip through the tool before it's forced to answer with what it has, in case the model
+ * won't stop calling it — blank/0 means no user-configured cap.
  */
 class WebSearchSettingsViewModel(
     private val settingsRepository: SettingsRepository,
-    private val braveSearchClient: BraveSearchClient,
+    private val apiProfileRepository: ApiProfileRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WebSearchSettingsUiState())
@@ -28,10 +32,20 @@ class WebSearchSettingsViewModel(
     init {
         viewModelScope.launch {
             val enabled = settingsRepository.currentBraveSearchEnabled()
-            val apiKey = settingsRepository.currentBraveSearchApiKey().orEmpty()
             val maxRounds = settingsRepository.currentWebSearchMaxToolRounds()
-            _uiState.update {
-                it.copy(enabled = enabled, apiKey = apiKey, maxToolRounds = if (maxRounds <= 0) "" else maxRounds.toString())
+            _uiState.update { it.copy(enabled = enabled, maxToolRounds = if (maxRounds <= 0) "" else maxRounds.toString()) }
+        }
+
+        viewModelScope.launch {
+            combine(
+                apiProfileRepository.observeProfiles(),
+                settingsRepository.selectedWebSearchProfileId,
+            ) { profiles, selectedId ->
+                profiles
+                    .filter { it.providerType == ApiProfileEntity.PROVIDER_BRAVE_SEARCH }
+                    .map { WebSearchProfileOptionUiModel(id = it.id, name = it.name) } to selectedId
+            }.collect { (profiles, selectedId) ->
+                _uiState.update { it.copy(profiles = profiles, selectedProfileId = selectedId) }
             }
         }
     }
@@ -42,12 +56,10 @@ class WebSearchSettingsViewModel(
         viewModelScope.launch { settingsRepository.setBraveSearchEnabled(enabled) }
     }
 
-    fun onApiKeyChange(value: String) {
-        _uiState.update { it.copy(apiKey = value, saved = false, testState = TestConnectionState.Idle) }
-    }
-
-    fun onToggleKeyVisibility() {
-        _uiState.update { it.copy(isKeyVisible = !it.isKeyVisible) }
+    /** At most one profile is active at a time — tapping the already-active one deselects it (no web search backend configured at all). */
+    fun onSelectProfile(id: Long) {
+        val alreadySelected = _uiState.value.selectedProfileId == id
+        viewModelScope.launch { settingsRepository.setSelectedWebSearchProfileId(if (alreadySelected) null else id) }
     }
 
     /** Digits only, so the field can't hold anything that wouldn't parse — blank stays blank (meaning "unlimited"). */
@@ -56,32 +68,10 @@ class WebSearchSettingsViewModel(
     }
 
     fun onSave() {
-        val apiKey = _uiState.value.apiKey
         val maxRounds = _uiState.value.maxToolRounds.toIntOrNull() ?: 0
         viewModelScope.launch {
-            settingsRepository.setBraveSearchApiKey(apiKey)
             settingsRepository.setWebSearchMaxToolRounds(maxRounds)
             _uiState.update { it.copy(saved = true) }
-        }
-    }
-
-    fun onTestConnection() {
-        val apiKey = _uiState.value.apiKey
-        if (apiKey.isBlank()) {
-            _uiState.update { it.copy(testState = TestConnectionState.Failure("APIキーを入力してください。")) }
-            return
-        }
-        _uiState.update { it.copy(testState = TestConnectionState.Testing) }
-        viewModelScope.launch {
-            val result = braveSearchClient.search(apiKey, "test")
-            _uiState.update {
-                it.copy(
-                    testState = result.fold(
-                        onSuccess = { TestConnectionState.Success },
-                        onFailure = { TestConnectionState.Failure("接続に失敗しました。") },
-                    ),
-                )
-            }
         }
     }
 }

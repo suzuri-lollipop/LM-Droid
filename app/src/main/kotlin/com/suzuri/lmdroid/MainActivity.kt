@@ -48,6 +48,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import com.suzuri.lmdroid.ui.ViewModelFactory
 import com.suzuri.lmdroid.ui.chat.ChatScreen
 import com.suzuri.lmdroid.ui.chat.ChatViewModel
@@ -57,6 +58,8 @@ import com.suzuri.lmdroid.ui.navigation.Screen
 import com.suzuri.lmdroid.ui.settings.ApiProfileListScreen
 import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
 import com.suzuri.lmdroid.ui.settings.AssistantSettingsScreen
+import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditScreen
+import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.LocationSettingsScreen
 import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.OpenAiCompatibleScreen
@@ -105,10 +108,10 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     // Tracked separately from currentScreen so leaving and re-entering Chat doesn't reset how
     // deep the user was in Settings.
     var settingsRoute by rememberSaveable { mutableStateOf(SettingsRoute.Root) }
-    // Which profile OpenAiCompatibleScreen is editing — only meaningful while settingsRoute is
-    // OpenAiCompatible; always set to a real, already-created profile id just before navigating
-    // there (profiles are created immediately when added, so there's no "editing a new/unsaved
-    // profile" state to represent here).
+    // Which profile OpenAiCompatibleScreen/BraveSearchProfileEditScreen is editing — only
+    // meaningful while settingsRoute is OpenAiCompatible or BraveSearchProfile; always set to a
+    // real, already-created profile id just before navigating there (profiles are created
+    // immediately when added, so there's no "editing a new/unsaved profile" state to represent here).
     var editingProfileId by rememberSaveable { mutableStateOf<Long?>(null) }
     // Same idea as editingProfileId, but for SystemPromptEdit — always set to a real,
     // already-created prompt id just before navigating there (prompts are created immediately
@@ -119,6 +122,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     // reach them — e.g. tapping "new chat" from the history drawer.
     val chatViewModel: ChatViewModel = viewModel(factory = viewModelFactory)
     val settingsViewModel: SettingsViewModel = viewModel(factory = viewModelFactory)
+    val braveSearchProfileEditViewModel: BraveSearchProfileEditViewModel = viewModel(factory = viewModelFactory)
     val apiProfileListViewModel: ApiProfileListViewModel = viewModel(factory = viewModelFactory)
     val systemSettingsViewModel: SystemSettingsViewModel = viewModel(factory = viewModelFactory)
     val webSearchSettingsViewModel: WebSearchSettingsViewModel = viewModel(factory = viewModelFactory)
@@ -241,6 +245,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.Root -> stringResource(R.string.settings_title)
                                     SettingsRoute.ApiSettings -> stringResource(R.string.settings_api_category_title)
                                     SettingsRoute.OpenAiCompatible -> stringResource(R.string.settings_openai_compatible_title)
+                                    SettingsRoute.BraveSearchProfile -> stringResource(R.string.settings_brave_search_title)
                                     SettingsRoute.System -> stringResource(R.string.settings_system_category_title)
                                     SettingsRoute.WebSearch -> stringResource(R.string.settings_websearch_category_title)
                                     SettingsRoute.Location -> stringResource(R.string.settings_location_category_title)
@@ -334,9 +339,13 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                         SettingsRoute.ApiSettings -> {
                             ApiProfileListScreen(
                                 viewModel = apiProfileListViewModel,
-                                onNavigateToProfile = { id ->
+                                onNavigateToProfile = { id, providerType ->
                                     editingProfileId = id
-                                    settingsRoute = SettingsRoute.OpenAiCompatible
+                                    settingsRoute = if (providerType == ApiProfileEntity.PROVIDER_BRAVE_SEARCH) {
+                                        SettingsRoute.BraveSearchProfile
+                                    } else {
+                                        SettingsRoute.OpenAiCompatible
+                                    }
                                 },
                                 modifier = Modifier.padding(innerPadding),
                             )
@@ -346,6 +355,16 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                             if (id != null) {
                                 OpenAiCompatibleScreen(
                                     viewModel = settingsViewModel,
+                                    profileId = id,
+                                    modifier = Modifier.padding(innerPadding),
+                                )
+                            }
+                        }
+                        SettingsRoute.BraveSearchProfile -> {
+                            val id = editingProfileId
+                            if (id != null) {
+                                BraveSearchProfileEditScreen(
+                                    viewModel = braveSearchProfileEditViewModel,
                                     profileId = id,
                                     modifier = Modifier.padding(innerPadding),
                                 )

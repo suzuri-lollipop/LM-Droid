@@ -38,5 +38,6 @@ class ApiProfileListViewModel(
         viewModelScope.launch { apiProfileRepository.deleteProfile(id) }
     }
 
-    private fun ApiProfileEntity.toUiModel() = ApiProfileUiModel(id = id, name = name, baseUrl = baseUrl, enabled = enabled)
+    private fun ApiProfileEntity.toUiModel() =
+        ApiProfileUiModel(id = id, name = name, providerType = providerType, baseUrl = baseUrl, enabled = enabled)
 }

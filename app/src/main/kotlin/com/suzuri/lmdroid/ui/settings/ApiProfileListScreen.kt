@@ -43,11 +43,11 @@ import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import kotlinx.coroutines.launch
 
-/** API設定 → the list of saved provider profiles; tap one to edit it, "+" to register another. */
+/** API設定 → the list of saved provider profiles (LLM endpoints and Brave Search alike); tap one to edit it, "+" to register another. */
 @Composable
 fun ApiProfileListScreen(
     viewModel: ApiProfileListViewModel,
-    onNavigateToProfile: (Long) -> Unit,
+    onNavigateToProfile: (id: Long, providerType: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -60,7 +60,7 @@ fun ApiProfileListScreen(
                 showAddDialog = false
                 scope.launch {
                     val id = viewModel.createProfile(name, providerType)
-                    onNavigateToProfile(id)
+                    onNavigateToProfile(id, providerType)
                 }
             },
             onDismiss = { showAddDialog = false },
@@ -96,7 +96,7 @@ fun ApiProfileListScreen(
                                 }
                             }
                         },
-                        modifier = Modifier.clickable { onNavigateToProfile(profile.id) },
+                        modifier = Modifier.clickable { onNavigateToProfile(profile.id, profile.providerType) },
                     )
                     HorizontalDivider()
                 }
@@ -125,9 +125,11 @@ fun ApiProfileListScreen(
 @Composable
 private fun AddProfileDialog(onConfirm: (name: String, providerType: String) -> Unit, onDismiss: () -> Unit) {
     var name by rememberSaveable { mutableStateOf("") }
-    // Only one provider type exists today; the dropdown exists so more can be added later
-    // without changing this dialog's shape.
-    val providerLabel = stringResource(R.string.settings_openai_compatible_title)
+    val providerOptions = listOf(
+        ApiProfileEntity.PROVIDER_OPENAI_COMPATIBLE to stringResource(R.string.settings_openai_compatible_title),
+        ApiProfileEntity.PROVIDER_BRAVE_SEARCH to stringResource(R.string.settings_brave_search_title),
+    )
+    var selectedProviderType by rememberSaveable { mutableStateOf(ApiProfileEntity.PROVIDER_OPENAI_COMPATIBLE) }
     var expanded by rememberSaveable { mutableStateOf(false) }
 
     AlertDialog(
@@ -149,7 +151,7 @@ private fun AddProfileDialog(onConfirm: (name: String, providerType: String) -> 
                     modifier = Modifier.padding(top = 16.dp),
                 ) {
                     OutlinedTextField(
-                        value = providerLabel,
+                        value = providerOptions.first { it.first == selectedProviderType }.second,
                         onValueChange = {},
                         readOnly = true,
                         label = { Text(stringResource(R.string.api_profile_provider_label)) },
@@ -159,17 +161,22 @@ private fun AddProfileDialog(onConfirm: (name: String, providerType: String) -> 
                             .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                     )
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        DropdownMenuItem(
-                            text = { Text(providerLabel) },
-                            onClick = { expanded = false },
-                        )
+                        providerOptions.forEach { (providerType, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    selectedProviderType = providerType
+                                    expanded = false
+                                },
+                            )
+                        }
                     }
                 }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(name, ApiProfileEntity.PROVIDER_OPENAI_COMPATIBLE) },
+                onClick = { onConfirm(name, selectedProviderType) },
                 enabled = name.isNotBlank(),
             ) {
                 Text(stringResource(R.string.api_profile_create))

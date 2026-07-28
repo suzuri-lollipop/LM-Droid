@@ -46,6 +46,7 @@
     <string name="settings_title">設定</string>
     <string name="settings_api_category_title">API設定</string>
     <string name="settings_openai_compatible_title">OpenAI Compatible</string>
+    <string name="settings_brave_search_title">Brave Search</string>
     <string name="settings_api_key_label">OpenAI APIキー</string>
     <string name="settings_api_key_placeholder">sk-...</string>
     <string name="settings_base_url_label">APIのURL</string>
@@ -88,6 +89,8 @@
     <string name="websearch_max_rounds_label">1回の返信あたりの最大検索回数</string>
     <string name="websearch_max_rounds_placeholder">無制限</string>
     <string name="websearch_max_rounds_description">空欄または0の場合、AIが必要と判断する限り検索を繰り返せます。</string>
+    <string name="websearch_profile_label">使用するプロファイル</string>
+    <string name="websearch_profile_empty_message">まだBrave Search用のプロファイルがありません。「API設定」から追加してください。</string>
 
     <string name="settings_location_category_title">位置情報</string>
     <string name="location_enable_label">位置情報を使用する</string>

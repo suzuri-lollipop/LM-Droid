@@ -40,7 +40,7 @@ class SettingsImporter(
             val newId = apiProfileDao.insert(
                 ApiProfileEntity(
                     name = profile.name,
-                    providerType = ApiProfileEntity.PROVIDER_OPENAI_COMPATIBLE,
+                    providerType = profile.providerType,
                     apiKeyCiphertext = profile.apiKey?.ciphertext,
                     apiKeyIv = profile.apiKey?.iv,
                     baseUrl = profile.baseUrl,
@@ -83,9 +83,7 @@ class SettingsImporter(
         settingsRepository.setSelectedSystemPromptIds(export.selectedSystemPromptIds.mapNotNull { promptIdMap[it] }.toSet())
 
         settingsRepository.setBraveSearchEnabled(export.webSearch.enabled)
-        settingsRepository.setBraveSearchApiKeyEncrypted(
-            export.webSearch.apiKey?.let { ApiKeyCipher.Encrypted(it.ciphertext, it.iv) },
-        )
+        settingsRepository.setSelectedWebSearchProfileId(export.webSearch.selectedProfileId?.let { profileIdMap[it] })
         settingsRepository.setWebSearchMaxToolRounds(export.webSearch.maxToolRounds)
 
         settingsRepository.setLocationEnabled(export.locationEnabled)

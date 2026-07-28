@@ -541,7 +541,7 @@ class ConversationRepository(
     private suspend fun availableTools(): List<ToolDefinitionDto>? {
         val tools = mutableListOf<ToolDefinitionDto>()
 
-        if (settingsRepository.currentBraveSearchEnabled() && !settingsRepository.currentBraveSearchApiKey().isNullOrBlank()) {
+        if (settingsRepository.currentBraveSearchEnabled() && !settingsRepository.currentWebSearchApiKey().isNullOrBlank()) {
             tools += ToolDefinitionDto(
                 function = FunctionSchemaDto(
                     name = WEB_SEARCH_TOOL_NAME,
@@ -610,7 +610,7 @@ class ConversationRepository(
      * answering from its own knowledge instead of the whole reply failing.
      */
     private suspend fun performWebSearch(query: String): String? {
-        val apiKey = settingsRepository.currentBraveSearchApiKey()
+        val apiKey = settingsRepository.currentWebSearchApiKey()
         if (apiKey.isNullOrBlank()) {
             Log.w(TAG, "Web search skipped: no Brave Search API key configured")
             return null

@@ -7,6 +7,7 @@ import com.suzuri.lmdroid.ui.assist.AssistViewModel
 import com.suzuri.lmdroid.ui.chat.ChatViewModel
 import com.suzuri.lmdroid.ui.history.HistoryViewModel
 import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
+import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsExportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsImportViewModel
@@ -40,7 +41,10 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
             SystemSettingsViewModel(container.apiProfileRepository, container.settingsRepository) as T
 
         modelClass.isAssignableFrom(WebSearchSettingsViewModel::class.java) ->
-            WebSearchSettingsViewModel(container.settingsRepository, container.braveSearchClient) as T
+            WebSearchSettingsViewModel(container.settingsRepository, container.apiProfileRepository) as T
+
+        modelClass.isAssignableFrom(BraveSearchProfileEditViewModel::class.java) ->
+            BraveSearchProfileEditViewModel(container.apiProfileRepository, container.braveSearchClient) as T
 
         modelClass.isAssignableFrom(HistoryViewModel::class.java) ->
             HistoryViewModel(container.conversationRepository) as T

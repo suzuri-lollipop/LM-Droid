@@ -1,5 +1,6 @@
 package com.suzuri.lmdroid.data.settings
 
+import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -22,10 +23,20 @@ class SettingsExporterTest {
             ExportedApiProfile(
                 id = 1,
                 name = "ローカルサーバー",
+                providerType = ApiProfileEntity.PROVIDER_OPENAI_COMPATIBLE,
                 baseUrl = "http://localhost:8080/v1",
                 enabled = true,
                 apiKey = apiKey,
                 models = listOf("gpt-4o-mini", "gpt-4o"),
+            ),
+            ExportedApiProfile(
+                id = 2,
+                name = "Brave Search",
+                providerType = ApiProfileEntity.PROVIDER_BRAVE_SEARCH,
+                baseUrl = "https://api.search.brave.com",
+                enabled = true,
+                apiKey = apiKey,
+                models = emptyList(),
             ),
         ),
         chatSelection = ExportedModelSelection(profileId = 1, profileName = "ローカルサーバー", model = "gpt-4o-mini"),
@@ -33,7 +44,7 @@ class SettingsExporterTest {
         markdownEnabled = true,
         systemPrompts = listOf(ExportedSystemPrompt(id = 1, name = "敬語", content = "常に日本語の敬語で回答してください")),
         selectedSystemPromptIds = listOf(1),
-        webSearch = ExportedWebSearchSettings(enabled = true, apiKey = apiKey, maxToolRounds = 3),
+        webSearch = ExportedWebSearchSettings(enabled = true, selectedProfileId = 2, maxToolRounds = 3),
         locationEnabled = true,
     )
 
@@ -84,6 +95,18 @@ class SettingsExporterTest {
 
         assertEquals(export, decoded)
         assertEquals(listOf(1L, 2L), decoded.selectedSystemPromptIds)
+    }
+
+    @Test
+    fun `round-trips a Brave Search profile's providerType and the selected web search profile pointer`() {
+        val decoded = settingsExportYaml.decodeFromString(
+            SettingsExport.serializer(),
+            encodeSettingsExportToYaml(sampleExport()),
+        )
+
+        val braveProfile = decoded.apiProfiles.single { it.id == 2L }
+        assertEquals(ApiProfileEntity.PROVIDER_BRAVE_SEARCH, braveProfile.providerType)
+        assertEquals(2L, decoded.webSearch.selectedProfileId)
     }
 
     @Test

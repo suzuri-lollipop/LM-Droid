@@ -4,6 +4,7 @@ import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
 import com.suzuri.lmdroid.data.db.ApiModelDao
 import com.suzuri.lmdroid.data.db.ApiProfileDao
+import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import com.suzuri.lmdroid.data.db.SystemPromptDao
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
@@ -38,6 +39,7 @@ class SettingsExporter(
             ExportedApiProfile(
                 id = profile.id,
                 name = profile.name,
+                providerType = profile.providerType,
                 baseUrl = profile.baseUrl,
                 enabled = profile.enabled,
                 apiKey = exportedEncryptedValueOf(profile.apiKeyCiphertext, profile.apiKeyIv),
@@ -48,7 +50,6 @@ class SettingsExporter(
 
         val chatSelection = settingsRepository.selectedChatModel.first()
         val systemSelection = settingsRepository.selectedSystemModel.first()
-        val braveSearchKey = settingsRepository.currentBraveSearchApiKeyEncrypted()
 
         val systemPrompts = systemPromptDao.observeAll().first()
 
@@ -62,7 +63,7 @@ class SettingsExporter(
             selectedSystemPromptIds = settingsRepository.currentSelectedSystemPromptIds().sorted(),
             webSearch = ExportedWebSearchSettings(
                 enabled = settingsRepository.currentBraveSearchEnabled(),
-                apiKey = braveSearchKey?.let { ExportedEncryptedValue(it.ciphertextBase64, it.ivBase64) },
+                selectedProfileId = settingsRepository.currentSelectedWebSearchProfileId(),
                 maxToolRounds = settingsRepository.currentWebSearchMaxToolRounds(),
             ),
             locationEnabled = settingsRepository.currentLocationEnabled(),
@@ -113,6 +114,9 @@ data class ExportedSystemPrompt(
 data class ExportedApiProfile(
     val id: Long,
     val name: String,
+    // Defaults to the (formerly sole) LLM provider type so a YAML exported before this field
+    // existed still decodes cleanly.
+    val providerType: String = ApiProfileEntity.PROVIDER_OPENAI_COMPATIBLE,
     val baseUrl: String,
     val enabled: Boolean,
     val apiKey: ExportedEncryptedValue? = null,
@@ -129,7 +133,9 @@ data class ExportedModelSelection(
 @Serializable
 data class ExportedWebSearchSettings(
     val enabled: Boolean,
-    val apiKey: ExportedEncryptedValue? = null,
+    // Points at one of apiProfiles above (providerType == PROVIDER_BRAVE_SEARCH) — the key itself
+    // travels with that profile's own apiKey field, not duplicated here.
+    val selectedProfileId: Long? = null,
     val maxToolRounds: Int,
 )
 

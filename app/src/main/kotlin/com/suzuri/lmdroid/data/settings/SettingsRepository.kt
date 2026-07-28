@@ -27,8 +27,9 @@ data class SelectedModel(val profileId: Long, val model: String)
  * Resolves which (profile, model) pair is used for (a) the chat screen — adjustable there — and
  * (b) background "system" tasks (auto-titling, prompt suggestions) — adjustable from Settings →
  * システム, falling back to the chat selection when not explicitly overridden. Also tracks
- * app-wide preferences unrelated to any one profile, like [AppSettings.markdownEnabled] and the
- * Brave Search on/off toggle + its own (separately encrypted) API key.
+ * app-wide preferences unrelated to any one profile, like [AppSettings.markdownEnabled], the
+ * Web検索 on/off toggle, and which registered [ApiProfileEntity] (providerType ==
+ * PROVIDER_BRAVE_SEARCH) is currently active for it.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsRepository(
@@ -90,49 +91,26 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs -> prefs[KEY_BRAVE_SEARCH_ENABLED] = enabled }
     }
 
-    /** Blank clears the stored key. */
-    suspend fun setBraveSearchApiKey(apiKey: String) {
+    /** Which registered [ApiProfileEntity] (providerType == PROVIDER_BRAVE_SEARCH) is currently active for the web_search/fetch_webpage tools — at most one at a time, the same way the chat/system model selections point at an ApiProfileEntity by id. Null means none selected. */
+    val selectedWebSearchProfileId: Flow<Long?> =
+        context.settingsDataStore.data.map { it[KEY_SELECTED_WEB_SEARCH_PROFILE_ID] }
+
+    suspend fun currentSelectedWebSearchProfileId(): Long? = selectedWebSearchProfileId.first()
+
+    suspend fun setSelectedWebSearchProfileId(id: Long?) {
         context.settingsDataStore.edit { prefs ->
-            if (apiKey.isBlank()) {
-                prefs.remove(KEY_BRAVE_API_KEY_CIPHERTEXT)
-                prefs.remove(KEY_BRAVE_API_KEY_IV)
-            } else {
-                val encrypted = cipher.encrypt(apiKey)
-                prefs[KEY_BRAVE_API_KEY_CIPHERTEXT] = encrypted.ciphertextBase64
-                prefs[KEY_BRAVE_API_KEY_IV] = encrypted.ivBase64
-            }
+            if (id == null) prefs.remove(KEY_SELECTED_WEB_SEARCH_PROFILE_ID) else prefs[KEY_SELECTED_WEB_SEARCH_PROFILE_ID] = id
         }
     }
 
-    /** Decrypted Brave Search API key, or null if none is saved (or decryption fails). */
-    suspend fun currentBraveSearchApiKey(): String? {
-        val prefs = context.settingsDataStore.data.first()
-        val ciphertext = prefs[KEY_BRAVE_API_KEY_CIPHERTEXT]
-        val iv = prefs[KEY_BRAVE_API_KEY_IV]
+    /** The active Brave Search profile's decrypted API key, or null when none is selected, the selected one was since deleted, or decryption fails. */
+    suspend fun currentWebSearchApiKey(): String? {
+        val id = currentSelectedWebSearchProfileId() ?: return null
+        val profile = apiProfileDao.getById(id) ?: return null
+        val ciphertext = profile.apiKeyCiphertext
+        val iv = profile.apiKeyIv
         if (ciphertext == null || iv == null) return null
         return runCatching { cipher.decrypt(ciphertext, iv) }.getOrNull()
-    }
-
-    /** Raw ciphertext+IV exactly as stored, for callers (e.g. settings export) that want to copy the already-encrypted value without ever decrypting it. */
-    suspend fun currentBraveSearchApiKeyEncrypted(): ApiKeyCipher.Encrypted? {
-        val prefs = context.settingsDataStore.data.first()
-        val ciphertext = prefs[KEY_BRAVE_API_KEY_CIPHERTEXT]
-        val iv = prefs[KEY_BRAVE_API_KEY_IV]
-        if (ciphertext == null || iv == null) return null
-        return ApiKeyCipher.Encrypted(ciphertext, iv)
-    }
-
-    /** Counterpart to [currentBraveSearchApiKeyEncrypted] — stores an already-encrypted ciphertext+IV directly (e.g. from SettingsImporter) without ever handling a plaintext key. Null clears the stored key. */
-    suspend fun setBraveSearchApiKeyEncrypted(encrypted: ApiKeyCipher.Encrypted?) {
-        context.settingsDataStore.edit { prefs ->
-            if (encrypted == null) {
-                prefs.remove(KEY_BRAVE_API_KEY_CIPHERTEXT)
-                prefs.remove(KEY_BRAVE_API_KEY_IV)
-            } else {
-                prefs[KEY_BRAVE_API_KEY_CIPHERTEXT] = encrypted.ciphertextBase64
-                prefs[KEY_BRAVE_API_KEY_IV] = encrypted.ivBase64
-            }
-        }
     }
 
     /** How many web_search tool round-trips one reply may make before being forced to answer with what it has. 0 (the default) means unconditionally allowed, up to ConversationRepository's own hard safety ceiling. */
@@ -218,8 +196,7 @@ class SettingsRepository(
         val KEY_SYSTEM_MODEL = stringPreferencesKey("system_model")
         val KEY_MARKDOWN_ENABLED = booleanPreferencesKey("markdown_enabled")
         val KEY_BRAVE_SEARCH_ENABLED = booleanPreferencesKey("brave_search_enabled")
-        val KEY_BRAVE_API_KEY_CIPHERTEXT = stringPreferencesKey("brave_search_api_key_ciphertext")
-        val KEY_BRAVE_API_KEY_IV = stringPreferencesKey("brave_search_api_key_iv")
+        val KEY_SELECTED_WEB_SEARCH_PROFILE_ID = longPreferencesKey("selected_web_search_profile_id")
         val KEY_WEB_SEARCH_MAX_TOOL_ROUNDS = intPreferencesKey("web_search_max_tool_rounds")
         val KEY_SELECTED_SYSTEM_PROMPT_IDS = stringSetPreferencesKey("selected_system_prompt_ids")
         val KEY_LOCATION_ENABLED = booleanPreferencesKey("location_enabled")

@@ -24,5 +24,9 @@ data class ApiProfileEntity(
 ) {
     companion object {
         const val PROVIDER_OPENAI_COMPATIBLE = "openai_compatible"
+        // baseUrl is unused for this provider type (Brave Search has exactly one real endpoint —
+        // see BraveSearchClient.DEFAULT_BASE_URL, which is what gets stored there for consistency)
+        // and it never has any rows in api_models, unlike an OpenAI-compatible profile.
+        const val PROVIDER_BRAVE_SEARCH = "brave_search"
     }
 }

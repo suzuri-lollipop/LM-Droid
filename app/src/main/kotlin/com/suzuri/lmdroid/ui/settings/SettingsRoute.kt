@@ -10,6 +10,7 @@ enum class SettingsRoute {
     Root,
     ApiSettings,
     OpenAiCompatible,
+    BraveSearchProfile,
     System,
     WebSearch,
     Location,
@@ -22,6 +23,7 @@ fun SettingsRoute.parent(): SettingsRoute? = when (this) {
     SettingsRoute.Root -> null
     SettingsRoute.ApiSettings -> SettingsRoute.Root
     SettingsRoute.OpenAiCompatible -> SettingsRoute.ApiSettings
+    SettingsRoute.BraveSearchProfile -> SettingsRoute.ApiSettings
     SettingsRoute.System -> SettingsRoute.Root
     SettingsRoute.WebSearch -> SettingsRoute.Root
     SettingsRoute.Location -> SettingsRoute.Root
