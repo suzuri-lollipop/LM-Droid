@@ -80,6 +80,15 @@ class SettingsImporter(
             settingsRepository.setSelectedSystemModel(null, null)
         }
 
+        val assistantSelection = export.assistantSelection
+        if (assistantSelection != null) {
+            profileIdMap[assistantSelection.profileId]?.let { newProfileId ->
+                settingsRepository.setSelectedAssistantModel(newProfileId, assistantSelection.model)
+            }
+        } else {
+            settingsRepository.setSelectedAssistantModel(null, null)
+        }
+
         settingsRepository.saveMarkdownEnabled(export.markdownEnabled)
         settingsRepository.setSelectedSystemPromptIds(export.selectedSystemPromptIds.mapNotNull { promptIdMap[it] }.toSet())
 

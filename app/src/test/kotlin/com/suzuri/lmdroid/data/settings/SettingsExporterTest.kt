@@ -52,6 +52,7 @@ class SettingsExporterTest {
         ),
         chatSelection = ExportedModelSelection(profileId = 1, profileName = "ローカルサーバー", model = "gpt-4o-mini"),
         systemSelection = null,
+        assistantSelection = ExportedModelSelection(profileId = 1, profileName = "ローカルサーバー", model = "gpt-4o"),
         markdownEnabled = true,
         systemPrompts = listOf(ExportedSystemPrompt(id = 1, name = "敬語", content = "常に日本語の敬語で回答してください")),
         selectedSystemPromptIds = listOf(1),
@@ -150,6 +151,7 @@ class SettingsExporterTest {
         val export = sampleExport().copy(
             chatSelection = null,
             systemSelection = null,
+            assistantSelection = null,
             systemPrompts = emptyList(),
             selectedSystemPromptIds = emptyList(),
         )
@@ -158,5 +160,17 @@ class SettingsExporterTest {
         val decoded = settingsExportYaml.decodeFromString(SettingsExport.serializer(), yamlText)
 
         assertEquals(export, decoded)
+    }
+
+    @Test
+    fun `round-trips the assistant mode model override independently of chat and system`() {
+        val decoded = settingsExportYaml.decodeFromString(
+            SettingsExport.serializer(),
+            encodeSettingsExportToYaml(sampleExport()),
+        )
+
+        assertEquals("gpt-4o", decoded.assistantSelection?.model)
+        assertEquals("gpt-4o-mini", decoded.chatSelection?.model)
+        assertEquals(null, decoded.systemSelection)
     }
 }

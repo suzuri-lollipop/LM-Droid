@@ -12,9 +12,10 @@ import java.time.Instant
 import java.time.format.DateTimeFormatter
 
 /**
- * Serializes every user-configurable setting (API profiles + their registered models, chat/system
- * model selections, markdown preference, system prompt profiles, and Web検索/音声 settings) into a
- * single YAML document — used by Settings → 設定をエクスポート for backup/inspection purposes.
+ * Serializes every user-configurable setting (API profiles + their registered models, chat/system/
+ * アシスタント model selections, markdown preference, system prompt profiles, and Web検索/音声
+ * settings) into a single YAML document — used by Settings → 設定をエクスポート for backup/inspection
+ * purposes.
  *
  * API keys are never written in plaintext: each field is copied exactly as it's already stored —
  * AES-256-GCM ciphertext + IV under [ApiKeyCipher]'s Android Keystore key (non-exportable, device-
@@ -51,6 +52,7 @@ class SettingsExporter(
 
         val chatSelection = settingsRepository.selectedChatModel.first()
         val systemSelection = settingsRepository.selectedSystemModel.first()
+        val assistantSelection = settingsRepository.selectedAssistantModel.first()
 
         val systemPrompts = systemPromptDao.observeAll().first()
 
@@ -59,6 +61,7 @@ class SettingsExporter(
             apiProfiles = exportedProfiles,
             chatSelection = chatSelection?.toExported(profileNameById),
             systemSelection = systemSelection?.toExported(profileNameById),
+            assistantSelection = assistantSelection?.toExported(profileNameById),
             markdownEnabled = settingsRepository.currentChatSettings().markdownEnabled,
             systemPrompts = systemPrompts.map { ExportedSystemPrompt(id = it.id, name = it.name, content = it.content) },
             selectedSystemPromptIds = settingsRepository.currentSelectedSystemPromptIds().sorted(),
@@ -90,7 +93,18 @@ class SettingsExporter(
 fun encodeSettingsExportToYaml(export: SettingsExport): String =
     settingsExportYaml.encodeToString(SettingsExport.serializer(), export)
 
-val settingsExportYaml: Yaml = Yaml(configuration = YamlConfiguration(encodeDefaults = true))
+val settingsExportYaml: Yaml = Yaml(
+    configuration = YamlConfiguration(
+        encodeDefaults = true,
+        // A past export won't have every field this version knows about (features added since),
+        // and one written by a future/different version may have fields this version no longer
+        // recognizes at all (e.g. Web検索 used to carry a raw apiKey before it became a profile
+        // pointer) — strict mode would reject the WHOLE document over a single unrecognized key.
+        // Off, so decoding imports whatever fields are actually present/still understood and
+        // quietly defaults the rest, rather than failing the entire import over a partial mismatch.
+        strictMode = false,
+    ),
+)
 
 @Serializable
 data class SettingsExport(
@@ -98,10 +112,14 @@ data class SettingsExport(
     val apiProfiles: List<ExportedApiProfile>,
     val chatSelection: ExportedModelSelection? = null,
     val systemSelection: ExportedModelSelection? = null,
+    val assistantSelection: ExportedModelSelection? = null,
     val markdownEnabled: Boolean,
     val systemPrompts: List<ExportedSystemPrompt> = emptyList(),
     val selectedSystemPromptIds: List<Long> = emptyList(),
-    val webSearch: ExportedWebSearchSettings,
+    // Defaulted so an export from before Web検索 existed at all (which has no webSearch section
+    // whatsoever, not just an outdated shape of one) still decodes instead of failing on a
+    // "required field missing" error.
+    val webSearch: ExportedWebSearchSettings = ExportedWebSearchSettings(),
     val locationEnabled: Boolean = false,
     val tts: ExportedTtsSettings = ExportedTtsSettings(),
 )
@@ -137,11 +155,11 @@ data class ExportedModelSelection(
 
 @Serializable
 data class ExportedWebSearchSettings(
-    val enabled: Boolean,
+    val enabled: Boolean = false,
     // Points at one of apiProfiles above (providerType == PROVIDER_BRAVE_SEARCH) — the key itself
     // travels with that profile's own apiKey field, not duplicated here.
     val selectedProfileId: Long? = null,
-    val maxToolRounds: Int,
+    val maxToolRounds: Int = 0,
 )
 
 @Serializable

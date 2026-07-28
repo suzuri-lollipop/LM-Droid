@@ -90,6 +90,7 @@ class SettingsImporterTest {
             ),
             chatSelection = ExportedModelSelection(profileId = 1, profileName = "ローカルサーバー", model = "gpt-4o-mini"),
             systemSelection = null,
+            assistantSelection = ExportedModelSelection(profileId = 1, profileName = "ローカルサーバー", model = "gpt-4o"),
             markdownEnabled = true,
             systemPrompts = listOf(ExportedSystemPrompt(id = 1, name = "敬語", content = "常に日本語の敬語で回答してください")),
             selectedSystemPromptIds = listOf(1),
@@ -103,5 +104,60 @@ class SettingsImporterTest {
         assertEquals(original, decoded)
         assertEquals(2L, decoded.tts.selectedProfileId)
         assertEquals(3, decoded.apiProfiles[1].voicevoxSpeakerId)
+        assertEquals("gpt-4o", decoded.assistantSelection?.model)
+    }
+
+    @Test
+    fun `decodes an export missing the entire webSearch section, from before Web検索 existed`() {
+        val yamlText = """
+            exportedAt: "2025-01-01T00:00:00Z"
+            apiProfiles:
+              - id: 1
+                name: "ローカルサーバー"
+                baseUrl: "http://localhost:8080/v1"
+                enabled: true
+                models:
+                  - "gpt-4o-mini"
+            markdownEnabled: true
+        """.trimIndent()
+
+        val decoded = decodeSettingsExportFromYaml(yamlText)
+
+        assertEquals(ExportedWebSearchSettings(), decoded.webSearch)
+        assertEquals(false, decoded.webSearch.enabled)
+        assertEquals(null, decoded.assistantSelection)
+        assertEquals(1, decoded.apiProfiles.size)
+    }
+
+    @Test
+    fun `ignores unrecognized fields left over from an older schema instead of failing the whole import`() {
+        val yamlText = """
+            exportedAt: "2025-06-01T00:00:00Z"
+            apiProfiles:
+              - id: 1
+                name: "ローカルサーバー"
+                baseUrl: "http://localhost:8080/v1"
+                enabled: true
+                models: []
+            markdownEnabled: true
+            webSearch:
+              enabled: true
+              apiKey:
+                ciphertext: "old-c1phertext=="
+                iv: "old-1v=="
+              maxToolRounds: 5
+            someRemovedFeature:
+              nested: true
+        """.trimIndent()
+
+        val decoded = decodeSettingsExportFromYaml(yamlText)
+
+        // The old raw apiKey field (from before Web検索 became profile-based) and the unrelated
+        // unknown top-level key are both silently ignored rather than aborting the whole decode —
+        // everything else in this same document still comes through correctly.
+        assertEquals(true, decoded.webSearch.enabled)
+        assertEquals(5, decoded.webSearch.maxToolRounds)
+        assertEquals(null, decoded.webSearch.selectedProfileId)
+        assertEquals("ローカルサーバー", decoded.apiProfiles.single().name)
     }
 }
