@@ -25,6 +25,11 @@
             <action android:name="android.intent.action.SEND" />
             <data android:mimeType="text/plain" />
         </intent>
+        <!-- Lets PackageManager list/resolve installed music apps for the "play_music" tool
+             (Settings → 音楽) — see DeviceMusicController. -->
+        <intent>
+            <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+        </intent>
     </queries>
 
     <application

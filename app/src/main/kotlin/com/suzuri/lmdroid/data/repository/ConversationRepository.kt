@@ -17,6 +17,8 @@ import com.suzuri.lmdroid.data.db.MessageWithAttachments
 import com.suzuri.lmdroid.data.db.ThinkingTimelineEntry
 import com.suzuri.lmdroid.data.location.DeviceLocationProvider
 import com.suzuri.lmdroid.data.messaging.DeviceMessageController
+import com.suzuri.lmdroid.data.music.DeviceMusicController
+import com.suzuri.lmdroid.data.music.YouTubeDataApiClient
 import com.suzuri.lmdroid.data.notes.DeviceNoteController
 import com.suzuri.lmdroid.data.network.ChatMessageDto
 import com.suzuri.lmdroid.data.network.ContentPart
@@ -88,6 +90,8 @@ class ConversationRepository(
     private val deviceAlarmController: DeviceAlarmController,
     private val deviceNoteController: DeviceNoteController,
     private val deviceMessageController: DeviceMessageController,
+    private val deviceMusicController: DeviceMusicController,
+    private val youTubeDataApiClient: YouTubeDataApiClient,
     private val systemPromptRepository: SystemPromptRepository,
     private val json: Json,
 ) {
@@ -338,10 +342,11 @@ class ConversationRepository(
         }
 
         // Tools: when enabled and configured in Settings, the model is offered "web_search",
-        // "fetch_webpage", "get_current_location", "set_alarm"/"set_timer", "create_note", and/or
-        // "send_message" functions it can decide to call on its own (agentic tool calling), rather
-        // than the app deciding unconditionally what to search/fetch/locate/schedule/save/send and
-        // force-feeding the results into every request. The harness (this repository) only ever executes one when the model
+        // "fetch_webpage", "get_current_location", "set_alarm"/"set_timer", "create_note",
+        // "send_message", and/or "play_music" functions it can decide to call on its own (agentic
+        // tool calling), rather than the app deciding unconditionally what to
+        // search/fetch/locate/schedule/save/send/play and force-feeding the results into every
+        // request. The harness (this repository) only ever executes one when the model
         // actually asks for it, via executeToolCall() below. maxToolRounds caps how many tool
         // round-trips one reply can make before it's forced to answer with what it has — 0 in
         // Settings means "no user-configured cap", bounded only by SAFETY_MAX_TOOL_ROUNDS so a
@@ -524,6 +529,40 @@ class ConversationRepository(
                     }
                 }
             }
+            PLAY_MUSIC_TOOL_NAME -> {
+                val query = extractStringArgument(call.argumentsJson, "query")
+                if (query == null || query.isBlank()) {
+                    "Error: invalid arguments for $PLAY_MUSIC_TOOL_NAME. Expected JSON like {\"query\": \"...\"}."
+                } else {
+                    val preferredPackage = settingsRepository.currentPreferredMusicAppPackage()
+                    // YouTube Music's own ACTION_MEDIA_PLAY_FROM_SEARCH handling only opens its
+                    // search screen without actually playing anything (a known YouTube Music
+                    // limitation, confirmed by hand — see DeviceMusicController's doc comment), so
+                    // when a YouTube Data API key is configured and either no preferred app is set
+                    // or YouTube Music itself is the preferred one, resolve the query to a specific
+                    // video id first and open that track directly instead.
+                    val youtubeApiKey = settingsRepository.currentYoutubeDataApiKey()
+                    val wantsYoutubeMusic = preferredPackage == null || preferredPackage == DeviceMusicController.YOUTUBE_MUSIC_PACKAGE
+                    val launchMusic = if (!youtubeApiKey.isNullOrBlank() && wantsYoutubeMusic) {
+                        val videoId = youTubeDataApiClient.searchVideoId(youtubeApiKey, query)
+                            .onFailure { e -> Log.w(TAG, "YouTube Data API search failed, falling back to generic search intent", e) }
+                            .getOrNull()
+                        videoId?.let { deviceMusicController.prepareOpenYoutubeMusicTrack(it) }
+                            ?: deviceMusicController.preparePlayMusic(query, preferredPackage)
+                    } else {
+                        deviceMusicController.preparePlayMusic(query, preferredPackage)
+                    }
+                    if (launchMusic != null) {
+                        pendingSideEffects += launchMusic
+                        val summary = "Will open a music app and start playing \"$query\" right after " +
+                            "this reply is shown."
+                        timeline += ThinkingTimelineEntry.ToolActivity(label = "🎵 $query", content = summary)
+                        summary
+                    } else {
+                        "Could not play music: no music app is available on this device."
+                    }
+                }
+            }
             else -> "Error: unknown tool \"${call.name}\"."
         }
 
@@ -652,7 +691,8 @@ class ConversationRepository(
      * The function definitions offered to the model this turn — "web_search"/"fetch_webpage" when
      * Web検索 is enabled and configured, "get_current_location" when 位置情報 is enabled,
      * "set_alarm"/"set_timer" when アラーム・タイマー is enabled, "create_note" when メモ is enabled,
-     * "send_message" when メッセージ is enabled — or null if none of these are, so
+     * "send_message" when メッセージ is enabled, "play_music" when 音楽 is enabled — or null if none
+     * of these are, so
      * [ChatCompletionRequest.tools][com.suzuri.lmdroid.data.network.ChatCompletionRequest] is
      * omitted entirely rather than sent as an empty/useless list.
      */
@@ -758,6 +798,26 @@ class ConversationRepository(
             )
         }
 
+        if (settingsRepository.currentMusicToolEnabled()) {
+            tools += ToolDefinitionDto(
+                function = FunctionSchemaDto(
+                    name = PLAY_MUSIC_TOOL_NAME,
+                    description = "Play music. This opens the user's chosen music app (Settings → " +
+                        "音楽) — or, if none is chosen, whichever music app the system resolves it " +
+                        "to — and starts playing whatever matches the given search query. If the " +
+                        "user names a specific song, use that. If they only name an artist or " +
+                        "genre with no specific song (e.g. \"play Dua Lipa\"), pick one well-known " +
+                        "track yourself and put both the title and artist in the query (e.g. " +
+                        "\"Levitating by Dua Lipa\") rather than passing just the artist/genre name " +
+                        "— a bare artist/genre query is much less likely to actually start playback " +
+                        "(some music apps only show search results for it instead of playing " +
+                        "anything). There's no way to control playback (pause/skip/volume) from " +
+                        "here once it starts.",
+                    parameters = playMusicToolParameters,
+                ),
+            )
+        }
+
         Log.d(TAG, "availableTools: ${tools.map { it.function.name }} (locationEnabled=${settingsRepository.currentLocationEnabled()})")
         return tools.takeIf { it.isNotEmpty() }
     }
@@ -853,6 +913,7 @@ class ConversationRepository(
         const val SET_TIMER_TOOL_NAME = "set_timer"
         const val CREATE_NOTE_TOOL_NAME = "create_note"
         const val SEND_MESSAGE_TOOL_NAME = "send_message"
+        const val PLAY_MUSIC_TOOL_NAME = "play_music"
 
         // A hard ceiling regardless of the user's own Settings → Web検索 configuration (where 0
         // means "no cap") — purely a safety valve against a truly runaway model that never stops
@@ -991,6 +1052,29 @@ class ConversationRepository(
                     ),
                 ),
                 "required" to JsonArray(listOf(JsonPrimitive("content"))),
+            ),
+        )
+
+        val playMusicToolParameters: JsonElement = JsonObject(
+            mapOf(
+                "type" to JsonPrimitive("object"),
+                "properties" to JsonObject(
+                    mapOf(
+                        "query" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("string"),
+                                "description" to JsonPrimitive(
+                                    "What to play, as free text — prefer \"song title by artist\" " +
+                                        "(e.g. \"levitating by dua lipa\") over a bare artist/genre " +
+                                        "name; a playlist name (\"my discover weekly playlist\") or " +
+                                        "genre (\"90s city pop\") is fine when that's really what " +
+                                        "was asked for.",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                "required" to JsonArray(listOf(JsonPrimitive("query"))),
             ),
         )
     }

@@ -259,6 +259,48 @@ class SettingsRepository(
         }
     }
 
+    /** Whether the "play_music" tool (see ConversationRepository, DeviceMusicController) is offered to the model — off by default, since (unlike a read-only lookup) this actually opens a music app and starts playback as soon as the model calls it. */
+    val musicToolEnabled: Flow<Boolean> = context.settingsDataStore.data.map { it[KEY_MUSIC_TOOL_ENABLED] ?: false }
+
+    suspend fun currentMusicToolEnabled(): Boolean = musicToolEnabled.first()
+
+    suspend fun setMusicToolEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_MUSIC_TOOL_ENABLED] = enabled }
+    }
+
+    /** Which installed app's package name (see DeviceMusicController.installedMusicApps) the "play_music" tool targets directly — null lets the system resolve it itself (its own disambiguation dialog if more than one app can handle it and none is set as default). */
+    val preferredMusicAppPackage: Flow<String?> = context.settingsDataStore.data.map { it[KEY_PREFERRED_MUSIC_APP_PACKAGE] }
+
+    suspend fun currentPreferredMusicAppPackage(): String? = preferredMusicAppPackage.first()
+
+    suspend fun setPreferredMusicAppPackage(packageName: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (packageName == null) prefs.remove(KEY_PREFERRED_MUSIC_APP_PACKAGE) else prefs[KEY_PREFERRED_MUSIC_APP_PACKAGE] = packageName
+        }
+    }
+
+    /** Which registered [ApiProfileEntity] (providerType == PROVIDER_YOUTUBE_DATA_API) resolves the "play_music" tool's query to a specific YouTube Music video id — see YouTubeDataApiClient, DeviceMusicController.prepareOpenYoutubeMusicTrack. Null means none selected, in which case play_music falls back to the generic media-search intent. */
+    val selectedYoutubeDataApiProfileId: Flow<Long?> =
+        context.settingsDataStore.data.map { it[KEY_SELECTED_YOUTUBE_DATA_API_PROFILE_ID] }
+
+    suspend fun currentSelectedYoutubeDataApiProfileId(): Long? = selectedYoutubeDataApiProfileId.first()
+
+    suspend fun setSelectedYoutubeDataApiProfileId(id: Long?) {
+        context.settingsDataStore.edit { prefs ->
+            if (id == null) prefs.remove(KEY_SELECTED_YOUTUBE_DATA_API_PROFILE_ID) else prefs[KEY_SELECTED_YOUTUBE_DATA_API_PROFILE_ID] = id
+        }
+    }
+
+    /** The active YouTube Data API profile's decrypted API key, or null when none is selected, the selected one was since deleted, or decryption fails. */
+    suspend fun currentYoutubeDataApiKey(): String? {
+        val id = currentSelectedYoutubeDataApiProfileId() ?: return null
+        val profile = apiProfileDao.getById(id) ?: return null
+        val ciphertext = profile.apiKeyCiphertext
+        val iv = profile.apiKeyIv
+        if (ciphertext == null || iv == null) return null
+        return runCatching { cipher.decrypt(ciphertext, iv) }.getOrNull()
+    }
+
     private fun resolve(selected: SelectedModel?): Flow<AppSettings> {
         if (selected == null) {
             return markdownEnabledFlow.map { markdownEnabled ->
@@ -318,5 +360,8 @@ class SettingsRepository(
         val KEY_PREFERRED_NOTE_APP_PACKAGE = stringPreferencesKey("preferred_note_app_package")
         val KEY_MESSAGING_TOOL_ENABLED = booleanPreferencesKey("messaging_tool_enabled")
         val KEY_PREFERRED_MESSAGING_APP_PACKAGE = stringPreferencesKey("preferred_messaging_app_package")
+        val KEY_MUSIC_TOOL_ENABLED = booleanPreferencesKey("music_tool_enabled")
+        val KEY_PREFERRED_MUSIC_APP_PACKAGE = stringPreferencesKey("preferred_music_app_package")
+        val KEY_SELECTED_YOUTUBE_DATA_API_PROFILE_ID = longPreferencesKey("selected_youtube_data_api_profile_id")
     }
 }

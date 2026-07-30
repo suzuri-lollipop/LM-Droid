@@ -129,6 +129,7 @@ private fun AddProfileDialog(onConfirm: (name: String, providerType: String) -> 
         ApiProfileEntity.PROVIDER_OPENAI_COMPATIBLE to stringResource(R.string.settings_openai_compatible_title),
         ApiProfileEntity.PROVIDER_BRAVE_SEARCH to stringResource(R.string.settings_brave_search_title),
         ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE to stringResource(R.string.settings_voicevox_title),
+        ApiProfileEntity.PROVIDER_YOUTUBE_DATA_API to stringResource(R.string.settings_youtube_data_api_title),
     )
     var selectedProviderType by rememberSaveable { mutableStateOf(ApiProfileEntity.PROVIDER_OPENAI_COMPATIBLE) }
     var expanded by rememberSaveable { mutableStateOf(false) }

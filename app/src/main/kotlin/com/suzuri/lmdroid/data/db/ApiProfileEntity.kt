@@ -41,6 +41,12 @@ data class ApiProfileEntity(
         // http://127.0.0.1:50021 for VOICEVOX or :10101 for AivisSpeech). No API key: these are
         // unauthenticated local servers, so apiKeyCiphertext/apiKeyIv stay null.
         const val PROVIDER_VOICEVOX_COMPATIBLE = "voicevox_compatible"
+        // The official YouTube Data API v3 (just an API key, no OAuth) — used only to resolve the
+        // "play_music" tool's free-text query to a specific video id (see YouTubeDataApiClient,
+        // DeviceMusicController.prepareOpenYoutubeMusicTrack), since YouTube Music's own
+        // ACTION_MEDIA_PLAY_FROM_SEARCH handling only populates search results without actually
+        // starting playback. baseUrl is unused, same reasoning as PROVIDER_BRAVE_SEARCH.
+        const val PROVIDER_YOUTUBE_DATA_API = "youtube_data_api"
 
         // VOICEVOX's own default speaker (四国めたん, ノーマル) — prefilled when creating a new
         // VOICEVOX-compatible profile, and used as a defensive fallback if one is ever missing

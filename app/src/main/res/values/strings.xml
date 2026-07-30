@@ -48,6 +48,10 @@
     <string name="settings_openai_compatible_title">OpenAI Compatible</string>
     <string name="settings_brave_search_title">Brave Search</string>
     <string name="settings_voicevox_title">VOICEVOX互換</string>
+    <string name="settings_youtube_data_api_title">YouTube Data API</string>
+    <string name="youtube_data_api_description">YouTube Musicで曲を検索し、動画IDを取得するためだけに使われます(Google Cloud ConsoleでYouTube Data API v3を有効にして取得したAPIキーを入力してください。無料枠は1日あたり検索100回程度です)。</string>
+    <string name="youtube_data_api_key_label">YouTube Data API キー</string>
+    <string name="youtube_data_api_key_placeholder">AIza...</string>
     <string name="settings_api_key_label">OpenAI APIキー</string>
     <string name="settings_api_key_placeholder">sk-...</string>
     <string name="settings_base_url_label">APIのURL</string>
@@ -121,6 +125,16 @@
     <string name="messaging_app_label">送信先のメッセージアプリ</string>
     <string name="messaging_app_description">選択したアプリに直接メッセージを送ります。未選択の場合は、その都度アプリを選ぶ共有メニューが表示されます。</string>
     <string name="messaging_app_empty_message">この端末にはテキストを共有できるメッセージアプリが見つかりませんでした。</string>
+
+    <string name="settings_music_category_title">音楽</string>
+    <string name="music_enable_label">音楽の再生を許可する</string>
+    <string name="music_enable_description">有効にすると、AIが必要だと判断した時にSpotifyなどの音楽アプリで曲を再生できるようになります。</string>
+    <string name="music_app_label">再生先の音楽アプリ</string>
+    <string name="music_app_description">選択したアプリで直接再生します。未選択の場合は、端末が自動的に解決します(複数アプリが対象になり得る場合は選択画面が表示されます)。</string>
+    <string name="music_app_empty_message">この端末には音楽の検索再生に対応したアプリが見つかりませんでした。</string>
+    <string name="music_youtube_api_label">YouTube Music用のAPI連携</string>
+    <string name="music_youtube_api_description">YouTube Musicは検索画面を開くだけで自動再生に対応していないため、YouTube Data APIプロファイルを登録して有効にすると、曲を検索して直接再生できるようになります(API設定から追加できます)。</string>
+    <string name="music_youtube_api_empty_message">YouTube Data APIプロファイルがまだありません。「API設定」から追加してください。</string>
 
     <string name="settings_export_title">設定をエクスポート</string>
     <string name="settings_export_success">設定をエクスポートしました</string>

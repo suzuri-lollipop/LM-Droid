@@ -12,6 +12,7 @@ enum class SettingsRoute {
     OpenAiCompatible,
     BraveSearchProfile,
     VoicevoxProfile,
+    YoutubeDataApiProfile,
     System,
     WebSearch,
     Voice,
@@ -19,6 +20,7 @@ enum class SettingsRoute {
     Alarm,
     Notes,
     Messaging,
+    Music,
     SystemPromptList,
     SystemPromptEdit,
     Assistant,
@@ -30,6 +32,7 @@ fun SettingsRoute.parent(): SettingsRoute? = when (this) {
     SettingsRoute.OpenAiCompatible -> SettingsRoute.ApiSettings
     SettingsRoute.BraveSearchProfile -> SettingsRoute.ApiSettings
     SettingsRoute.VoicevoxProfile -> SettingsRoute.ApiSettings
+    SettingsRoute.YoutubeDataApiProfile -> SettingsRoute.ApiSettings
     SettingsRoute.System -> SettingsRoute.Root
     SettingsRoute.WebSearch -> SettingsRoute.Root
     SettingsRoute.Voice -> SettingsRoute.Root
@@ -37,6 +40,7 @@ fun SettingsRoute.parent(): SettingsRoute? = when (this) {
     SettingsRoute.Alarm -> SettingsRoute.Root
     SettingsRoute.Notes -> SettingsRoute.Root
     SettingsRoute.Messaging -> SettingsRoute.Root
+    SettingsRoute.Music -> SettingsRoute.Root
     SettingsRoute.SystemPromptList -> SettingsRoute.Root
     SettingsRoute.SystemPromptEdit -> SettingsRoute.SystemPromptList
     SettingsRoute.Assistant -> SettingsRoute.Root

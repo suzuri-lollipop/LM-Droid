@@ -12,6 +12,7 @@ import com.suzuri.lmdroid.ui.settings.AssistantSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.MessagingSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.MusicSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.NotesSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsExportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsImportViewModel
@@ -22,6 +23,7 @@ import com.suzuri.lmdroid.ui.settings.SystemSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.VoiceSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.VoicevoxProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.WebSearchSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.YoutubeDataApiProfileEditViewModel
 
 class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
@@ -78,6 +80,12 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
 
         modelClass.isAssignableFrom(MessagingSettingsViewModel::class.java) ->
             MessagingSettingsViewModel(container.settingsRepository, container.deviceMessageController) as T
+
+        modelClass.isAssignableFrom(MusicSettingsViewModel::class.java) ->
+            MusicSettingsViewModel(container.settingsRepository, container.deviceMusicController, container.apiProfileRepository) as T
+
+        modelClass.isAssignableFrom(YoutubeDataApiProfileEditViewModel::class.java) ->
+            YoutubeDataApiProfileEditViewModel(container.apiProfileRepository, container.youTubeDataApiClient) as T
 
         modelClass.isAssignableFrom(SystemPromptListViewModel::class.java) ->
             SystemPromptListViewModel(container.systemPromptRepository) as T

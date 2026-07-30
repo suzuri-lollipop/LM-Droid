@@ -9,6 +9,8 @@ import com.suzuri.lmdroid.data.attachment.AudioRecorder
 import com.suzuri.lmdroid.data.db.AppDatabase
 import com.suzuri.lmdroid.data.location.DeviceLocationProvider
 import com.suzuri.lmdroid.data.messaging.DeviceMessageController
+import com.suzuri.lmdroid.data.music.DeviceMusicController
+import com.suzuri.lmdroid.data.music.YouTubeDataApiClient
 import com.suzuri.lmdroid.data.notes.DeviceNoteController
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
@@ -103,6 +105,10 @@ class AppContainer(context: Context) {
 
     val deviceMessageController = DeviceMessageController(appContext)
 
+    val deviceMusicController = DeviceMusicController(appContext)
+
+    val youTubeDataApiClient = YouTubeDataApiClient(okHttpClient, json)
+
     val voicevoxCompatibleClient = VoicevoxCompatibleClient(okHttpClient)
 
     val onDeviceSpeechSynthesizer = OnDeviceSpeechSynthesizer(appContext)
@@ -125,6 +131,8 @@ class AppContainer(context: Context) {
         deviceAlarmController = deviceAlarmController,
         deviceNoteController = deviceNoteController,
         deviceMessageController = deviceMessageController,
+        deviceMusicController = deviceMusicController,
+        youTubeDataApiClient = youTubeDataApiClient,
         systemPromptRepository = systemPromptRepository,
         json = json,
     )

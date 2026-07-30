@@ -67,6 +67,8 @@ import com.suzuri.lmdroid.ui.settings.LocationSettingsScreen
 import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.MessagingSettingsScreen
 import com.suzuri.lmdroid.ui.settings.MessagingSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.MusicSettingsScreen
+import com.suzuri.lmdroid.ui.settings.MusicSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.NotesSettingsScreen
 import com.suzuri.lmdroid.ui.settings.NotesSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.OpenAiCompatibleScreen
@@ -87,6 +89,8 @@ import com.suzuri.lmdroid.ui.settings.VoicevoxProfileEditScreen
 import com.suzuri.lmdroid.ui.settings.VoicevoxProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.WebSearchSettingsScreen
 import com.suzuri.lmdroid.ui.settings.WebSearchSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.YoutubeDataApiProfileEditScreen
+import com.suzuri.lmdroid.ui.settings.YoutubeDataApiProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.parent
 import com.suzuri.lmdroid.ui.theme.LmDroidTheme
 import kotlinx.coroutines.launch
@@ -136,6 +140,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val settingsViewModel: SettingsViewModel = viewModel(factory = viewModelFactory)
     val braveSearchProfileEditViewModel: BraveSearchProfileEditViewModel = viewModel(factory = viewModelFactory)
     val voicevoxProfileEditViewModel: VoicevoxProfileEditViewModel = viewModel(factory = viewModelFactory)
+    val youtubeDataApiProfileEditViewModel: YoutubeDataApiProfileEditViewModel = viewModel(factory = viewModelFactory)
     val apiProfileListViewModel: ApiProfileListViewModel = viewModel(factory = viewModelFactory)
     val systemSettingsViewModel: SystemSettingsViewModel = viewModel(factory = viewModelFactory)
     val webSearchSettingsViewModel: WebSearchSettingsViewModel = viewModel(factory = viewModelFactory)
@@ -144,6 +149,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val alarmSettingsViewModel: AlarmSettingsViewModel = viewModel(factory = viewModelFactory)
     val notesSettingsViewModel: NotesSettingsViewModel = viewModel(factory = viewModelFactory)
     val messagingSettingsViewModel: MessagingSettingsViewModel = viewModel(factory = viewModelFactory)
+    val musicSettingsViewModel: MusicSettingsViewModel = viewModel(factory = viewModelFactory)
     val systemPromptListViewModel: SystemPromptListViewModel = viewModel(factory = viewModelFactory)
     val systemPromptEditViewModel: SystemPromptEditViewModel = viewModel(factory = viewModelFactory)
     val assistantSettingsViewModel: AssistantSettingsViewModel = viewModel(factory = viewModelFactory)
@@ -265,6 +271,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.OpenAiCompatible -> stringResource(R.string.settings_openai_compatible_title)
                                     SettingsRoute.BraveSearchProfile -> stringResource(R.string.settings_brave_search_title)
                                     SettingsRoute.VoicevoxProfile -> stringResource(R.string.settings_voicevox_title)
+                                    SettingsRoute.YoutubeDataApiProfile -> stringResource(R.string.settings_youtube_data_api_title)
                                     SettingsRoute.System -> stringResource(R.string.settings_system_category_title)
                                     SettingsRoute.WebSearch -> stringResource(R.string.settings_websearch_category_title)
                                     SettingsRoute.Voice -> stringResource(R.string.settings_voice_category_title)
@@ -272,6 +279,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.Alarm -> stringResource(R.string.settings_alarm_category_title)
                                     SettingsRoute.Notes -> stringResource(R.string.settings_notes_category_title)
                                     SettingsRoute.Messaging -> stringResource(R.string.settings_messaging_category_title)
+                                    SettingsRoute.Music -> stringResource(R.string.settings_music_category_title)
                                     SettingsRoute.SystemPromptList -> stringResource(R.string.settings_system_prompt_category_title)
                                     SettingsRoute.SystemPromptEdit -> stringResource(R.string.settings_system_prompt_category_title)
                                     SettingsRoute.Assistant -> stringResource(R.string.settings_assistant_category_title)
@@ -358,6 +366,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 onNavigateToAlarm = { settingsRoute = SettingsRoute.Alarm },
                                 onNavigateToNotes = { settingsRoute = SettingsRoute.Notes },
                                 onNavigateToMessaging = { settingsRoute = SettingsRoute.Messaging },
+                                onNavigateToMusic = { settingsRoute = SettingsRoute.Music },
                                 onNavigateToSystemPrompts = { settingsRoute = SettingsRoute.SystemPromptList },
                                 onNavigateToAssistant = { settingsRoute = SettingsRoute.Assistant },
                                 modifier = Modifier.padding(innerPadding),
@@ -371,6 +380,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     settingsRoute = when (providerType) {
                                         ApiProfileEntity.PROVIDER_BRAVE_SEARCH -> SettingsRoute.BraveSearchProfile
                                         ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE -> SettingsRoute.VoicevoxProfile
+                                        ApiProfileEntity.PROVIDER_YOUTUBE_DATA_API -> SettingsRoute.YoutubeDataApiProfile
                                         else -> SettingsRoute.OpenAiCompatible
                                     }
                                 },
@@ -402,6 +412,16 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                             if (id != null) {
                                 VoicevoxProfileEditScreen(
                                     viewModel = voicevoxProfileEditViewModel,
+                                    profileId = id,
+                                    modifier = Modifier.padding(innerPadding),
+                                )
+                            }
+                        }
+                        SettingsRoute.YoutubeDataApiProfile -> {
+                            val id = editingProfileId
+                            if (id != null) {
+                                YoutubeDataApiProfileEditScreen(
+                                    viewModel = youtubeDataApiProfileEditViewModel,
                                     profileId = id,
                                     modifier = Modifier.padding(innerPadding),
                                 )
@@ -448,6 +468,12 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                         SettingsRoute.Messaging -> {
                             MessagingSettingsScreen(
                                 viewModel = messagingSettingsViewModel,
+                                modifier = Modifier.padding(innerPadding),
+                            )
+                        }
+                        SettingsRoute.Music -> {
+                            MusicSettingsScreen(
+                                viewModel = musicSettingsViewModel,
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }
