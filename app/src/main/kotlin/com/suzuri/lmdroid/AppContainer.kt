@@ -8,6 +8,7 @@ import com.suzuri.lmdroid.data.attachment.AttachmentFileStore
 import com.suzuri.lmdroid.data.attachment.AudioRecorder
 import com.suzuri.lmdroid.data.db.AppDatabase
 import com.suzuri.lmdroid.data.location.DeviceLocationProvider
+import com.suzuri.lmdroid.data.notes.DeviceNoteController
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
@@ -97,6 +98,8 @@ class AppContainer(context: Context) {
 
     val deviceAlarmController = DeviceAlarmController(appContext)
 
+    val deviceNoteController = DeviceNoteController(appContext)
+
     val voicevoxCompatibleClient = VoicevoxCompatibleClient(okHttpClient)
 
     val onDeviceSpeechSynthesizer = OnDeviceSpeechSynthesizer(appContext)
@@ -117,6 +120,7 @@ class AppContainer(context: Context) {
         webPageFetcher = webPageFetcher,
         deviceLocationProvider = deviceLocationProvider,
         deviceAlarmController = deviceAlarmController,
+        deviceNoteController = deviceNoteController,
         systemPromptRepository = systemPromptRepository,
         json = json,
     )

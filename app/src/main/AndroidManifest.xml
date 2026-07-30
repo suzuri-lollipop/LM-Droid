@@ -17,6 +17,16 @@
          permission — no runtime request needed. -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
+    <!-- Lets PackageManager list/resolve installed note-taking apps (Google Keep and others) for
+         the "create_note" tool (Settings → メモ) without needing the broad QUERY_ALL_PACKAGES
+         permission — see DeviceNoteController. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+
     <application
         android:name=".LmDroidApplication"
         android:allowBackup="false"

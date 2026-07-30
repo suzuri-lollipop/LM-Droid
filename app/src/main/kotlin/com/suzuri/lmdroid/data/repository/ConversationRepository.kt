@@ -16,6 +16,7 @@ import com.suzuri.lmdroid.data.db.MessageRole
 import com.suzuri.lmdroid.data.db.MessageWithAttachments
 import com.suzuri.lmdroid.data.db.ThinkingTimelineEntry
 import com.suzuri.lmdroid.data.location.DeviceLocationProvider
+import com.suzuri.lmdroid.data.notes.DeviceNoteController
 import com.suzuri.lmdroid.data.network.ChatMessageDto
 import com.suzuri.lmdroid.data.network.ContentPart
 import com.suzuri.lmdroid.data.network.FunctionCallDto
@@ -75,6 +76,7 @@ class ConversationRepository(
     private val webPageFetcher: WebPageFetcher,
     private val deviceLocationProvider: DeviceLocationProvider,
     private val deviceAlarmController: DeviceAlarmController,
+    private val deviceNoteController: DeviceNoteController,
     private val systemPromptRepository: SystemPromptRepository,
     private val json: Json,
 ) {
@@ -324,10 +326,10 @@ class ConversationRepository(
         }
 
         // Tools: when enabled and configured in Settings, the model is offered "web_search",
-        // "fetch_webpage", "get_current_location", and/or "set_alarm"/"set_timer" functions it can
-        // decide to call on its own (agentic tool calling), rather than the app deciding
-        // unconditionally what to search/fetch/locate/schedule and force-feeding the results into
-        // every request. The harness (this repository) only ever executes one when the model
+        // "fetch_webpage", "get_current_location", "set_alarm"/"set_timer", and/or "create_note"
+        // functions it can decide to call on its own (agentic tool calling), rather than the app
+        // deciding unconditionally what to search/fetch/locate/schedule/save and force-feeding the
+        // results into every request. The harness (this repository) only ever executes one when the model
         // actually asks for it, via executeToolCall() below. maxToolRounds caps how many tool
         // round-trips one reply can make before it's forced to answer with what it has — 0 in
         // Settings means "no user-configured cap", bounded only by SAFETY_MAX_TOOL_ROUNDS so a
@@ -445,6 +447,23 @@ class ConversationRepository(
                         summary
                     } else {
                         "Could not set the timer: no clock app is available on this device."
+                    }
+                }
+            }
+            CREATE_NOTE_TOOL_NAME -> {
+                val content = extractStringArgument(call.argumentsJson, "content")
+                if (content == null || content.isBlank()) {
+                    "Error: invalid arguments for $CREATE_NOTE_TOOL_NAME. Expected JSON like {\"content\": \"...\"}."
+                } else {
+                    val title = extractStringArgument(call.argumentsJson, "title")
+                    val preferredPackage = settingsRepository.currentPreferredNoteAppPackage()
+                    if (deviceNoteController.createNote(title, content, preferredPackage)) {
+                        val summary = "Opened a note-taking app pre-filled with the memo" + (title?.let { " ($it)" } ?: "") +
+                            ", waiting for the user to review and save it there."
+                        timeline += ThinkingTimelineEntry.ToolActivity(label = "📝 ${title ?: content.take(20)}", content = summary)
+                        summary
+                    } else {
+                        "Could not create the note: no note-taking app is available on this device."
                     }
                 }
             }
@@ -574,7 +593,8 @@ class ConversationRepository(
     /**
      * The function definitions offered to the model this turn — "web_search"/"fetch_webpage" when
      * Web検索 is enabled and configured, "get_current_location" when 位置情報 is enabled,
-     * "set_alarm"/"set_timer" when アラーム・タイマー is enabled — or null if none of these are, so
+     * "set_alarm"/"set_timer" when アラーム・タイマー is enabled, "create_note" when メモ is enabled
+     * — or null if none of these are, so
      * [ChatCompletionRequest.tools][com.suzuri.lmdroid.data.network.ChatCompletionRequest] is
      * omitted entirely rather than sent as an empty/useless list.
      */
@@ -646,6 +666,21 @@ class ConversationRepository(
                         "confirm it. Convert whatever duration the user described (e.g. \"5分\", " +
                         "\"an hour and a half\") into total whole seconds yourself.",
                     parameters = setTimerToolParameters,
+                ),
+            )
+        }
+
+        if (settingsRepository.currentNotesToolEnabled()) {
+            tools += ToolDefinitionDto(
+                function = FunctionSchemaDto(
+                    name = CREATE_NOTE_TOOL_NAME,
+                    description = "Save a memo/note. This opens the user's chosen note-taking app " +
+                        "(Settings → メモ) — or, if none is chosen, a share menu to pick one — " +
+                        "pre-filled with the given text, so the user can visually confirm it there " +
+                        "— there's no way to save it silently in the background, and the user still " +
+                        "needs to confirm/save it in that app for it to actually take effect. Tell " +
+                        "the user to check and confirm it.",
+                    parameters = createNoteToolParameters,
                 ),
             )
         }
@@ -743,6 +778,7 @@ class ConversationRepository(
         const val GET_LOCATION_TOOL_NAME = "get_current_location"
         const val SET_ALARM_TOOL_NAME = "set_alarm"
         const val SET_TIMER_TOOL_NAME = "set_timer"
+        const val CREATE_NOTE_TOOL_NAME = "create_note"
 
         // A hard ceiling regardless of the user's own Settings → Web検索 configuration (where 0
         // means "no cap") — purely a safety valve against a truly runaway model that never stops
@@ -841,6 +877,29 @@ class ConversationRepository(
                     ),
                 ),
                 "required" to JsonArray(listOf(JsonPrimitive("seconds"))),
+            ),
+        )
+
+        val createNoteToolParameters: JsonElement = JsonObject(
+            mapOf(
+                "type" to JsonPrimitive("object"),
+                "properties" to JsonObject(
+                    mapOf(
+                        "title" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("string"),
+                                "description" to JsonPrimitive("Optional short title for the note."),
+                            ),
+                        ),
+                        "content" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("string"),
+                                "description" to JsonPrimitive("The note's body text."),
+                            ),
+                        ),
+                    ),
+                ),
+                "required" to JsonArray(listOf(JsonPrimitive("content"))),
             ),
         )
     }

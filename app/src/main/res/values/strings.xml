@@ -108,6 +108,13 @@
     <string name="alarm_enable_label">アラーム・タイマーの設定を許可する</string>
     <string name="alarm_enable_description">有効にすると、AIが必要だと判断した時に目覚まし(アラーム)やタイマーを設定できるようになります。時計アプリの確認画面が表示されるので、内容を確認して保存してください。</string>
 
+    <string name="settings_notes_category_title">メモ</string>
+    <string name="notes_enable_label">メモの作成を許可する</string>
+    <string name="notes_enable_description">有効にすると、AIが必要だと判断した時にメモを作成できるようになります。Google Keepなどメモアプリの確認画面が表示されるので、内容を確認して保存してください。</string>
+    <string name="notes_app_label">保存先のメモアプリ</string>
+    <string name="notes_app_description">選択したアプリに直接メモを送ります。未選択の場合は、その都度アプリを選ぶ共有メニューが表示されます。</string>
+    <string name="notes_app_empty_message">この端末にはテキストを共有できるメモアプリが見つかりませんでした。</string>
+
     <string name="settings_export_title">設定をエクスポート</string>
     <string name="settings_export_success">設定をエクスポートしました</string>
     <string name="settings_export_failure">エクスポートに失敗しました</string>

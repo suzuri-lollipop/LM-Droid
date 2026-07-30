@@ -199,6 +199,26 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs -> prefs[KEY_ALARM_TOOL_ENABLED] = enabled }
     }
 
+    /** Whether the "create_note" tool (see ConversationRepository, DeviceNoteController) is offered to the model — off by default, since (unlike a read-only lookup) this actually opens a note app pre-filled with content as soon as the model calls it. */
+    val notesToolEnabled: Flow<Boolean> = context.settingsDataStore.data.map { it[KEY_NOTES_TOOL_ENABLED] ?: false }
+
+    suspend fun currentNotesToolEnabled(): Boolean = notesToolEnabled.first()
+
+    suspend fun setNotesToolEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_NOTES_TOOL_ENABLED] = enabled }
+    }
+
+    /** Which installed app's package name (see DeviceNoteController.installedNoteApps) the "create_note" tool targets directly — null falls back to the system share chooser every time the tool is called. */
+    val preferredNoteAppPackage: Flow<String?> = context.settingsDataStore.data.map { it[KEY_PREFERRED_NOTE_APP_PACKAGE] }
+
+    suspend fun currentPreferredNoteAppPackage(): String? = preferredNoteAppPackage.first()
+
+    suspend fun setPreferredNoteAppPackage(packageName: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (packageName == null) prefs.remove(KEY_PREFERRED_NOTE_APP_PACKAGE) else prefs[KEY_PREFERRED_NOTE_APP_PACKAGE] = packageName
+        }
+    }
+
     private fun resolve(selected: SelectedModel?): Flow<AppSettings> {
         if (selected == null) {
             return markdownEnabledFlow.map { markdownEnabled ->
@@ -253,5 +273,7 @@ class SettingsRepository(
         val KEY_LOCATION_ENABLED = booleanPreferencesKey("location_enabled")
         val KEY_SELECTED_TTS_PROFILE_ID = longPreferencesKey("selected_tts_profile_id")
         val KEY_ALARM_TOOL_ENABLED = booleanPreferencesKey("alarm_tool_enabled")
+        val KEY_NOTES_TOOL_ENABLED = booleanPreferencesKey("notes_tool_enabled")
+        val KEY_PREFERRED_NOTE_APP_PACKAGE = stringPreferencesKey("preferred_note_app_package")
     }
 }

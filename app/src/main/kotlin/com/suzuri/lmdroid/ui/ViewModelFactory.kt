@@ -11,6 +11,7 @@ import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
 import com.suzuri.lmdroid.ui.settings.AssistantSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.NotesSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsExportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsImportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsViewModel
@@ -70,6 +71,9 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
 
         modelClass.isAssignableFrom(AlarmSettingsViewModel::class.java) ->
             AlarmSettingsViewModel(container.settingsRepository) as T
+
+        modelClass.isAssignableFrom(NotesSettingsViewModel::class.java) ->
+            NotesSettingsViewModel(container.settingsRepository, container.deviceNoteController) as T
 
         modelClass.isAssignableFrom(SystemPromptListViewModel::class.java) ->
             SystemPromptListViewModel(container.systemPromptRepository) as T
