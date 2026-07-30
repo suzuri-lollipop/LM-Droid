@@ -39,6 +39,7 @@ import com.suzuri.lmdroid.data.websearch.WebPageFetcher
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
@@ -55,6 +56,14 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+
+/**
+ * How long ChatViewModel (and, when in Settings → アシスタント "読み上げをバックグラウンドで続けながら
+ * 開く", AssistViewModel) waits after a reply is shown before firing its
+ * [ConversationRepository.SendResult]'s deferred tool side effects — just long enough for the
+ * screen/speech pipeline to actually catch up with the DB write, not a meaningful "wait."
+ */
+const val TOOL_SIDE_EFFECT_DELAY_MS = 500L
 
 /**
  * Orchestrates Room persistence, OpenAI streaming, and the current settings for chat
@@ -87,9 +96,10 @@ class ConversationRepository(
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     sealed class SendResult {
-        object Success : SendResult()
+        /** [pendingSideEffects] are the deferred tool-launch actions (see the tool-call loop in [generateAssistantReply]) queued this turn but not yet fired — the caller (ChatViewModel/AssistViewModel) decides when to actually invoke them, now that the reply is showing. */
+        data class Success(val pendingSideEffects: List<() -> Unit> = emptyList()) : SendResult()
         object ApiKeyMissing : SendResult()
-        data class Error(val message: String) : SendResult()
+        data class Error(val message: String, val pendingSideEffects: List<() -> Unit> = emptyList()) : SendResult()
     }
 
     /**
@@ -372,6 +382,27 @@ class ConversationRepository(
             }
         }
 
+        // Tools that open another app (set_alarm/set_timer/create_note/send_message) queue their
+        // actual Intent launch here instead of firing it the moment the model calls the tool —
+        // otherwise, e.g., the share chooser for send_message would pop up and steal the screen
+        // before the model has even generated the reply text that explains what it's doing,
+        // especially jarring in the voice Assistant overlay. On normal completion or a stream
+        // error these are handed back via SendResult for the caller (ChatViewModel/AssistViewModel)
+        // to fire once it's actually shown/spoken the reply — only AssistViewModel knows about
+        // speech playback timing, which is a UI-layer concern this repository has no visibility
+        // into. The one exception is cancellation (below): the caller's own coroutine is being torn
+        // down right along with this one at that point, so there's no one left to hand off to —
+        // fireSideEffectsAfterDelay() there fires them itself instead.
+        val pendingSideEffects = mutableListOf<() -> Unit>()
+
+        suspend fun fireSideEffectsAfterDelay() {
+            if (pendingSideEffects.isEmpty()) return
+            delay(TOOL_SIDE_EFFECT_DELAY_MS)
+            val actions = pendingSideEffects.toList()
+            pendingSideEffects.clear()
+            actions.forEach { action -> runCatching(action).onFailure { e -> Log.w(TAG, "Deferred tool side effect failed", e) } }
+        }
+
         /** Runs the tool call the model requested, recording it on the timeline, and returns the result text for the matching "tool" role message. */
         suspend fun executeToolCall(call: RequestedToolCall): String = when (call.name) {
             WEB_SEARCH_TOOL_NAME -> {
@@ -426,9 +457,11 @@ class ConversationRepository(
                 } else {
                     val label = extractStringArgument(call.argumentsJson, "label")
                     val timeText = "%02d:%02d".format(hour, minute)
-                    if (deviceAlarmController.setAlarm(hour, minute, label)) {
-                        val summary = "Opened the clock app's alarm screen for $timeText" + (label?.let { " ($it)" } ?: "") +
-                            ", waiting for the user to confirm it there."
+                    val launchAlarm = deviceAlarmController.prepareSetAlarm(hour, minute, label)
+                    if (launchAlarm != null) {
+                        pendingSideEffects += launchAlarm
+                        val summary = "Will open the clock app's alarm screen for $timeText" + (label?.let { " ($it)" } ?: "") +
+                            " right after this reply is shown, for the user to confirm it there."
                         timeline += ThinkingTimelineEntry.ToolActivity(label = "⏰ $timeText", content = summary)
                         summary
                     } else {
@@ -442,9 +475,11 @@ class ConversationRepository(
                     "Error: invalid arguments for $SET_TIMER_TOOL_NAME. Expected JSON like {\"seconds\": 300}."
                 } else {
                     val label = extractStringArgument(call.argumentsJson, "label")
-                    if (deviceAlarmController.setTimer(seconds, label)) {
-                        val summary = "Opened the clock app's timer screen for $seconds seconds" + (label?.let { " ($it)" } ?: "") +
-                            ", waiting for the user to confirm it there."
+                    val launchTimer = deviceAlarmController.prepareSetTimer(seconds, label)
+                    if (launchTimer != null) {
+                        pendingSideEffects += launchTimer
+                        val summary = "Will open the clock app's timer screen for $seconds seconds" + (label?.let { " ($it)" } ?: "") +
+                            " right after this reply is shown, for the user to confirm it there."
                         timeline += ThinkingTimelineEntry.ToolActivity(label = "⏱️ ${seconds}秒", content = summary)
                         summary
                     } else {
@@ -459,9 +494,11 @@ class ConversationRepository(
                 } else {
                     val title = extractStringArgument(call.argumentsJson, "title")
                     val preferredPackage = settingsRepository.currentPreferredNoteAppPackage()
-                    if (deviceNoteController.createNote(title, content, preferredPackage)) {
-                        val summary = "Opened a note-taking app pre-filled with the memo" + (title?.let { " ($it)" } ?: "") +
-                            ", waiting for the user to review and save it there."
+                    val launchNote = deviceNoteController.prepareCreateNote(title, content, preferredPackage)
+                    if (launchNote != null) {
+                        pendingSideEffects += launchNote
+                        val summary = "Will open a note-taking app pre-filled with the memo" + (title?.let { " ($it)" } ?: "") +
+                            " right after this reply is shown, for the user to review and save it there."
                         timeline += ThinkingTimelineEntry.ToolActivity(label = "📝 ${title ?: content.take(20)}", content = summary)
                         summary
                     } else {
@@ -475,9 +512,11 @@ class ConversationRepository(
                     "Error: invalid arguments for $SEND_MESSAGE_TOOL_NAME. Expected JSON like {\"content\": \"...\"}."
                 } else {
                     val preferredPackage = settingsRepository.currentPreferredMessagingAppPackage()
-                    if (deviceMessageController.sendMessage(content, preferredPackage)) {
-                        val summary = "Opened a messaging app pre-filled with the message, waiting for " +
-                            "the user to pick a recipient and send it there."
+                    val launchMessage = deviceMessageController.prepareSendMessage(content, preferredPackage)
+                    if (launchMessage != null) {
+                        pendingSideEffects += launchMessage
+                        val summary = "Will open a messaging app pre-filled with the message right after " +
+                            "this reply is shown, for the user to pick a recipient and send it there."
                         timeline += ThinkingTimelineEntry.ToolActivity(label = "💬 ${content.take(20)}", content = summary)
                         summary
                     } else {
@@ -544,6 +583,7 @@ class ConversationRepository(
                 }
                 messageDao.updateContent(placeholderId, stoppedContent, timelineJson())
                 conversationDao.touch(conversationId, System.currentTimeMillis())
+                fireSideEffectsAfterDelay()
             }
             throw e
         } catch (e: OpenAiException) {
@@ -562,7 +602,7 @@ class ConversationRepository(
             } else {
                 messageDao.updateContent(placeholderId, accumulated.toString(), finalTimelineJson, isError = false)
             }
-            return SendResult.Error(error.userMessage)
+            return SendResult.Error(error.userMessage, pendingSideEffects.toList())
         }
 
         val finalContent = accumulated.toString()
@@ -573,7 +613,7 @@ class ConversationRepository(
         }
         conversationDao.touch(conversationId, System.currentTimeMillis())
 
-        return SendResult.Success
+        return SendResult.Success(pendingSideEffects.toList())
     }
 
     /**

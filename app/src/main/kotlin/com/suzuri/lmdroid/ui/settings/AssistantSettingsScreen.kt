@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
+import com.suzuri.lmdroid.data.settings.AssistantToolLaunchTiming
 
 /**
  * Settings → アシスタント: registers this app as the device's assist app, so the system assist
@@ -131,5 +132,37 @@ fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Mod
             )
             HorizontalDivider()
         }
+
+        HorizontalDivider(modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))
+
+        Text(
+            text = stringResource(R.string.assistant_settings_tool_timing_description),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.assistant_settings_tool_timing_while_speaking)) },
+            leadingContent = {
+                RadioButton(
+                    selected = uiState.toolLaunchTiming == AssistantToolLaunchTiming.WHILE_SPEAKING,
+                    onClick = { viewModel.onSelectToolLaunchTiming(AssistantToolLaunchTiming.WHILE_SPEAKING) },
+                )
+            },
+            modifier = Modifier.clickable { viewModel.onSelectToolLaunchTiming(AssistantToolLaunchTiming.WHILE_SPEAKING) },
+        )
+        HorizontalDivider()
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.assistant_settings_tool_timing_after_speaking)) },
+            leadingContent = {
+                RadioButton(
+                    selected = uiState.toolLaunchTiming == AssistantToolLaunchTiming.AFTER_SPEAKING,
+                    onClick = { viewModel.onSelectToolLaunchTiming(AssistantToolLaunchTiming.AFTER_SPEAKING) },
+                )
+            },
+            modifier = Modifier.clickable { viewModel.onSelectToolLaunchTiming(AssistantToolLaunchTiming.AFTER_SPEAKING) },
+        )
+        HorizontalDivider()
     }
 }

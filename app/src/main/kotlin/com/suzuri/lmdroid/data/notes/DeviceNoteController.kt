@@ -11,9 +11,9 @@ import com.suzuri.lmdroid.data.share.TextShareLauncher
 class DeviceNoteController(context: Context) {
     private val shareLauncher = TextShareLauncher(context)
 
-    /** True if a note-capable app actually received the request — see [TextShareLauncher.send]. */
-    fun createNote(title: String?, content: String, preferredPackage: String?): Boolean =
-        shareLauncher.send(content = content, subject = title, preferredPackage = preferredPackage)
+    /** Null if no note-capable app exists on this device; otherwise a function that actually opens it — see [TextShareLauncher.prepareSend]. */
+    fun prepareCreateNote(title: String?, content: String, preferredPackage: String?): (() -> Unit)? =
+        shareLauncher.prepareSend(content = content, subject = title, preferredPackage = preferredPackage)
 
     /** Every installed app that can receive the note — the candidates offered by the メモ screen's app picker. */
     fun installedNoteApps(): List<TextShareLauncher.InstalledApp> = shareLauncher.installedApps()

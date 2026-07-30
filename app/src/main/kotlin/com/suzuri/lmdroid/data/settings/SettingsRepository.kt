@@ -24,6 +24,14 @@ private val Context.settingsDataStore by preferencesDataStore(name = "settings")
 data class SelectedModel(val profileId: Long, val model: String)
 
 /**
+ * When the Assistant overlay actually launches a tool's deferred side effect (e.g. the
+ * send_message share chooser, or the clock app for set_alarm/set_timer) relative to
+ * [com.suzuri.lmdroid.data.tts.AssistSpeechPlayer] speaking the reply that describes it — see
+ * ConversationRepository's pendingSideEffects queue and AssistViewModel.launchPendingSideEffects.
+ */
+enum class AssistantToolLaunchTiming { WHILE_SPEAKING, AFTER_SPEAKING }
+
+/**
  * Resolves which (profile, model) pair is used for (a) the chat screen — adjustable there —
  * (b) background "system" tasks (auto-titling, prompt suggestions) — adjustable from Settings →
  * システム — and (c) the assistant overlay (Settings → アシスタント), all falling back to the chat
@@ -190,6 +198,18 @@ class SettingsRepository(
         return apiProfileDao.getById(id)
     }
 
+    /** See [AssistantToolLaunchTiming] — defaults to WHILE_SPEAKING (the previous, only behavior). */
+    val assistantToolLaunchTiming: Flow<AssistantToolLaunchTiming> = context.settingsDataStore.data.map { prefs ->
+        prefs[KEY_ASSISTANT_TOOL_LAUNCH_TIMING]?.let { runCatching { AssistantToolLaunchTiming.valueOf(it) }.getOrNull() }
+            ?: AssistantToolLaunchTiming.WHILE_SPEAKING
+    }
+
+    suspend fun currentAssistantToolLaunchTiming(): AssistantToolLaunchTiming = assistantToolLaunchTiming.first()
+
+    suspend fun setAssistantToolLaunchTiming(timing: AssistantToolLaunchTiming) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_ASSISTANT_TOOL_LAUNCH_TIMING] = timing.name }
+    }
+
     /** Whether the "set_alarm"/"set_timer" tools (see ConversationRepository, DeviceAlarmController) are offered to the model — off by default, since (unlike a read-only lookup) these actually create device alarms/timers as soon as the model calls them. */
     val alarmToolEnabled: Flow<Boolean> = context.settingsDataStore.data.map { it[KEY_ALARM_TOOL_ENABLED] ?: false }
 
@@ -292,6 +312,7 @@ class SettingsRepository(
         val KEY_SELECTED_SYSTEM_PROMPT_IDS = stringSetPreferencesKey("selected_system_prompt_ids")
         val KEY_LOCATION_ENABLED = booleanPreferencesKey("location_enabled")
         val KEY_SELECTED_TTS_PROFILE_ID = longPreferencesKey("selected_tts_profile_id")
+        val KEY_ASSISTANT_TOOL_LAUNCH_TIMING = stringPreferencesKey("assistant_tool_launch_timing")
         val KEY_ALARM_TOOL_ENABLED = booleanPreferencesKey("alarm_tool_enabled")
         val KEY_NOTES_TOOL_ENABLED = booleanPreferencesKey("notes_tool_enabled")
         val KEY_PREFERRED_NOTE_APP_PACKAGE = stringPreferencesKey("preferred_note_app_package")

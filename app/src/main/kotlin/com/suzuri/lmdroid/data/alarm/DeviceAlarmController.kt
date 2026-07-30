@@ -16,8 +16,14 @@ import android.util.Log
  */
 class DeviceAlarmController(private val context: Context) {
 
-    /** True if an alarm-capable app actually received the request. */
-    fun setAlarm(hour: Int, minute: Int, label: String?): Boolean {
+    /**
+     * Null if no clock app can handle it (checked via `resolveActivity`, without launching
+     * anything); otherwise a function that actually opens the alarm screen. Callers (the
+     * tool-calling round trip in ConversationRepository) invoke the returned function only once
+     * the reply describing the action has been fully shown, so the clock app doesn't interrupt the
+     * screen before the user has seen/heard why.
+     */
+    fun prepareSetAlarm(hour: Int, minute: Int, label: String?): (() -> Unit)? {
         val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
             putExtra(AlarmClock.EXTRA_HOUR, hour)
             putExtra(AlarmClock.EXTRA_MINUTES, minute)
@@ -25,18 +31,20 @@ class DeviceAlarmController(private val context: Context) {
             if (!label.isNullOrBlank()) putExtra(AlarmClock.EXTRA_MESSAGE, label)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        return launch(intent, "setAlarm")
+        if (intent.resolveActivity(context.packageManager) == null) return null
+        return { launch(intent, "setAlarm") }
     }
 
-    /** True if a timer-capable app actually received the request. */
-    fun setTimer(seconds: Int, label: String?): Boolean {
+    /** Same as [prepareSetAlarm], but for `ACTION_SET_TIMER`. */
+    fun prepareSetTimer(seconds: Int, label: String?): (() -> Unit)? {
         val intent = Intent(AlarmClock.ACTION_SET_TIMER).apply {
             putExtra(AlarmClock.EXTRA_LENGTH, seconds)
             putExtra(AlarmClock.EXTRA_SKIP_UI, true)
             if (!label.isNullOrBlank()) putExtra(AlarmClock.EXTRA_MESSAGE, label)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        return launch(intent, "setTimer")
+        if (intent.resolveActivity(context.packageManager) == null) return null
+        return { launch(intent, "setTimer") }
     }
 
     private fun launch(intent: Intent, callSite: String): Boolean = try {

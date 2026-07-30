@@ -16,24 +16,32 @@ import android.util.Log
 class TextShareLauncher(private val context: Context) {
 
     /**
-     * True if a share-capable app actually received the request. When [preferredPackage] is set
-     * (and still installed), it's targeted directly; otherwise — or if launching it fails — the
-     * system share chooser is shown so the user can pick an app themselves.
+     * Builds the share without launching anything yet — callers (the tool-calling round trip in
+     * ConversationRepository) use this to confirm a share is possible and describe it to the model
+     * before actually showing any UI, then invoke the returned function once the reply that
+     * describes the action has been fully shown, so the share chooser doesn't interrupt the screen
+     * before the user has seen/heard why. Returns null only when no app at all can receive a
+     * plain-text share on this device. The returned function tries [preferredPackage] first (if
+     * still installed), falling back to the system share chooser if that specific launch fails.
      */
-    fun send(content: String, subject: String?, preferredPackage: String?): Boolean {
+    fun prepareSend(content: String, subject: String?, preferredPackage: String?): (() -> Unit)? {
+        val apps = installedApps()
+        if (apps.isEmpty()) return null
+
         val sendIntent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, content)
             if (!subject.isNullOrBlank()) putExtra(Intent.EXTRA_SUBJECT, subject)
         }
+        val targetPackage = preferredPackage?.takeIf { pkg -> apps.any { it.packageName == pkg } }
 
-        if (!preferredPackage.isNullOrBlank() && installedApps().any { it.packageName == preferredPackage }) {
-            val direct = Intent(sendIntent).setPackage(preferredPackage).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (launch(direct, "send(preferred=$preferredPackage)")) return true
+        return {
+            val launchedPreferred = targetPackage != null &&
+                launch(Intent(sendIntent).setPackage(targetPackage).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), "send(preferred=$targetPackage)")
+            if (!launchedPreferred) {
+                launch(Intent.createChooser(sendIntent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), "send(chooser)")
+            }
         }
-
-        val chooser = Intent.createChooser(sendIntent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return launch(chooser, "send(chooser)")
     }
 
     /** Every installed app that can receive a plain-text share, sorted by display name — the candidates offered by a preferred-app picker (see NotesSettingsScreen, MessagingSettingsScreen). */

@@ -140,6 +140,10 @@
     <string name="assistant_settings_set_button">デジタルアシスタントに設定</string>
     <string name="assistant_settings_model_description">アシスタントモードで使うモデルを選択します。未選択の場合はチャットで選択中のモデルが使われます。</string>
 
+    <string name="assistant_settings_tool_timing_description">メモやメッセージ送信などでアプリを開く操作を、返信の読み上げに対してどのタイミングで行うか</string>
+    <string name="assistant_settings_tool_timing_while_speaking">読み上げをバックグラウンドで続けながら開く</string>
+    <string name="assistant_settings_tool_timing_after_speaking">読み上げが終わってから開く</string>
+
     <string name="history_title">履歴</string>
     <string name="history_new_conversation">新しい会話</string>
     <string name="history_empty_message">まだ会話がありません</string>

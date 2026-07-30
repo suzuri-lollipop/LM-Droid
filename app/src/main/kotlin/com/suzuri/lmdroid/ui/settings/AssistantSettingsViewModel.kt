@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.suzuri.lmdroid.data.db.ModelOptionRow
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
+import com.suzuri.lmdroid.data.settings.AssistantToolLaunchTiming
 import com.suzuri.lmdroid.data.settings.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +37,11 @@ class AssistantSettingsViewModel(
                     _uiState.update { it.copy(availableModels = options, selectedModel = selected) }
                 }
         }
+        viewModelScope.launch {
+            settingsRepository.assistantToolLaunchTiming.collect { timing ->
+                _uiState.update { it.copy(toolLaunchTiming = timing) }
+            }
+        }
     }
 
     fun onSelectModel(option: ModelOptionRow) {
@@ -45,5 +51,9 @@ class AssistantSettingsViewModel(
     /** Clears the override so the assistant overlay falls back to whatever's selected for chat again. */
     fun onUseChatModel() {
         viewModelScope.launch { settingsRepository.setSelectedAssistantModel(null, null) }
+    }
+
+    fun onSelectToolLaunchTiming(timing: AssistantToolLaunchTiming) {
+        viewModelScope.launch { settingsRepository.setAssistantToolLaunchTiming(timing) }
     }
 }

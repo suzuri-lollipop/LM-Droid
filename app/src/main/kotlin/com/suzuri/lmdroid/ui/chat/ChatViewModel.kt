@@ -13,9 +13,11 @@ import com.suzuri.lmdroid.data.db.ThinkingTimelineEntry
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
 import com.suzuri.lmdroid.data.repository.SystemPromptRepository
+import com.suzuri.lmdroid.data.repository.TOOL_SIDE_EFFECT_DELAY_MS
 import com.suzuri.lmdroid.data.settings.SettingsRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -285,11 +287,13 @@ class ChatViewModel(
         sendJob = viewModelScope.launch {
             try {
                 when (val result = block()) {
-                    is ConversationRepository.SendResult.Success -> Unit
+                    is ConversationRepository.SendResult.Success -> launchPendingSideEffects(result.pendingSideEffects)
                     is ConversationRepository.SendResult.ApiKeyMissing ->
                         _uiState.update { it.copy(apiKeyMissing = true) }
-                    is ConversationRepository.SendResult.Error ->
+                    is ConversationRepository.SendResult.Error -> {
                         _uiState.update { it.copy(errorMessage = result.message) }
+                        launchPendingSideEffects(result.pendingSideEffects)
+                    }
                 }
             } finally {
                 // Runs on normal completion, on error, and on cancellation (from onStopGeneration
@@ -297,6 +301,15 @@ class ChatViewModel(
                 // safe here even though the job may already be cancelled.
                 _uiState.update { it.copy(isStreaming = false) }
             }
+        }
+    }
+
+    /** Fires a reply's deferred tool side effects (see ConversationRepository) a beat after it's already on screen, so e.g. the share chooser for send_message doesn't interrupt the screen before the reply that explains it has appeared. Runs in its own job so it isn't tied to (or cancelled along with) [sendJob]. */
+    private fun launchPendingSideEffects(actions: List<() -> Unit>) {
+        if (actions.isEmpty()) return
+        viewModelScope.launch {
+            delay(TOOL_SIDE_EFFECT_DELAY_MS)
+            actions.forEach { action -> runCatching(action) }
         }
     }
 

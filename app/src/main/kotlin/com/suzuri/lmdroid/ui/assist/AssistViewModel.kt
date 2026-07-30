@@ -5,11 +5,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.suzuri.lmdroid.data.db.MessageRole
 import com.suzuri.lmdroid.data.repository.ConversationRepository
+import com.suzuri.lmdroid.data.repository.TOOL_SIDE_EFFECT_DELAY_MS
+import com.suzuri.lmdroid.data.settings.AssistantToolLaunchTiming
 import com.suzuri.lmdroid.data.settings.SettingsRepository
 import com.suzuri.lmdroid.data.tts.AssistSpeechPlayer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -169,12 +172,16 @@ class AssistViewModel(
             val id = ensureConversationId()
             val settings = settingsRepository.currentAssistantSettings()
             val result = conversationRepository.sendUserMessage(id, text, settingsOverride = settings)
-            when (result) {
-                is ConversationRepository.SendResult.Success -> Unit
-                is ConversationRepository.SendResult.ApiKeyMissing -> _uiState.update { it.copy(apiKeyMissing = true) }
+            val pendingSideEffects = when (result) {
+                is ConversationRepository.SendResult.Success -> result.pendingSideEffects
+                is ConversationRepository.SendResult.ApiKeyMissing -> {
+                    _uiState.update { it.copy(apiKeyMissing = true) }
+                    emptyList()
+                }
                 is ConversationRepository.SendResult.Error -> {
                     Log.w(TAG, "Assist send failed: ${result.message}")
                     _uiState.update { it.copy(errorMessage = result.message) }
+                    result.pendingSideEffects
                 }
             }
             // Flips the UI to "done" immediately rather than waiting for speech playback to
@@ -183,10 +190,38 @@ class AssistViewModel(
             if (result is ConversationRepository.SendResult.Success) {
                 flushRemainingSpeechChunk(id)
             }
+            // Captured before closing the channel below, which is what lets prepareJob/playbackJob
+            // actually finish draining — see launchPendingSideEffects's own doc comment for why
+            // this exact reference (rather than reading the `playbackJob` field again later) is
+            // what a "wait for speech to finish" launch timing joins on.
+            val thisTurnsPlaybackJob = playbackJob
             // Closing the text channel lets prepareJob's loop finish draining whatever's still
             // queued, then close audioChannel itself once every chunk has actually been prepared
             // — playbackJob only stops once *that* is drained too, so nothing queued gets dropped.
             textChannel.close()
+            launchPendingSideEffects(pendingSideEffects, thisTurnsPlaybackJob)
+        }
+    }
+
+    /**
+     * Fires a reply's deferred tool side effects (see ConversationRepository) once this turn's
+     * reply has actually started being heard, per Settings → アシスタント's "ツール実行のタイミング":
+     * [AssistantToolLaunchTiming.WHILE_SPEAKING] (default) just waits a short beat, the same as
+     * ChatViewModel, so speech keeps playing in the background while e.g. the share chooser opens;
+     * [AssistantToolLaunchTiming.AFTER_SPEAKING] instead waits for [playbackJobAtDispatch] (this
+     * turn's own playbackJob, captured by the caller before it can be replaced by a follow-up's
+     * cancelSpeech()) to actually finish speaking. `Job.join()` also returns if that job gets
+     * cancelled instead of completing normally (a follow-up question, or dismissing the overlay),
+     * so this never blocks forever waiting on speech that isn't going to happen anymore.
+     */
+    private fun launchPendingSideEffects(actions: List<() -> Unit>, playbackJobAtDispatch: Job?) {
+        if (actions.isEmpty()) return
+        viewModelScope.launch {
+            when (settingsRepository.currentAssistantToolLaunchTiming()) {
+                AssistantToolLaunchTiming.AFTER_SPEAKING -> playbackJobAtDispatch?.join()
+                AssistantToolLaunchTiming.WHILE_SPEAKING -> delay(TOOL_SIDE_EFFECT_DELAY_MS)
+            }
+            actions.forEach { action -> runCatching(action) }
         }
     }
 
