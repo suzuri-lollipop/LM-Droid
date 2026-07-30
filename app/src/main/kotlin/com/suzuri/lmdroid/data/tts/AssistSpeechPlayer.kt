@@ -16,6 +16,13 @@ import kotlin.coroutines.resume
  * SettingsRepository.selectedTtsProfileId), or, when none is selected, this device's own built-in
  * text-to-speech. Never throws: a failed/unreachable profile falls back to on-device speech rather
  * than leaving the reply silent, the same way a failed web search still lets a reply finish.
+ *
+ * [prepare] (network synthesis for a VOICEVOX-compatible profile) and [play] (actual audio output)
+ * are deliberately separate suspend functions rather than one combined call: AssistViewModel runs
+ * a chain of [prepare] calls concurrently with [play] of the *previous* chunk, so the next
+ * sentence's synthesis isn't sitting idle while the current one is still being spoken — a
+ * combined "synthesize then immediately play" call would serialize the two and reintroduce a gap
+ * between every sentence.
  */
 class AssistSpeechPlayer(
     private val context: Context,
@@ -25,26 +32,41 @@ class AssistSpeechPlayer(
 ) {
     private var mediaPlayer: MediaPlayer? = null
 
-    suspend fun speak(text: String) {
+    /** What [play] needs to actually speak a chunk — the result of whatever synthesis [prepare] did (or didn't need to do). */
+    sealed class PreparedSpeech {
+        data class OnDevice(val text: String) : PreparedSpeech()
+        data class Wav(val audioBytes: ByteArray) : PreparedSpeech()
+    }
+
+    /**
+     * Does whatever slow work (a VOICEVOX-compatible profile's network round-trip) is needed
+     * before [text] can be played, without playing it yet. Returns null when there's nothing to
+     * speak at all (e.g. a chunk that was pure Markdown noise once stripped), so callers can skip
+     * queuing it for [play] entirely.
+     */
+    suspend fun prepare(text: String): PreparedSpeech? {
         // The assistant overlay's replies are Markdown (see AssistScreen's own rendering) — spoken
         // aloud as-is, both TTS backends would narrate every **/#/`` as a literal character.
         val spokenText = markdownToSpeechText(text)
-        if (spokenText.isBlank()) return
-        val profile = settingsRepository.currentTtsProfile()
-        if (profile == null) {
-            onDeviceSpeechSynthesizer.speak(spokenText)
-            return
-        }
+        if (spokenText.isBlank()) return null
 
+        val profile = settingsRepository.currentTtsProfile() ?: return PreparedSpeech.OnDevice(spokenText)
         val speakerId = profile.voicevoxSpeakerId ?: ApiProfileEntity.DEFAULT_VOICEVOX_SPEAKER_ID
         val result = voicevoxCompatibleClient.synthesize(profile.baseUrl, spokenText, speakerId)
         val audioBytes = result.getOrNull()
         if (audioBytes == null) {
-            Log.w(TAG, "speak: VOICEVOX-compatible synthesis failed, falling back to on-device voice", result.exceptionOrNull())
-            onDeviceSpeechSynthesizer.speak(spokenText)
-            return
+            Log.w(TAG, "prepare: VOICEVOX-compatible synthesis failed, falling back to on-device voice", result.exceptionOrNull())
+            return PreparedSpeech.OnDevice(spokenText)
         }
-        playWav(audioBytes)
+        return PreparedSpeech.Wav(audioBytes)
+    }
+
+    /** Actually speaks a chunk [prepare] already did the slow work for — the part that must stay strictly sequential (see AssistViewModel's playback queue), since audio output can't overlap itself. */
+    suspend fun play(prepared: PreparedSpeech) {
+        when (prepared) {
+            is PreparedSpeech.OnDevice -> onDeviceSpeechSynthesizer.speak(prepared.text)
+            is PreparedSpeech.Wav -> playWav(prepared.audioBytes)
+        }
     }
 
     private suspend fun playWav(audioBytes: ByteArray) {

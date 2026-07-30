@@ -9,6 +9,7 @@ import com.suzuri.lmdroid.data.settings.SettingsRepository
 import com.suzuri.lmdroid.data.tts.AssistSpeechPlayer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +28,18 @@ import kotlinx.coroutines.launch
  * → アシスタント can point this at a different (profile, model) pair (falling back to chat's own
  * selection when not overridden) — see [AssistUiState.modelProfileName], shown in place of the
  * static "アシスタント" title so it's clear which one is answering.
+ *
+ * Speech is dispatched sentence-by-sentence as the reply streams in (see [dispatchNewSpeechChunks])
+ * rather than as one block after the whole reply is done — waiting for a long reply to finish
+ * generating *and then* fully synthesizing before saying anything made the assistant feel far
+ * slower than it needed to. It's a two-stage pipeline, not just a queue of text: [prepareJob]
+ * drains [speechChannel] and calls [AssistSpeechPlayer.prepare] (the slow part — a VOICEVOX-
+ * compatible profile's network synthesis) on each sentence, pushing the result onto
+ * [preparedAudioChannel]; [playbackJob] drains *that* and calls [AssistSpeechPlayer.play].
+ * Splitting these into separate queues/coroutines is what lets the next sentence's synthesis run
+ * while the current one is still being played, instead of sitting idle until playback finishes —
+ * a single queue of "synthesize then play" calls would serialize the two and reintroduce a gap
+ * between every sentence.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AssistViewModel(
@@ -42,11 +55,29 @@ class AssistViewModel(
     // question asked without leaving the overlay, so a follow-up continues the same conversation.
     private val conversationId = MutableStateFlow<Long?>(null)
 
-    // The in-flight (or just-finished) speak() call for the latest reply — cancelling it (rather
-    // than calling AssistSpeechPlayer.stop() directly) is what actually unblocks its suspended
-    // synthesis/playback call via invokeOnCancellation, so a follow-up question or a retry doesn't
-    // keep talking over the user.
-    private var speechJob: Job? = null
+    // This turn's two-stage speech pipeline — sentence chunks detected by the message-flow
+    // collector (see init) are pushed onto speechChannel; prepareJob synthesizes each one (the
+    // slow, network-bound part for a VOICEVOX-compatible profile) and pushes the result onto
+    // preparedAudioChannel; playbackJob drains that and actually plays them in order. All four are
+    // per-turn: send() replaces them with fresh ones, so a follow-up's speech can never land in
+    // the middle of the previous turn's queue.
+    private var speechChannel: Channel<String>? = null
+    private var preparedAudioChannel: Channel<AssistSpeechPlayer.PreparedSpeech>? = null
+    private var prepareJob: Job? = null
+    private var playbackJob: Job? = null
+
+    // The id of the assistant message row spokenUpToIndex is counted against, and how many raw
+    // characters of its content have already been dispatched to speechChannel. These are only
+    // touched once a message with a *different* id than this shows up (see
+    // dispatchNewSpeechChunks/flushRemainingSpeechChunk) — NOT eagerly reset in send() — because
+    // inserting the next turn's own user message (the first DB write sendUserMessage makes)
+    // already triggers a re-emission of the message-flow collector below, a beat before that
+    // turn's own assistant placeholder row exists. At that moment "the last assistant message" is
+    // still the *previous* turn's now-finished one; keying off its row id (which never changes
+    // for as long as that row is the one being spoken) is what lets that redelivery be recognized
+    // as already-fully-spoken rather than misread as an entire new reply to speak all over again.
+    private var speakingMessageId: Long? = null
+    private var spokenUpToIndex = 0
 
     init {
         viewModelScope.launch {
@@ -64,6 +95,9 @@ class AssistViewModel(
                         assistantText = lastAssistantMessage.message.content,
                         isAssistantError = lastAssistantMessage.message.isError,
                     )
+                }
+                if (!lastAssistantMessage.message.isError) {
+                    dispatchNewSpeechChunks(lastAssistantMessage.message.id, lastAssistantMessage.message.content)
                 }
             }
         }
@@ -87,13 +121,13 @@ class AssistViewModel(
 
     /** Clears the previous turn's transcript/error so the overlay reads as "ready to listen again" — the conversation id itself is untouched, so this continues the same conversation. */
     fun onAskFollowUp() {
-        speechJob?.cancel()
+        cancelSpeech()
         _uiState.update { it.copy(transcript = "", errorMessage = null, apiKeyMissing = false) }
     }
 
     /** Resets the UI state and increments triggerCount to signal AssistScreen to start listening again. Used when triggered by an external intent (e.g. earphone button). */
     fun onRetry() {
-        speechJob?.cancel()
+        cancelSpeech()
         _uiState.update {
             it.copy(
                 transcript = "",
@@ -110,6 +144,24 @@ class AssistViewModel(
 
     private fun send(text: String) {
         if (_uiState.value.isStreaming) return
+        cancelSpeech()
+        val textChannel = Channel<String>(capacity = Channel.UNLIMITED)
+        val audioChannel = Channel<AssistSpeechPlayer.PreparedSpeech>(capacity = Channel.UNLIMITED)
+        speechChannel = textChannel
+        preparedAudioChannel = audioChannel
+        prepareJob = viewModelScope.launch {
+            for (chunk in textChannel) {
+                val prepared = assistSpeechPlayer.prepare(chunk)
+                if (prepared != null) audioChannel.send(prepared)
+            }
+            audioChannel.close()
+        }
+        playbackJob = viewModelScope.launch {
+            for (prepared in audioChannel) {
+                assistSpeechPlayer.play(prepared)
+            }
+        }
+
         _uiState.update {
             it.copy(hasSent = true, isStreaming = true, assistantText = "", isAssistantError = false, apiKeyMissing = false, errorMessage = null)
         }
@@ -129,8 +181,12 @@ class AssistViewModel(
             // finish — the reply is already fully shown, and speaking it is a background effect.
             _uiState.update { it.copy(isStreaming = false) }
             if (result is ConversationRepository.SendResult.Success) {
-                speechJob = viewModelScope.launch { speakLatestReply(id) }
+                flushRemainingSpeechChunk(id)
             }
+            // Closing the text channel lets prepareJob's loop finish draining whatever's still
+            // queued, then close audioChannel itself once every chunk has actually been prepared
+            // — playbackJob only stops once *that* is drained too, so nothing queued gets dropped.
+            textChannel.close()
         }
     }
 
@@ -142,18 +198,87 @@ class AssistViewModel(
     }
 
     /**
-     * Reads the just-committed reply straight from the DB (a fresh Flow.first(), not
-     * uiState.assistantText) so this always speaks the final text even if the ViewModel's own
-     * message-flow collector (see init) hasn't yet caught up with the last throttled write.
+     * Called on every reactive update of the streaming reply — queues each newly-completed
+     * sentence (up to the last 。/！/？/line-break found in the not-yet-dispatched tail) so it
+     * starts playing as soon as it's ready, rather than waiting for the whole reply. Text before
+     * the first boundary in a given update, or a trailing partial sentence with no boundary yet,
+     * just waits for the next update (or [flushRemainingSpeechChunk] once streaming ends).
      */
-    private suspend fun speakLatestReply(conversationId: Long) {
+    private fun dispatchNewSpeechChunks(messageId: Long, fullText: String) {
+        val channel = speechChannel ?: return
+        adoptMessageIfNew(messageId)
+        if (spokenUpToIndex >= fullText.length) return
+        val unspoken = fullText.substring(spokenUpToIndex)
+        val boundary = lastSentenceBoundary(unspoken) ?: return
+        val chunk = unspoken.substring(0, boundary)
+        spokenUpToIndex += boundary
+        if (chunk.isNotBlank()) {
+            channel.trySend(chunk)
+        }
+    }
+
+    /**
+     * Reads the just-committed reply straight from the DB (a fresh Flow.first(), not
+     * uiState.assistantText) so this always sees the final text even if the ViewModel's own
+     * message-flow collector (see init) hasn't yet caught up with the last throttled write, then
+     * queues whatever's left after the last dispatched sentence — the tail rarely ends exactly on
+     * a sentence boundary, and without this it would simply never get spoken.
+     */
+    private suspend fun flushRemainingSpeechChunk(conversationId: Long) {
         val entities = conversationRepository.observeMessages(conversationId).first()
         val lastAssistantMessage = entities.lastOrNull { it.message.role == MessageRole.ASSISTANT } ?: return
-        if (lastAssistantMessage.message.isError || lastAssistantMessage.message.content.isBlank()) return
-        assistSpeechPlayer.speak(lastAssistantMessage.message.content)
+        if (lastAssistantMessage.message.isError) return
+        adoptMessageIfNew(lastAssistantMessage.message.id)
+        val fullText = lastAssistantMessage.message.content
+        if (spokenUpToIndex >= fullText.length) return
+        val remaining = fullText.substring(spokenUpToIndex)
+        spokenUpToIndex = fullText.length
+        if (remaining.isNotBlank()) {
+            speechChannel?.trySend(remaining)
+        }
+    }
+
+    /** Starts counting spokenUpToIndex fresh the first time [messageId] (a new turn's own assistant row) is actually seen — see [speakingMessageId]'s own doc comment for why this can't just happen eagerly in send() instead. */
+    private fun adoptMessageIfNew(messageId: Long) {
+        if (speakingMessageId != messageId) {
+            speakingMessageId = messageId
+            spokenUpToIndex = 0
+        }
+    }
+
+    /**
+     * Cancelling both jobs (rather than calling AssistSpeechPlayer.stop() directly) is what
+     * actually unblocks whichever one is suspended mid synthesis/playback via
+     * invokeOnCancellation — closing the channels on their own wouldn't interrupt whatever chunk
+     * is already in flight. Between them, a follow-up question or a retry never keeps talking (or
+     * synthesizing more to talk) over the user.
+     */
+    private fun cancelSpeech() {
+        prepareJob?.cancel()
+        prepareJob = null
+        playbackJob?.cancel()
+        playbackJob = null
+        speechChannel?.close()
+        speechChannel = null
+        preparedAudioChannel?.close()
+        preparedAudioChannel = null
     }
 
     private companion object {
         const val TAG = "AssistViewModel"
     }
+}
+
+// A newline is included alongside the Japanese sentence-enders so a list/paragraph break also
+// starts speaking what's already arrived instead of waiting for the next 。/！/？.
+private val SENTENCE_BOUNDARY_CHARS = charArrayOf('。', '！', '？', '\n')
+
+/**
+ * Index just past the last sentence-ending character in [text], or null if it doesn't contain one
+ * yet. Kept as a top-level function, like [com.suzuri.lmdroid.data.tts.markdownToSpeechText], so
+ * this is unit-testable without needing to construct an [AssistViewModel] and its dependencies.
+ */
+fun lastSentenceBoundary(text: String): Int? {
+    val index = text.indexOfLast { it in SENTENCE_BOUNDARY_CHARS }
+    return if (index == -1) null else index + 1
 }
