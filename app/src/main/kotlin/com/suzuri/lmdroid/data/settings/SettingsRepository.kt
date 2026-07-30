@@ -219,6 +219,26 @@ class SettingsRepository(
         }
     }
 
+    /** Whether the "send_message" tool (see ConversationRepository, DeviceMessageController) is offered to the model — off by default, since (unlike a read-only lookup) this actually opens a messaging app pre-filled with content as soon as the model calls it. */
+    val messagingToolEnabled: Flow<Boolean> = context.settingsDataStore.data.map { it[KEY_MESSAGING_TOOL_ENABLED] ?: false }
+
+    suspend fun currentMessagingToolEnabled(): Boolean = messagingToolEnabled.first()
+
+    suspend fun setMessagingToolEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_MESSAGING_TOOL_ENABLED] = enabled }
+    }
+
+    /** Which installed app's package name (see DeviceMessageController.installedMessagingApps) the "send_message" tool targets directly — null falls back to the system share chooser every time the tool is called. */
+    val preferredMessagingAppPackage: Flow<String?> = context.settingsDataStore.data.map { it[KEY_PREFERRED_MESSAGING_APP_PACKAGE] }
+
+    suspend fun currentPreferredMessagingAppPackage(): String? = preferredMessagingAppPackage.first()
+
+    suspend fun setPreferredMessagingAppPackage(packageName: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (packageName == null) prefs.remove(KEY_PREFERRED_MESSAGING_APP_PACKAGE) else prefs[KEY_PREFERRED_MESSAGING_APP_PACKAGE] = packageName
+        }
+    }
+
     private fun resolve(selected: SelectedModel?): Flow<AppSettings> {
         if (selected == null) {
             return markdownEnabledFlow.map { markdownEnabled ->
@@ -275,5 +295,7 @@ class SettingsRepository(
         val KEY_ALARM_TOOL_ENABLED = booleanPreferencesKey("alarm_tool_enabled")
         val KEY_NOTES_TOOL_ENABLED = booleanPreferencesKey("notes_tool_enabled")
         val KEY_PREFERRED_NOTE_APP_PACKAGE = stringPreferencesKey("preferred_note_app_package")
+        val KEY_MESSAGING_TOOL_ENABLED = booleanPreferencesKey("messaging_tool_enabled")
+        val KEY_PREFERRED_MESSAGING_APP_PACKAGE = stringPreferencesKey("preferred_messaging_app_package")
     }
 }

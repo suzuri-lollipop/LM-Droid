@@ -16,6 +16,7 @@ import com.suzuri.lmdroid.data.db.MessageRole
 import com.suzuri.lmdroid.data.db.MessageWithAttachments
 import com.suzuri.lmdroid.data.db.ThinkingTimelineEntry
 import com.suzuri.lmdroid.data.location.DeviceLocationProvider
+import com.suzuri.lmdroid.data.messaging.DeviceMessageController
 import com.suzuri.lmdroid.data.notes.DeviceNoteController
 import com.suzuri.lmdroid.data.network.ChatMessageDto
 import com.suzuri.lmdroid.data.network.ContentPart
@@ -77,6 +78,7 @@ class ConversationRepository(
     private val deviceLocationProvider: DeviceLocationProvider,
     private val deviceAlarmController: DeviceAlarmController,
     private val deviceNoteController: DeviceNoteController,
+    private val deviceMessageController: DeviceMessageController,
     private val systemPromptRepository: SystemPromptRepository,
     private val json: Json,
 ) {
@@ -326,10 +328,10 @@ class ConversationRepository(
         }
 
         // Tools: when enabled and configured in Settings, the model is offered "web_search",
-        // "fetch_webpage", "get_current_location", "set_alarm"/"set_timer", and/or "create_note"
-        // functions it can decide to call on its own (agentic tool calling), rather than the app
-        // deciding unconditionally what to search/fetch/locate/schedule/save and force-feeding the
-        // results into every request. The harness (this repository) only ever executes one when the model
+        // "fetch_webpage", "get_current_location", "set_alarm"/"set_timer", "create_note", and/or
+        // "send_message" functions it can decide to call on its own (agentic tool calling), rather
+        // than the app deciding unconditionally what to search/fetch/locate/schedule/save/send and
+        // force-feeding the results into every request. The harness (this repository) only ever executes one when the model
         // actually asks for it, via executeToolCall() below. maxToolRounds caps how many tool
         // round-trips one reply can make before it's forced to answer with what it has — 0 in
         // Settings means "no user-configured cap", bounded only by SAFETY_MAX_TOOL_ROUNDS so a
@@ -467,6 +469,22 @@ class ConversationRepository(
                     }
                 }
             }
+            SEND_MESSAGE_TOOL_NAME -> {
+                val content = extractStringArgument(call.argumentsJson, "content")
+                if (content == null || content.isBlank()) {
+                    "Error: invalid arguments for $SEND_MESSAGE_TOOL_NAME. Expected JSON like {\"content\": \"...\"}."
+                } else {
+                    val preferredPackage = settingsRepository.currentPreferredMessagingAppPackage()
+                    if (deviceMessageController.sendMessage(content, preferredPackage)) {
+                        val summary = "Opened a messaging app pre-filled with the message, waiting for " +
+                            "the user to pick a recipient and send it there."
+                        timeline += ThinkingTimelineEntry.ToolActivity(label = "💬 ${content.take(20)}", content = summary)
+                        summary
+                    } else {
+                        "Could not send the message: no messaging app is available on this device."
+                    }
+                }
+            }
             else -> "Error: unknown tool \"${call.name}\"."
         }
 
@@ -593,8 +611,8 @@ class ConversationRepository(
     /**
      * The function definitions offered to the model this turn — "web_search"/"fetch_webpage" when
      * Web検索 is enabled and configured, "get_current_location" when 位置情報 is enabled,
-     * "set_alarm"/"set_timer" when アラーム・タイマー is enabled, "create_note" when メモ is enabled
-     * — or null if none of these are, so
+     * "set_alarm"/"set_timer" when アラーム・タイマー is enabled, "create_note" when メモ is enabled,
+     * "send_message" when メッセージ is enabled — or null if none of these are, so
      * [ChatCompletionRequest.tools][com.suzuri.lmdroid.data.network.ChatCompletionRequest] is
      * omitted entirely rather than sent as an empty/useless list.
      */
@@ -681,6 +699,21 @@ class ConversationRepository(
                         "needs to confirm/save it in that app for it to actually take effect. Tell " +
                         "the user to check and confirm it.",
                     parameters = createNoteToolParameters,
+                ),
+            )
+        }
+
+        if (settingsRepository.currentMessagingToolEnabled()) {
+            tools += ToolDefinitionDto(
+                function = FunctionSchemaDto(
+                    name = SEND_MESSAGE_TOOL_NAME,
+                    description = "Send a message via LINE, SMS, or another messaging app. This " +
+                        "opens the user's chosen messaging app (Settings → メッセージ) — or, if none " +
+                        "is chosen, a share menu to pick one — pre-filled with the given text; the " +
+                        "user still has to pick who to send it to (there's no way to address a " +
+                        "specific recipient from here) and confirm sending it there. Tell the user " +
+                        "which app opened and to pick the recipient and send it.",
+                    parameters = sendMessageToolParameters,
                 ),
             )
         }
@@ -779,6 +812,7 @@ class ConversationRepository(
         const val SET_ALARM_TOOL_NAME = "set_alarm"
         const val SET_TIMER_TOOL_NAME = "set_timer"
         const val CREATE_NOTE_TOOL_NAME = "create_note"
+        const val SEND_MESSAGE_TOOL_NAME = "send_message"
 
         // A hard ceiling regardless of the user's own Settings → Web検索 configuration (where 0
         // means "no cap") — purely a safety valve against a truly runaway model that never stops
@@ -895,6 +929,23 @@ class ConversationRepository(
                             mapOf(
                                 "type" to JsonPrimitive("string"),
                                 "description" to JsonPrimitive("The note's body text."),
+                            ),
+                        ),
+                    ),
+                ),
+                "required" to JsonArray(listOf(JsonPrimitive("content"))),
+            ),
+        )
+
+        val sendMessageToolParameters: JsonElement = JsonObject(
+            mapOf(
+                "type" to JsonPrimitive("object"),
+                "properties" to JsonObject(
+                    mapOf(
+                        "content" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("string"),
+                                "description" to JsonPrimitive("The message text to send."),
                             ),
                         ),
                     ),

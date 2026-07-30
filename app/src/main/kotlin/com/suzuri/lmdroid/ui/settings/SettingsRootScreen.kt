@@ -18,6 +18,7 @@ fun SettingsRootScreen(
     onNavigateToLocation: () -> Unit,
     onNavigateToAlarm: () -> Unit,
     onNavigateToNotes: () -> Unit,
+    onNavigateToMessaging: () -> Unit,
     onNavigateToSystemPrompts: () -> Unit,
     onNavigateToAssistant: () -> Unit,
     modifier: Modifier = Modifier,
@@ -50,6 +51,10 @@ fun SettingsRootScreen(
         SettingsMenuRow(
             title = stringResource(R.string.settings_notes_category_title),
             onClick = onNavigateToNotes,
+        )
+        SettingsMenuRow(
+            title = stringResource(R.string.settings_messaging_category_title),
+            onClick = onNavigateToMessaging,
         )
         SettingsMenuRow(
             title = stringResource(R.string.settings_system_prompt_category_title),

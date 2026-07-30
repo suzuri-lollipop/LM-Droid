@@ -65,6 +65,8 @@ import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditScreen
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.LocationSettingsScreen
 import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.MessagingSettingsScreen
+import com.suzuri.lmdroid.ui.settings.MessagingSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.NotesSettingsScreen
 import com.suzuri.lmdroid.ui.settings.NotesSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.OpenAiCompatibleScreen
@@ -141,6 +143,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val locationSettingsViewModel: LocationSettingsViewModel = viewModel(factory = viewModelFactory)
     val alarmSettingsViewModel: AlarmSettingsViewModel = viewModel(factory = viewModelFactory)
     val notesSettingsViewModel: NotesSettingsViewModel = viewModel(factory = viewModelFactory)
+    val messagingSettingsViewModel: MessagingSettingsViewModel = viewModel(factory = viewModelFactory)
     val systemPromptListViewModel: SystemPromptListViewModel = viewModel(factory = viewModelFactory)
     val systemPromptEditViewModel: SystemPromptEditViewModel = viewModel(factory = viewModelFactory)
     val assistantSettingsViewModel: AssistantSettingsViewModel = viewModel(factory = viewModelFactory)
@@ -268,6 +271,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.Location -> stringResource(R.string.settings_location_category_title)
                                     SettingsRoute.Alarm -> stringResource(R.string.settings_alarm_category_title)
                                     SettingsRoute.Notes -> stringResource(R.string.settings_notes_category_title)
+                                    SettingsRoute.Messaging -> stringResource(R.string.settings_messaging_category_title)
                                     SettingsRoute.SystemPromptList -> stringResource(R.string.settings_system_prompt_category_title)
                                     SettingsRoute.SystemPromptEdit -> stringResource(R.string.settings_system_prompt_category_title)
                                     SettingsRoute.Assistant -> stringResource(R.string.settings_assistant_category_title)
@@ -353,6 +357,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 onNavigateToLocation = { settingsRoute = SettingsRoute.Location },
                                 onNavigateToAlarm = { settingsRoute = SettingsRoute.Alarm },
                                 onNavigateToNotes = { settingsRoute = SettingsRoute.Notes },
+                                onNavigateToMessaging = { settingsRoute = SettingsRoute.Messaging },
                                 onNavigateToSystemPrompts = { settingsRoute = SettingsRoute.SystemPromptList },
                                 onNavigateToAssistant = { settingsRoute = SettingsRoute.Assistant },
                                 modifier = Modifier.padding(innerPadding),
@@ -437,6 +442,12 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                         SettingsRoute.Notes -> {
                             NotesSettingsScreen(
                                 viewModel = notesSettingsViewModel,
+                                modifier = Modifier.padding(innerPadding),
+                            )
+                        }
+                        SettingsRoute.Messaging -> {
+                            MessagingSettingsScreen(
+                                viewModel = messagingSettingsViewModel,
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }

@@ -115,6 +115,13 @@
     <string name="notes_app_description">選択したアプリに直接メモを送ります。未選択の場合は、その都度アプリを選ぶ共有メニューが表示されます。</string>
     <string name="notes_app_empty_message">この端末にはテキストを共有できるメモアプリが見つかりませんでした。</string>
 
+    <string name="settings_messaging_category_title">メッセージ</string>
+    <string name="messaging_enable_label">メッセージの送信を許可する</string>
+    <string name="messaging_enable_description">有効にすると、AIが必要だと判断した時にLINEなどのメッセージアプリでメッセージを送信できるようになります。アプリの確認画面が表示されるので、送信先と内容を確認して送信してください。</string>
+    <string name="messaging_app_label">送信先のメッセージアプリ</string>
+    <string name="messaging_app_description">選択したアプリに直接メッセージを送ります。未選択の場合は、その都度アプリを選ぶ共有メニューが表示されます。</string>
+    <string name="messaging_app_empty_message">この端末にはテキストを共有できるメッセージアプリが見つかりませんでした。</string>
+
     <string name="settings_export_title">設定をエクスポート</string>
     <string name="settings_export_success">設定をエクスポートしました</string>
     <string name="settings_export_failure">エクスポートに失敗しました</string>
