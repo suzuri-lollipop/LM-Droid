@@ -1,22 +1,14 @@
-# Walkthrough - Enhanced Assistant Retry via External Shortcuts
+# Walkthrough - Silent Alarm and Timer Setup
 
-I have updated the assistant overlay to restart listening whenever it is triggered by an external shortcut (like an earphone AI button), even if the assistant window is already open or in an error state.
+I have updated the `DeviceAlarmController` to ensure that alarms and timers are set silently in the background, without transitioning to the Clock app.
 
 ## Changes Made
 
-### UI State and Logic
+### Alarm Controller
 
-#### [AssistUiState.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/ui/assist/AssistUiState.kt)
-- Added `triggerCount` to the state to track external activation events.
-
-#### [AssistViewModel.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/ui/assist/AssistViewModel.kt)
-- Implemented `onRetry()` which resets the assistant's internal state (clears transcripts, errors, etc.) and increments the `triggerCount`.
-
-#### [AssistActivity.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/AssistActivity.kt)
-- Updated `onNewIntent` to call `viewModel.onRetry()`. Since `AssistActivity` is a `singleInstance`, this ensures that subsequent presses of the AI button while the window is visible will signal the UI to reset.
-
-#### [AssistScreen.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/ui/assist/AssistScreen.kt)
-- Changed the initial listening trigger from `LaunchedEffect(Unit)` to `LaunchedEffect(uiState.triggerCount)`. This makes the "start listening" logic reactive to each external trigger.
+#### [DeviceAlarmController.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/alarm/DeviceAlarmController.kt)
+- Changed `AlarmClock.EXTRA_SKIP_UI` to `true` for both `setAlarm` and `setTimer` methods.
+- Updated the documentation to reflect that the system Clock app will no longer be brought to the foreground for confirmation.
 
 ## Verification Results
 
@@ -27,8 +19,7 @@ I have updated the assistant overlay to restart listening whenever it is trigger
 Build finished successfully.
 ```
 
-### Manual Verification Instructions
-1.  Long-press your earphone AI button to open the assistant.
-2.  Stay silent until it shows "聞き取れませんでした" (or any other state).
-3.  Long-press the earphone AI button again.
-4.  **Verification**: The assistant should immediately clear its state and show "お話しください" (start listening again).
+## How to use
+1.  Ask the AI to set an alarm (e.g., "7時にアラームをかけて").
+2.  The AI will confirm it has set the alarm.
+3.  **Expected Result**: You will stay within the LM Droid app. The alarm will be created in the background, often accompanied by a brief system toast or notification from the Clock app.

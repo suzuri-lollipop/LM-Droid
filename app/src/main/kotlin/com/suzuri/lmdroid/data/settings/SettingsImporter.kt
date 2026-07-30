@@ -109,6 +109,8 @@ class SettingsImporter(
         settingsRepository.setLocationEnabled(export.locationEnabled)
 
         settingsRepository.setSelectedTtsProfileId(export.tts.selectedProfileId?.let { profileIdMap[it] })
+
+        settingsRepository.setAlarmToolEnabled(export.alarmToolEnabled)
     }
 }
 

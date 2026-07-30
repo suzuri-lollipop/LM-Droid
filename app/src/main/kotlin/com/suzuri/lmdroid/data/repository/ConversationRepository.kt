@@ -1,6 +1,7 @@
 package com.suzuri.lmdroid.data.repository
 
 import android.util.Log
+import com.suzuri.lmdroid.data.alarm.DeviceAlarmController
 import com.suzuri.lmdroid.data.attachment.AttachmentFileStore
 import com.suzuri.lmdroid.data.attachment.SavedAttachment
 import com.suzuri.lmdroid.data.db.ConversationDao
@@ -73,6 +74,7 @@ class ConversationRepository(
     private val braveSearchClient: BraveSearchClient,
     private val webPageFetcher: WebPageFetcher,
     private val deviceLocationProvider: DeviceLocationProvider,
+    private val deviceAlarmController: DeviceAlarmController,
     private val systemPromptRepository: SystemPromptRepository,
     private val json: Json,
 ) {
@@ -322,14 +324,14 @@ class ConversationRepository(
         }
 
         // Tools: when enabled and configured in Settings, the model is offered "web_search",
-        // "fetch_webpage" and/or "get_current_location" functions it can decide to call on its own
-        // (agentic tool calling), rather than the app deciding unconditionally what to search/
-        // fetch/locate and force-feeding the results into every request. The harness (this
-        // repository) only ever executes one when the model actually asks for it, via
-        // executeToolCall() below. maxToolRounds caps how many tool round-trips one reply can make
-        // before it's forced to answer with what it has — 0 in Settings means "no user-configured
-        // cap", bounded only by SAFETY_MAX_TOOL_ROUNDS so a model that won't stop calling tools
-        // can't loop forever.
+        // "fetch_webpage", "get_current_location", and/or "set_alarm"/"set_timer" functions it can
+        // decide to call on its own (agentic tool calling), rather than the app deciding
+        // unconditionally what to search/fetch/locate/schedule and force-feeding the results into
+        // every request. The harness (this repository) only ever executes one when the model
+        // actually asks for it, via executeToolCall() below. maxToolRounds caps how many tool
+        // round-trips one reply can make before it's forced to answer with what it has — 0 in
+        // Settings means "no user-configured cap", bounded only by SAFETY_MAX_TOOL_ROUNDS so a
+        // model that won't stop calling tools can't loop forever.
         val tools = availableTools()
         val configuredMaxRounds = settingsRepository.currentWebSearchMaxToolRounds()
         val maxToolRounds = if (configuredMaxRounds <= 0) {
@@ -410,6 +412,40 @@ class ConversationRepository(
                     }
                     timeline += ThinkingTimelineEntry.ToolActivity(label = "📍 現在地を取得", content = resultText)
                     resultText
+                }
+            }
+            SET_ALARM_TOOL_NAME -> {
+                val hour = extractIntArgument(call.argumentsJson, "hour")
+                val minute = extractIntArgument(call.argumentsJson, "minute")
+                if (hour == null || minute == null || hour !in 0..23 || minute !in 0..59) {
+                    "Error: invalid arguments for $SET_ALARM_TOOL_NAME. Expected JSON like {\"hour\": 7, \"minute\": 30}."
+                } else {
+                    val label = extractStringArgument(call.argumentsJson, "label")
+                    val timeText = "%02d:%02d".format(hour, minute)
+                    if (deviceAlarmController.setAlarm(hour, minute, label)) {
+                        val summary = "Opened the clock app's alarm screen for $timeText" + (label?.let { " ($it)" } ?: "") +
+                            ", waiting for the user to confirm it there."
+                        timeline += ThinkingTimelineEntry.ToolActivity(label = "⏰ $timeText", content = summary)
+                        summary
+                    } else {
+                        "Could not set the alarm: no clock app is available on this device."
+                    }
+                }
+            }
+            SET_TIMER_TOOL_NAME -> {
+                val seconds = extractIntArgument(call.argumentsJson, "seconds")
+                if (seconds == null || seconds <= 0) {
+                    "Error: invalid arguments for $SET_TIMER_TOOL_NAME. Expected JSON like {\"seconds\": 300}."
+                } else {
+                    val label = extractStringArgument(call.argumentsJson, "label")
+                    if (deviceAlarmController.setTimer(seconds, label)) {
+                        val summary = "Opened the clock app's timer screen for $seconds seconds" + (label?.let { " ($it)" } ?: "") +
+                            ", waiting for the user to confirm it there."
+                        timeline += ThinkingTimelineEntry.ToolActivity(label = "⏱️ ${seconds}秒", content = summary)
+                        summary
+                    } else {
+                        "Could not set the timer: no clock app is available on this device."
+                    }
                 }
             }
             else -> "Error: unknown tool \"${call.name}\"."
@@ -537,8 +573,8 @@ class ConversationRepository(
 
     /**
      * The function definitions offered to the model this turn — "web_search"/"fetch_webpage" when
-     * Web検索 is enabled and configured, "get_current_location" when 位置情報 is enabled — or null
-     * if neither is, so
+     * Web検索 is enabled and configured, "get_current_location" when 位置情報 is enabled,
+     * "set_alarm"/"set_timer" when アラーム・タイマー is enabled — or null if none of these are, so
      * [ChatCompletionRequest.tools][com.suzuri.lmdroid.data.network.ChatCompletionRequest] is
      * omitted entirely rather than sent as an empty/useless list.
      */
@@ -586,6 +622,34 @@ class ConversationRepository(
             )
         }
 
+        if (settingsRepository.currentAlarmToolEnabled()) {
+            tools += ToolDefinitionDto(
+                function = FunctionSchemaDto(
+                    name = SET_ALARM_TOOL_NAME,
+                    description = "Set a device alarm for a specific time of day. This opens the " +
+                        "clock app's own alarm screen, pre-filled with the requested time, so the " +
+                        "user can visually confirm it there — there's no way to create it silently " +
+                        "in the background, and the user still needs to confirm/save it on that " +
+                        "screen for it to actually take effect. Tell the user to check and confirm " +
+                        "it. hour/minute are in this device's local time, 24-hour clock.",
+                    parameters = setAlarmToolParameters,
+                ),
+            )
+            tools += ToolDefinitionDto(
+                function = FunctionSchemaDto(
+                    name = SET_TIMER_TOOL_NAME,
+                    description = "Start a device countdown timer for a given duration. This opens " +
+                        "the clock app's own timer screen, pre-filled with the requested duration, " +
+                        "so the user can visually confirm it there — there's no way to create it " +
+                        "silently in the background, and the user still needs to confirm/start it " +
+                        "on that screen for it to actually take effect. Tell the user to check and " +
+                        "confirm it. Convert whatever duration the user described (e.g. \"5分\", " +
+                        "\"an hour and a half\") into total whole seconds yourself.",
+                    parameters = setTimerToolParameters,
+                ),
+            )
+        }
+
         Log.d(TAG, "availableTools: ${tools.map { it.function.name }} (locationEnabled=${settingsRepository.currentLocationEnabled()})")
         return tools.takeIf { it.isNotEmpty() }
     }
@@ -604,6 +668,12 @@ class ConversationRepository(
     private fun extractStringArgument(argumentsJson: String, key: String): String? {
         val jsonObject = runCatching { json.parseToJsonElement(argumentsJson) }.getOrNull() as? JsonObject ?: return null
         return (jsonObject[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    }
+
+    /** Pulls an integer argument out of a tool call's raw JSON arguments, e.g. `key="hour"` from `{"hour":7}`. */
+    private fun extractIntArgument(argumentsJson: String, key: String): Int? {
+        val jsonObject = runCatching { json.parseToJsonElement(argumentsJson) }.getOrNull() as? JsonObject ?: return null
+        return (jsonObject[key] as? JsonPrimitive)?.content?.toIntOrNull()
     }
 
     /**
@@ -671,6 +741,8 @@ class ConversationRepository(
         const val WEB_SEARCH_TOOL_NAME = "web_search"
         const val FETCH_WEBPAGE_TOOL_NAME = "fetch_webpage"
         const val GET_LOCATION_TOOL_NAME = "get_current_location"
+        const val SET_ALARM_TOOL_NAME = "set_alarm"
+        const val SET_TIMER_TOOL_NAME = "set_timer"
 
         // A hard ceiling regardless of the user's own Settings → Web検索 configuration (where 0
         // means "no cap") — purely a safety valve against a truly runaway model that never stops
@@ -717,6 +789,58 @@ class ConversationRepository(
             mapOf(
                 "type" to JsonPrimitive("object"),
                 "properties" to JsonObject(emptyMap()),
+            ),
+        )
+
+        val setAlarmToolParameters: JsonElement = JsonObject(
+            mapOf(
+                "type" to JsonPrimitive("object"),
+                "properties" to JsonObject(
+                    mapOf(
+                        "hour" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("integer"),
+                                "description" to JsonPrimitive("Hour of the day, 0-23 (24-hour clock, e.g. 7 for 7am, 19 for 7pm)."),
+                            ),
+                        ),
+                        "minute" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("integer"),
+                                "description" to JsonPrimitive("Minute of the hour, 0-59."),
+                            ),
+                        ),
+                        "label" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("string"),
+                                "description" to JsonPrimitive("Optional short label for the alarm, e.g. \"薬を飲む\"."),
+                            ),
+                        ),
+                    ),
+                ),
+                "required" to JsonArray(listOf(JsonPrimitive("hour"), JsonPrimitive("minute"))),
+            ),
+        )
+
+        val setTimerToolParameters: JsonElement = JsonObject(
+            mapOf(
+                "type" to JsonPrimitive("object"),
+                "properties" to JsonObject(
+                    mapOf(
+                        "seconds" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("integer"),
+                                "description" to JsonPrimitive("Total duration of the timer in whole seconds (e.g. 300 for 5 minutes)."),
+                            ),
+                        ),
+                        "label" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("string"),
+                                "description" to JsonPrimitive("Optional short label for the timer, e.g. \"パスタ\"."),
+                            ),
+                        ),
+                    ),
+                ),
+                "required" to JsonArray(listOf(JsonPrimitive("seconds"))),
             ),
         )
     }

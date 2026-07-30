@@ -59,6 +59,7 @@ class SettingsExporterTest {
         webSearch = ExportedWebSearchSettings(enabled = true, selectedProfileId = 2, maxToolRounds = 3),
         locationEnabled = true,
         tts = ExportedTtsSettings(selectedProfileId = 3),
+        alarmToolEnabled = true,
     )
 
     @Test
@@ -172,5 +173,21 @@ class SettingsExporterTest {
         assertEquals("gpt-4o", decoded.assistantSelection?.model)
         assertEquals("gpt-4o-mini", decoded.chatSelection?.model)
         assertEquals(null, decoded.systemSelection)
+    }
+
+    @Test
+    fun `round-trips the alarm tool toggle, defaulting to off when absent`() {
+        val decoded = settingsExportYaml.decodeFromString(
+            SettingsExport.serializer(),
+            encodeSettingsExportToYaml(sampleExport()),
+        )
+        assertEquals(true, decoded.alarmToolEnabled)
+
+        val disabledExport = sampleExport().copy(alarmToolEnabled = false)
+        val decodedDisabled = settingsExportYaml.decodeFromString(
+            SettingsExport.serializer(),
+            encodeSettingsExportToYaml(disabledExport),
+        )
+        assertEquals(false, decodedDisabled.alarmToolEnabled)
     }
 }

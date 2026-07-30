@@ -190,6 +190,15 @@ class SettingsRepository(
         return apiProfileDao.getById(id)
     }
 
+    /** Whether the "set_alarm"/"set_timer" tools (see ConversationRepository, DeviceAlarmController) are offered to the model — off by default, since (unlike a read-only lookup) these actually create device alarms/timers as soon as the model calls them. */
+    val alarmToolEnabled: Flow<Boolean> = context.settingsDataStore.data.map { it[KEY_ALARM_TOOL_ENABLED] ?: false }
+
+    suspend fun currentAlarmToolEnabled(): Boolean = alarmToolEnabled.first()
+
+    suspend fun setAlarmToolEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_ALARM_TOOL_ENABLED] = enabled }
+    }
+
     private fun resolve(selected: SelectedModel?): Flow<AppSettings> {
         if (selected == null) {
             return markdownEnabledFlow.map { markdownEnabled ->
@@ -243,5 +252,6 @@ class SettingsRepository(
         val KEY_SELECTED_SYSTEM_PROMPT_IDS = stringSetPreferencesKey("selected_system_prompt_ids")
         val KEY_LOCATION_ENABLED = booleanPreferencesKey("location_enabled")
         val KEY_SELECTED_TTS_PROFILE_ID = longPreferencesKey("selected_tts_profile_id")
+        val KEY_ALARM_TOOL_ENABLED = booleanPreferencesKey("alarm_tool_enabled")
     }
 }

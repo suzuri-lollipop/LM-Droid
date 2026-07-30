@@ -3,6 +3,7 @@ package com.suzuri.lmdroid
 import android.content.Context
 import android.util.Log
 import androidx.room.Room
+import com.suzuri.lmdroid.data.alarm.DeviceAlarmController
 import com.suzuri.lmdroid.data.attachment.AttachmentFileStore
 import com.suzuri.lmdroid.data.attachment.AudioRecorder
 import com.suzuri.lmdroid.data.db.AppDatabase
@@ -94,6 +95,8 @@ class AppContainer(context: Context) {
 
     val deviceLocationProvider = DeviceLocationProvider(appContext)
 
+    val deviceAlarmController = DeviceAlarmController(appContext)
+
     val voicevoxCompatibleClient = VoicevoxCompatibleClient(okHttpClient)
 
     val onDeviceSpeechSynthesizer = OnDeviceSpeechSynthesizer(appContext)
@@ -113,6 +116,7 @@ class AppContainer(context: Context) {
         braveSearchClient = braveSearchClient,
         webPageFetcher = webPageFetcher,
         deviceLocationProvider = deviceLocationProvider,
+        deviceAlarmController = deviceAlarmController,
         systemPromptRepository = systemPromptRepository,
         json = json,
     )

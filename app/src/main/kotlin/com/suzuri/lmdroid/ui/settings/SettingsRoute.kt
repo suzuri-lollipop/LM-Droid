@@ -16,6 +16,7 @@ enum class SettingsRoute {
     WebSearch,
     Voice,
     Location,
+    Alarm,
     SystemPromptList,
     SystemPromptEdit,
     Assistant,
@@ -31,6 +32,7 @@ fun SettingsRoute.parent(): SettingsRoute? = when (this) {
     SettingsRoute.WebSearch -> SettingsRoute.Root
     SettingsRoute.Voice -> SettingsRoute.Root
     SettingsRoute.Location -> SettingsRoute.Root
+    SettingsRoute.Alarm -> SettingsRoute.Root
     SettingsRoute.SystemPromptList -> SettingsRoute.Root
     SettingsRoute.SystemPromptEdit -> SettingsRoute.SystemPromptList
     SettingsRoute.Assistant -> SettingsRoute.Root

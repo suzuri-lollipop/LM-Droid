@@ -62,6 +62,9 @@ class SettingsImporterTest {
         // to "no speaker id"/"no tts profile selected" (i.e. this device's own on-device speech).
         assertEquals(null, decoded.apiProfiles[0].voicevoxSpeakerId)
         assertEquals(null, decoded.tts.selectedProfileId)
+        // Not present in the literal YAML above either — confirms an export from before the
+        // alarm/timer tools existed still decodes cleanly, defaulting to "not offered to the model".
+        assertEquals(false, decoded.alarmToolEnabled)
     }
 
     @Test
@@ -97,6 +100,7 @@ class SettingsImporterTest {
             webSearch = ExportedWebSearchSettings(enabled = true, selectedProfileId = null, maxToolRounds = 3),
             locationEnabled = true,
             tts = ExportedTtsSettings(selectedProfileId = 2),
+            alarmToolEnabled = true,
         )
 
         val decoded = decodeSettingsExportFromYaml(encodeSettingsExportToYaml(original))
@@ -105,6 +109,7 @@ class SettingsImporterTest {
         assertEquals(2L, decoded.tts.selectedProfileId)
         assertEquals(3, decoded.apiProfiles[1].voicevoxSpeakerId)
         assertEquals("gpt-4o", decoded.assistantSelection?.model)
+        assertEquals(true, decoded.alarmToolEnabled)
     }
 
     @Test

@@ -30,6 +30,14 @@ class AssistSpeechPlayer(
     private val voicevoxCompatibleClient: VoicevoxCompatibleClient,
     private val onDeviceSpeechSynthesizer: OnDeviceSpeechSynthesizer,
 ) {
+    // MediaPlayer is explicitly documented as not thread-safe, but this one gets touched from more
+    // than one thread in practice: its own onCompletion/onError callbacks fire on whatever
+    // Looper thread it was created on, while stop() can run from wherever a cancellation
+    // (AssistViewModel cancelling playbackJob) happens to land. Without synchronizing every read
+    // and every release() call, both paths could race to release() the same instance — a double
+    // release/use-after-release on native MediaPlayer state, which is exactly the kind of bug that
+    // surfaces as a native "destroyed mutex" crash rather than a catchable Kotlin exception.
+    private val mediaPlayerLock = Any()
     private var mediaPlayer: MediaPlayer? = null
 
     /** What [play] needs to actually speak a chunk — the result of whatever synthesis [prepare] did (or didn't need to do). */
@@ -74,14 +82,21 @@ class AssistSpeechPlayer(
         try {
             file.writeBytes(audioBytes)
             suspendCancellableCoroutine { continuation ->
+                // Whichever of finish()/stop() gets here first "claims" the player and releases
+                // it exactly once; the other sees mediaPlayer already cleared (or pointing at a
+                // different instance) and backs off instead of touching an already-released one.
                 fun finish(player: MediaPlayer) {
-                    runCatching { player.release() }
-                    if (mediaPlayer === player) mediaPlayer = null
+                    val claimed = synchronized(mediaPlayerLock) {
+                        if (mediaPlayer !== player) return@synchronized false
+                        mediaPlayer = null
+                        true
+                    }
+                    if (claimed) runCatching { player.release() }
                     if (continuation.isActive) continuation.resume(Unit)
                 }
 
                 val player = MediaPlayer()
-                mediaPlayer = player
+                synchronized(mediaPlayerLock) { mediaPlayer = player }
                 try {
                     player.setDataSource(file.absolutePath)
                     player.setOnPreparedListener { it.start() }
@@ -106,11 +121,16 @@ class AssistSpeechPlayer(
     /** Stops any in-progress speech from either backend — called when the user dismisses the overlay or starts a follow-up question, so playback never keeps going after the user has moved on. */
     fun stop() {
         onDeviceSpeechSynthesizer.stop()
-        mediaPlayer?.let { player ->
-            runCatching { if (player.isPlaying) player.stop() }
-            runCatching { player.release() }
+        // Atomically takes ownership of whatever mediaPlayer currently is (if anything) so
+        // finish()'s own claim check above sees it already cleared and won't also try to release
+        // it — see mediaPlayerLock's doc comment.
+        val player = synchronized(mediaPlayerLock) {
+            mediaPlayer.also { mediaPlayer = null }
         }
-        mediaPlayer = null
+        player?.let {
+            runCatching { if (it.isPlaying) it.stop() }
+            runCatching { it.release() }
+        }
     }
 
     private companion object {

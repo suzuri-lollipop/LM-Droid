@@ -1,38 +1,19 @@
-# Implementation Plan - Support Assistant Retry via External Triggers
+# Implementation Plan - Set Alarms Silently Without Clock App Transition
 
-This plan enables the assistant to restart listening whenever the earphone AI shortcut (or any external intent) is triggered, even if the activity is already visible or in an error state.
+The user reported that after instructing the AI to set an alarm, the device transitions to the Clock app UI. I will update the `DeviceAlarmController` to use the `EXTRA_SKIP_UI` flag, which allows setting alarms and timers without bringing the Clock app to the foreground.
 
 ## User Review Required
 
-> [!NOTE]
-> This change ensures that pressing the AI button on your earphones while the assistant is already open (e.g., after it failed to hear you) will immediately reset the UI and start listening again.
+> [!IMPORTANT]
+> This change will make alarm and timer setting "silent". You will no longer see the Clock app open to confirm the alarm. Instead, you will rely on the AI's confirmation message and the system's brief notification that the alarm was set.
 
 ## Proposed Changes
 
-### UI State
+### Alarm Controller
 
-#### [MODIFY] [AssistUiState.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/ui/assist/AssistUiState.kt)
-- Add `triggerCount: Int = 0` to track how many times the assistant has been externally triggered.
-
-### View Model
-
-#### [MODIFY] [AssistViewModel.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/ui/assist/AssistViewModel.kt)
-- Add `onRetry()` function:
-    - Resets `transcript`, `hasSent`, `assistantText`, and `errorMessage`.
-    - Increments `triggerCount`.
-
-### Assist Activity
-
-#### [MODIFY] [AssistActivity.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/AssistActivity.kt)
-- Store a reference to `AssistViewModel`.
-- Initialize it using `ViewModelProvider` in `onCreate`.
-- Call `viewModel.onRetry()` in `onNewIntent` (and optionally `onCreate` to standardize the first trigger).
-
-### Assist Screen
-
-#### [MODIFY] [AssistScreen.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/ui/assist/AssistScreen.kt)
-- Change `LaunchedEffect(Unit)` to `LaunchedEffect(uiState.triggerCount)`.
-- (Optional) Call `voiceInputState.stop()` before `start()` in `beginListening()` to ensure a clean state.
+#### [MODIFY] [DeviceAlarmController.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/alarm/DeviceAlarmController.kt)
+- Change `AlarmClock.EXTRA_SKIP_UI` from `false` to `true` in both `setAlarm` and `setTimer` methods.
+- Update the class documentation to reflect that the UI transition is now skipped.
 
 ## Verification Plan
 
@@ -40,7 +21,7 @@ This plan enables the assistant to restart listening whenever the earphone AI sh
 - Run `gradle_build :app:assembleDebug`.
 
 ### Manual Verification
-- Trigger the assistant via earphone button.
-- Wait for it to show "聞き取れませんでした" (don't speak).
-- Trigger the assistant again via earphone button.
-- Verify that it immediately clears the error and shows "お話しください".
+- Deploy the app to a device.
+- Ask the AI: "Set an alarm for 7:30 AM".
+- **Expected Result**: The AI confirms the alarm is set, and the Clock app DOES NOT open. You should see a small system message (Toast) or notification indicating the alarm was set.
+- Check the Clock app manually to verify the alarm exists.

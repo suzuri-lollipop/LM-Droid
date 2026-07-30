@@ -6,6 +6,7 @@ import com.suzuri.lmdroid.AppContainer
 import com.suzuri.lmdroid.ui.assist.AssistViewModel
 import com.suzuri.lmdroid.ui.chat.ChatViewModel
 import com.suzuri.lmdroid.ui.history.HistoryViewModel
+import com.suzuri.lmdroid.ui.settings.AlarmSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
 import com.suzuri.lmdroid.ui.settings.AssistantSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditViewModel
@@ -66,6 +67,9 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
 
         modelClass.isAssignableFrom(LocationSettingsViewModel::class.java) ->
             LocationSettingsViewModel(container.settingsRepository) as T
+
+        modelClass.isAssignableFrom(AlarmSettingsViewModel::class.java) ->
+            AlarmSettingsViewModel(container.settingsRepository) as T
 
         modelClass.isAssignableFrom(SystemPromptListViewModel::class.java) ->
             SystemPromptListViewModel(container.systemPromptRepository) as T

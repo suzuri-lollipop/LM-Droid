@@ -12,6 +12,10 @@
     <!-- For the "get_current_location" tool (Settings → Web検索 → 位置情報を使用する). -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- For the "set_alarm"/"set_timer" tools (Settings → アラーム・タイマー) to set them via the
+         clock app without its own confirmation screen (EXTRA_SKIP_UI). Normal (install-time)
+         permission — no runtime request needed. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
     <application
         android:name=".LmDroidApplication"

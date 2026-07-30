@@ -55,6 +55,8 @@ import com.suzuri.lmdroid.ui.chat.ChatViewModel
 import com.suzuri.lmdroid.ui.history.HistoryScreen
 import com.suzuri.lmdroid.ui.history.HistoryViewModel
 import com.suzuri.lmdroid.ui.navigation.Screen
+import com.suzuri.lmdroid.ui.settings.AlarmSettingsScreen
+import com.suzuri.lmdroid.ui.settings.AlarmSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.ApiProfileListScreen
 import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
 import com.suzuri.lmdroid.ui.settings.AssistantSettingsScreen
@@ -135,6 +137,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val webSearchSettingsViewModel: WebSearchSettingsViewModel = viewModel(factory = viewModelFactory)
     val voiceSettingsViewModel: VoiceSettingsViewModel = viewModel(factory = viewModelFactory)
     val locationSettingsViewModel: LocationSettingsViewModel = viewModel(factory = viewModelFactory)
+    val alarmSettingsViewModel: AlarmSettingsViewModel = viewModel(factory = viewModelFactory)
     val systemPromptListViewModel: SystemPromptListViewModel = viewModel(factory = viewModelFactory)
     val systemPromptEditViewModel: SystemPromptEditViewModel = viewModel(factory = viewModelFactory)
     val assistantSettingsViewModel: AssistantSettingsViewModel = viewModel(factory = viewModelFactory)
@@ -260,6 +263,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.WebSearch -> stringResource(R.string.settings_websearch_category_title)
                                     SettingsRoute.Voice -> stringResource(R.string.settings_voice_category_title)
                                     SettingsRoute.Location -> stringResource(R.string.settings_location_category_title)
+                                    SettingsRoute.Alarm -> stringResource(R.string.settings_alarm_category_title)
                                     SettingsRoute.SystemPromptList -> stringResource(R.string.settings_system_prompt_category_title)
                                     SettingsRoute.SystemPromptEdit -> stringResource(R.string.settings_system_prompt_category_title)
                                     SettingsRoute.Assistant -> stringResource(R.string.settings_assistant_category_title)
@@ -343,6 +347,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 onNavigateToWebSearch = { settingsRoute = SettingsRoute.WebSearch },
                                 onNavigateToVoice = { settingsRoute = SettingsRoute.Voice },
                                 onNavigateToLocation = { settingsRoute = SettingsRoute.Location },
+                                onNavigateToAlarm = { settingsRoute = SettingsRoute.Alarm },
                                 onNavigateToSystemPrompts = { settingsRoute = SettingsRoute.SystemPromptList },
                                 onNavigateToAssistant = { settingsRoute = SettingsRoute.Assistant },
                                 modifier = Modifier.padding(innerPadding),
@@ -415,6 +420,12 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                         SettingsRoute.Location -> {
                             LocationSettingsScreen(
                                 viewModel = locationSettingsViewModel,
+                                modifier = Modifier.padding(innerPadding),
+                            )
+                        }
+                        SettingsRoute.Alarm -> {
+                            AlarmSettingsScreen(
+                                viewModel = alarmSettingsViewModel,
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }

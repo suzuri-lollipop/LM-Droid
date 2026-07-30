@@ -1,5 +1,3 @@
-- [x] Add `triggerCount` to `AssistUiState.kt`
-- [x] Add `onRetry()` to `AssistViewModel.kt`
-- [x] Update `AssistActivity.kt` to trigger `onRetry()` on new intents
-- [x] Update `AssistScreen.kt` to react to `triggerCount`
+- [x] Set `EXTRA_SKIP_UI` to `true` in `DeviceAlarmController.kt`
+- [x] Update documentation in `DeviceAlarmController.kt`
 - [x] Verify the build

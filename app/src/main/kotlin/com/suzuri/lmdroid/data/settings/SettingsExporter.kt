@@ -72,6 +72,7 @@ class SettingsExporter(
             ),
             locationEnabled = settingsRepository.currentLocationEnabled(),
             tts = ExportedTtsSettings(selectedProfileId = settingsRepository.currentSelectedTtsProfileId()),
+            alarmToolEnabled = settingsRepository.currentAlarmToolEnabled(),
         )
     }
 
@@ -122,6 +123,7 @@ data class SettingsExport(
     val webSearch: ExportedWebSearchSettings = ExportedWebSearchSettings(),
     val locationEnabled: Boolean = false,
     val tts: ExportedTtsSettings = ExportedTtsSettings(),
+    val alarmToolEnabled: Boolean = false,
 )
 
 @Serializable
