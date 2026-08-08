@@ -30,6 +30,19 @@
         <intent>
             <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
         </intent>
+        <!-- Lets DeviceAlarmController's resolveActivity() check (added when set_alarm/set_timer
+             switched to the deferred-launch pattern shared with the other Intent-launching tools —
+             see ConversationRepository's pendingSideEffects) actually see the clock app: without
+             this, resolveActivity() — a query, unlike startActivity() — is subject to Android 11+
+             package visibility and silently returned null for ACTION_SET_TIMER on at least one
+             device (Samsung's Clock), reporting "no clock app available" even though one was
+             installed and startActivity() would have worked fine. -->
+        <intent>
+            <action android:name="android.intent.action.SET_ALARM" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SET_TIMER" />
+        </intent>
     </queries>
 
     <application

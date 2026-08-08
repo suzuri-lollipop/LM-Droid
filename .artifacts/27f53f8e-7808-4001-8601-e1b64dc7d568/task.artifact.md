@@ -1,0 +1,8 @@
+- [ ] Define DTOs in `ImageGenerationDtos.kt`
+- [ ] Define `ImageGenerator` interface and `ImageGenerationState` in `ImageGenerator.kt`
+- [ ] Implement `StableDiffusionGenerator`
+- [ ] Implement `ComfyUiGenerator`
+- [ ] Implement `BailianGenerator`
+- [ ] Implement `LocalImageGenerator` (Base setup/Stub)
+- [ ] Create `ImageGenerationRepository`
+- [ ] Update `AppContainer` to register the new repository

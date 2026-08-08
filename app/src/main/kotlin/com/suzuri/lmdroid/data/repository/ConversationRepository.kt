@@ -534,23 +534,42 @@ class ConversationRepository(
                 if (query == null || query.isBlank()) {
                     "Error: invalid arguments for $PLAY_MUSIC_TOOL_NAME. Expected JSON like {\"query\": \"...\"}."
                 } else {
+                    val wantsPlaylist = extractStringArgument(call.argumentsJson, "type") == "playlist"
                     val preferredPackage = settingsRepository.currentPreferredMusicAppPackage()
+                    val genericFocus = if (wantsPlaylist) DeviceMusicController.FOCUS_ALBUM else DeviceMusicController.FOCUS_AUDIO
                     // YouTube Music's own ACTION_MEDIA_PLAY_FROM_SEARCH handling only opens its
                     // search screen without actually playing anything (a known YouTube Music
                     // limitation, confirmed by hand — see DeviceMusicController's doc comment), so
                     // when a YouTube Data API key is configured and either no preferred app is set
                     // or YouTube Music itself is the preferred one, resolve the query to a specific
-                    // video id first and open that track directly instead.
+                    // video/playlist id first and open that directly instead.
                     val youtubeApiKey = settingsRepository.currentYoutubeDataApiKey()
                     val wantsYoutubeMusic = preferredPackage == null || preferredPackage == DeviceMusicController.YOUTUBE_MUSIC_PACKAGE
                     val launchMusic = if (!youtubeApiKey.isNullOrBlank() && wantsYoutubeMusic) {
-                        val videoId = youTubeDataApiClient.searchVideoId(youtubeApiKey, query)
-                            .onFailure { e -> Log.w(TAG, "YouTube Data API search failed, falling back to generic search intent", e) }
-                            .getOrNull()
-                        videoId?.let { deviceMusicController.prepareOpenYoutubeMusicTrack(it) }
-                            ?: deviceMusicController.preparePlayMusic(query, preferredPackage)
+                        if (wantsPlaylist) {
+                            val playlistId = youTubeDataApiClient.searchPlaylistId(youtubeApiKey, query)
+                                .onFailure { e -> Log.w(TAG, "YouTube Data API playlist search failed, falling back to generic search intent", e) }
+                                .getOrNull()
+                            // A bare playlist URL only opens its browsing page without starting
+                            // playback — the first track's own video id is what turns this into a
+                            // "watch this, then continue through the rest" URL that actually
+                            // autoplays (see DeviceMusicController.prepareOpenYoutubeMusicPlaylist).
+                            val firstVideoId = playlistId?.let {
+                                youTubeDataApiClient.getFirstPlaylistItemVideoId(youtubeApiKey, it)
+                                    .onFailure { e -> Log.w(TAG, "Fetching playlist's first track failed, opening the playlist without autoplay", e) }
+                                    .getOrNull()
+                            }
+                            playlistId?.let { deviceMusicController.prepareOpenYoutubeMusicPlaylist(it, firstVideoId) }
+                                ?: deviceMusicController.preparePlayMusic(query, preferredPackage, genericFocus)
+                        } else {
+                            val videoId = youTubeDataApiClient.searchVideoId(youtubeApiKey, query)
+                                .onFailure { e -> Log.w(TAG, "YouTube Data API search failed, falling back to generic search intent", e) }
+                                .getOrNull()
+                            videoId?.let { deviceMusicController.prepareOpenYoutubeMusicTrack(it) }
+                                ?: deviceMusicController.preparePlayMusic(query, preferredPackage, genericFocus)
+                        }
                     } else {
-                        deviceMusicController.preparePlayMusic(query, preferredPackage)
+                        deviceMusicController.preparePlayMusic(query, preferredPackage, genericFocus)
                     }
                     if (launchMusic != null) {
                         pendingSideEffects += launchMusic
@@ -805,14 +824,18 @@ class ConversationRepository(
                     description = "Play music. This opens the user's chosen music app (Settings → " +
                         "音楽) — or, if none is chosen, whichever music app the system resolves it " +
                         "to — and starts playing whatever matches the given search query. If the " +
-                        "user names a specific song, use that. If they only name an artist or " +
-                        "genre with no specific song (e.g. \"play Dua Lipa\"), pick one well-known " +
-                        "track yourself and put both the title and artist in the query (e.g. " +
-                        "\"Levitating by Dua Lipa\") rather than passing just the artist/genre name " +
-                        "— a bare artist/genre query is much less likely to actually start playback " +
-                        "(some music apps only show search results for it instead of playing " +
-                        "anything). There's no way to control playback (pause/skip/volume) from " +
-                        "here once it starts.",
+                        "user asks for a specific song, use \"song\" (the default) and put that " +
+                        "song's title and artist in the query. If they only name an artist or genre " +
+                        "with no specific song (e.g. \"play Dua Lipa\"), still use \"song\" but pick " +
+                        "one well-known track yourself and put both the title and artist in the " +
+                        "query (e.g. \"Levitating by Dua Lipa\") rather than passing just the " +
+                        "artist/genre name — a bare artist/genre query is much less likely to " +
+                        "actually start playback (some music apps only show search results for it " +
+                        "instead of playing anything). If the user asks for a whole album or an " +
+                        "existing playlist (their own or a curated one, e.g. \"play the Renaissance " +
+                        "album\" or \"play my workout playlist\"), use \"playlist\" instead so the " +
+                        "whole thing plays rather than a single track. There's no way to control " +
+                        "playback (pause/skip/volume) from here once it starts.",
                     parameters = playMusicToolParameters,
                 ),
             )
@@ -1064,11 +1087,23 @@ class ConversationRepository(
                             mapOf(
                                 "type" to JsonPrimitive("string"),
                                 "description" to JsonPrimitive(
-                                    "What to play, as free text — prefer \"song title by artist\" " +
-                                        "(e.g. \"levitating by dua lipa\") over a bare artist/genre " +
-                                        "name; a playlist name (\"my discover weekly playlist\") or " +
-                                        "genre (\"90s city pop\") is fine when that's really what " +
-                                        "was asked for.",
+                                    "What to play, as free text. For type=\"song\", prefer \"song " +
+                                        "title by artist\" (e.g. \"levitating by dua lipa\") over a " +
+                                        "bare artist/genre name. For type=\"playlist\", the album " +
+                                        "name plus artist (e.g. \"Renaissance by Beyoncé\") or the " +
+                                        "playlist's name (\"my discover weekly playlist\", \"90s " +
+                                        "city pop\").",
+                                ),
+                            ),
+                        ),
+                        "type" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("string"),
+                                "enum" to JsonArray(listOf(JsonPrimitive("song"), JsonPrimitive("playlist"))),
+                                "description" to JsonPrimitive(
+                                    "\"song\" (default) plays one specific track. \"playlist\" " +
+                                        "plays a whole album or existing playlist instead — use it " +
+                                        "when the user asked for the whole thing, not just one track.",
                                 ),
                             ),
                         ),
