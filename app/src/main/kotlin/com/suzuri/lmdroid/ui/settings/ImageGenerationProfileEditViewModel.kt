@@ -31,6 +31,11 @@ class ImageGenerationProfileEditViewModel(
                     apiKey = apiKey.orEmpty(),
                     baseUrl = profile.baseUrl,
                     providerType = profile.providerType,
+                    localModelMode = if (profile.baseUrl.startsWith("content://") || profile.baseUrl.startsWith("/")) {
+                        LocalModelMode.FILE
+                    } else {
+                        LocalModelMode.URL
+                    },
                     isKeyVisible = false,
                     testState = TestConnectionState.Idle,
                     saved = false,
@@ -41,6 +46,14 @@ class ImageGenerationProfileEditViewModel(
 
     fun onProfileNameChange(value: String) {
         _uiState.update { it.copy(profileName = value, saved = false) }
+    }
+
+    fun onLocalModelModeChange(mode: LocalModelMode) {
+        _uiState.update { it.copy(localModelMode = mode, saved = false) }
+    }
+
+    fun onModelFileSelected(uri: String) {
+        _uiState.update { it.copy(baseUrl = uri, saved = false) }
     }
 
     fun onApiKeyChange(value: String) {

@@ -77,6 +77,10 @@
     <string name="settings_model_file_label">モデルファイル</string>
     <string name="settings_model_file_placeholder">例: LyliaEngine/Pony_Diffusion_V6_XL</string>
     <string name="settings_local_model_description">.safetensors形式などのローカルパス、またはHugging FaceのリポジトリIDを入力してください。</string>
+    <string name="settings_local_model_mode_label">指定方法</string>
+    <string name="settings_local_model_mode_file">ローカルファイル</string>
+    <string name="settings_local_model_mode_url">リポジトリID / URL</string>
+    <string name="settings_local_model_browse">ファイルを選択...</string>
 
     <string name="settings_system_category_title">システム</string>
     <string name="settings_system_description">会話タイトルの生成や入力例の提案に使うモデルを選択します。未選択の場合はチャットで選択中のモデルが使われます。</string>
