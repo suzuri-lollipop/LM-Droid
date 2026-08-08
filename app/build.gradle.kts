@@ -20,6 +20,19 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+
+        externalNativeBuild {
+            cmake {
+                cppFlags("-std=c++17")
+                arguments("-DSD_VULKAN=ON") // Enable Vulkan for GPU acceleration
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
     }
 
     buildTypes {
