@@ -25,6 +25,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -199,6 +201,32 @@ fun ImageGenerationProfileEditScreen(
                     singleLine = true,
                 )
             }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)
+        ) {
+            OutlinedTextField(
+                value = uiState.imageWidth,
+                onValueChange = viewModel::onImageWidthChange,
+                modifier = Modifier.weight(1f),
+                label = { Text(stringResource(R.string.settings_image_width_label)) },
+                placeholder = { Text("512") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+            OutlinedTextField(
+                value = uiState.imageHeight,
+                onValueChange = viewModel::onImageHeightChange,
+                modifier = Modifier.weight(1f),
+                label = { Text(stringResource(R.string.settings_image_height_label)) },
+                placeholder = { Text("512") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
         }
 
         Row(modifier = Modifier.padding(top = 20.dp)) {

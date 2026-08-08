@@ -74,6 +74,9 @@
     <string name="api_profile_name_placeholder">例: ローカルサーバー</string>
     <string name="api_profile_provider_label">プロバイダー</string>
 
+    <string name="settings_image_width_label">幅</string>
+    <string name="settings_image_height_label">高さ</string>
+
     <string name="settings_model_file_label">モデルファイル</string>
     <string name="settings_model_file_placeholder">例: LyliaEngine/Pony_Diffusion_V6_XL</string>
     <string name="settings_local_model_description">.safetensors形式などのローカルパス、またはHugging FaceのリポジトリIDを入力してください。</string>

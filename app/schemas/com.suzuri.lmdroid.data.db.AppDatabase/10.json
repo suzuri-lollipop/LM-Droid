@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 10,
-    "identityHash": "6b2310582327b1c7b4719bc255690714",
+    "identityHash": "6ea29de5a8283ffdc2c739dec702d993",
     "entities": [
       {
         "tableName": "conversations",
@@ -178,7 +178,7 @@
       },
       {
         "tableName": "api_profiles",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `providerType` TEXT NOT NULL, `apiKeyCiphertext` TEXT, `apiKeyIv` TEXT, `baseUrl` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `voicevoxSpeakerId` INTEGER)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `providerType` TEXT NOT NULL, `apiKeyCiphertext` TEXT, `apiKeyIv` TEXT, `baseUrl` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `voicevoxSpeakerId` INTEGER, `imageWidth` INTEGER, `imageHeight` INTEGER)",
         "fields": [
           {
             "fieldPath": "id",
@@ -229,6 +229,16 @@
           {
             "fieldPath": "voicevoxSpeakerId",
             "columnName": "voicevoxSpeakerId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "imageWidth",
+            "columnName": "imageWidth",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "imageHeight",
+            "columnName": "imageHeight",
             "affinity": "INTEGER"
           }
         ],
@@ -398,7 +408,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6b2310582327b1c7b4719bc255690714')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6ea29de5a8283ffdc2c739dec702d993')"
     ]
   }
 }

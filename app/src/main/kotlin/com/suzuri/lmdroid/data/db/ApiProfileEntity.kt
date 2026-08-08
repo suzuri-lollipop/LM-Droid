@@ -29,6 +29,9 @@ data class ApiProfileEntity(
     // values users already know from running the engine itself, so this is a plain manually-typed
     // number rather than a fetched-and-selected list like OpenAI-compatible's models.
     val voicevoxSpeakerId: Int? = null,
+    // Preferred image dimensions for image generation providers.
+    val imageWidth: Int? = null,
+    val imageHeight: Int? = null,
 ) {
     companion object {
         const val PROVIDER_OPENAI_COMPATIBLE = "openai_compatible"

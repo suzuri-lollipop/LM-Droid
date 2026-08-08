@@ -36,6 +36,8 @@ class ImageGenerationProfileEditViewModel(
                     } else {
                         LocalModelMode.URL
                     },
+                    imageWidth = profile.imageWidth?.toString() ?: "",
+                    imageHeight = profile.imageHeight?.toString() ?: "",
                     isKeyVisible = false,
                     testState = TestConnectionState.Idle,
                     saved = false,
@@ -64,6 +66,14 @@ class ImageGenerationProfileEditViewModel(
         _uiState.update { it.copy(baseUrl = value, saved = false, testState = TestConnectionState.Idle) }
     }
 
+    fun onImageWidthChange(value: String) {
+        _uiState.update { it.copy(imageWidth = value.filter { c -> c.isDigit() }, saved = false) }
+    }
+
+    fun onImageHeightChange(value: String) {
+        _uiState.update { it.copy(imageHeight = value.filter { c -> c.isDigit() }, saved = false) }
+    }
+
     fun onToggleKeyVisibility() {
         _uiState.update { it.copy(isKeyVisible = !it.isKeyVisible) }
     }
@@ -72,11 +82,13 @@ class ImageGenerationProfileEditViewModel(
         val id = profileId ?: return
         val state = _uiState.value
         viewModelScope.launch {
-            apiProfileRepository.updateProfile(
+            apiProfileRepository.updateImageGenerationProfile(
                 id = id,
                 name = state.profileName,
                 apiKey = state.apiKey,
                 baseUrl = state.baseUrl,
+                width = state.imageWidth.toIntOrNull(),
+                height = state.imageHeight.toIntOrNull(),
             )
             _uiState.update { it.copy(saved = true) }
         }

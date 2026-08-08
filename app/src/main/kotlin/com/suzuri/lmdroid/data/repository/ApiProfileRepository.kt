@@ -81,6 +81,29 @@ class ApiProfileRepository(
         )
     }
 
+    /** Specifically for image generation profiles, including preferred dimensions. */
+    suspend fun updateImageGenerationProfile(
+        id: Long,
+        name: String,
+        apiKey: String,
+        baseUrl: String,
+        width: Int?,
+        height: Int?
+    ) {
+        val existing = apiProfileDao.getById(id) ?: return
+        val encrypted = apiKey.takeIf { it.isNotBlank() }?.let { cipher.encrypt(it) }
+        apiProfileDao.update(
+            existing.copy(
+                name = name.ifBlank { existing.name },
+                apiKeyCiphertext = encrypted?.ciphertextBase64,
+                apiKeyIv = encrypted?.ivBase64,
+                baseUrl = baseUrl,
+                imageWidth = width,
+                imageHeight = height,
+            ),
+        )
+    }
+
     suspend fun setEnabled(id: Long, enabled: Boolean) {
         apiProfileDao.setEnabled(id, enabled)
     }

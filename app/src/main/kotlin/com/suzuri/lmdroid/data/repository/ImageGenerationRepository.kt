@@ -50,6 +50,11 @@ class ImageGenerationRepository(
         val apiKey = apiProfileRepository.decryptApiKey(profile)
         val baseUrl = profile.baseUrl
         
+        val finalParams = params.copy(
+            width = profile.imageWidth ?: params.width,
+            height = profile.imageHeight ?: params.height
+        )
+        
         val generator = when (profile.providerType) {
             ApiProfileEntity.PROVIDER_STABLE_DIFFUSION -> sdGenerator
             ApiProfileEntity.PROVIDER_COMFYUI -> comfyUiGenerator
@@ -61,6 +66,6 @@ class ImageGenerationRepository(
             }
         }
 
-        emitAll(generator.generate(params, apiKey, baseUrl))
+        emitAll(generator.generate(finalParams, apiKey, baseUrl))
     }
 }
