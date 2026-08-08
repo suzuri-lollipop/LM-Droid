@@ -21,6 +21,7 @@ enum class SettingsRoute {
     Notes,
     Messaging,
     Music,
+    ImageGenerationProfile,
     SystemPromptList,
     SystemPromptEdit,
     Assistant,
@@ -33,6 +34,7 @@ fun SettingsRoute.parent(): SettingsRoute? = when (this) {
     SettingsRoute.BraveSearchProfile -> SettingsRoute.ApiSettings
     SettingsRoute.VoicevoxProfile -> SettingsRoute.ApiSettings
     SettingsRoute.YoutubeDataApiProfile -> SettingsRoute.ApiSettings
+    SettingsRoute.ImageGenerationProfile -> SettingsRoute.ApiSettings
     SettingsRoute.System -> SettingsRoute.Root
     SettingsRoute.WebSearch -> SettingsRoute.Root
     SettingsRoute.Voice -> SettingsRoute.Root

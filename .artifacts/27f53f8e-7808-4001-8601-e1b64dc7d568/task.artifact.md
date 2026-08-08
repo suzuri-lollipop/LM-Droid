@@ -1,8 +1,12 @@
-- [ ] Define DTOs in `ImageGenerationDtos.kt`
-- [ ] Define `ImageGenerator` interface and `ImageGenerationState` in `ImageGenerator.kt`
-- [ ] Implement `StableDiffusionGenerator`
-- [ ] Implement `ComfyUiGenerator`
-- [ ] Implement `BailianGenerator`
-- [ ] Implement `LocalImageGenerator` (Base setup/Stub)
-- [ ] Create `ImageGenerationRepository`
-- [ ] Update `AppContainer` to register the new repository
+- [x] Define DTOs in `ImageGenerationDtos.kt`
+- [x] Define `ImageGenerator` interface and `ImageGenerationState` in `ImageGenerator.kt`
+- [x] Implement `StableDiffusionGenerator`
+- [x] Implement `ComfyUiGenerator`
+- [x] Implement `BailianGenerator`
+- [x] Implement `LocalImageGenerator` (Base setup/Stub)
+- [x] Create `ImageGenerationRepository`
+- [x] Update `AppContainer` to register the new repository
+- [x] Add `generate_image` tool to `ConversationRepository`
+- [x] Implement image saving logic in `AttachmentFileStore`
+- [x] Update `MessageBubble` to show assistant attachments
+- [x] Create Settings UI for image generation profiles

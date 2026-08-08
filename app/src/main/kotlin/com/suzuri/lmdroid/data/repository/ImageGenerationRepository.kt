@@ -1,5 +1,6 @@
 package com.suzuri.lmdroid.data.repository
 
+import com.suzuri.lmdroid.data.db.ApiProfileDao
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import com.suzuri.lmdroid.data.network.ImageGenerationParams
 import com.suzuri.lmdroid.data.network.ImageGenerationState
@@ -7,10 +8,13 @@ import com.suzuri.lmdroid.data.network.ImageGenerator
 import com.suzuri.lmdroid.data.settings.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 
 class ImageGenerationRepository(
     private val settingsRepository: SettingsRepository,
+    private val apiProfileRepository: ApiProfileRepository,
+    private val apiProfileDao: ApiProfileDao,
     private val sdGenerator: ImageGenerator,
     private val comfyUiGenerator: ImageGenerator,
     private val bailianGenerator: ImageGenerator,
@@ -18,46 +22,45 @@ class ImageGenerationRepository(
 ) {
     /**
      * Generates an image using the currently selected API profile in Settings.
-     * The profile must have a provider type supported by one of the registered generators.
+     * If the chat profile doesn't support image generation, it looks for the first enabled
+     * profile that does.
      */
     fun generateImage(params: ImageGenerationParams): Flow<ImageGenerationState> = flow {
-        val settings = settingsRepository.currentChatSettings()
-        val apiKey = settings.apiKey
-        val baseUrl = settings.baseUrl
+        val selected = settingsRepository.selectedChatModel.first()
+        val profileId = selected?.profileId
         
-        // In a real app, you might have a dedicated "Image Generation Profile" selection.
-        // For now, we resolve it based on the active chat profile's type.
-        // We need to fetch the profile entity to check its providerType.
-        val profileId = settingsRepository.selectedChatModel.first()?.profileId
-        if (profileId == null) {
-            emit(ImageGenerationState.Error("プロファイルが選択されていません"))
+        var profile = profileId?.let { apiProfileDao.getById(it) }
+        
+        val imageProviderTypes = listOf(
+            ApiProfileEntity.PROVIDER_STABLE_DIFFUSION,
+            ApiProfileEntity.PROVIDER_COMFYUI,
+            ApiProfileEntity.PROVIDER_DASHSCOPE,
+            ApiProfileEntity.PROVIDER_LOCAL
+        )
+        
+        if (profile == null || profile.providerType !in imageProviderTypes) {
+            profile = apiProfileDao.getAll().firstOrNull { it.enabled && it.providerType in imageProviderTypes }
+        }
+
+        if (profile == null) {
+            emit(ImageGenerationState.Error("有効な画像生成用プロファイルが見つかりません。API設定から追加してください。"))
             return@flow
         }
 
-        // This is a simplified way to get the provider type. 
-        // Ideally we'd have a more direct way from settingsRepository.
-        val providerType = settings.profileName // This might not be the type. 
-        // Let's use a more robust way by checking the DB via settingsRepository's profile id.
+        val apiKey = apiProfileRepository.decryptApiKey(profile)
+        val baseUrl = profile.baseUrl
         
-        val generator = when (/* providerType from profile in DB */ "unknown") {
+        val generator = when (profile.providerType) {
             ApiProfileEntity.PROVIDER_STABLE_DIFFUSION -> sdGenerator
             ApiProfileEntity.PROVIDER_COMFYUI -> comfyUiGenerator
             ApiProfileEntity.PROVIDER_DASHSCOPE -> bailianGenerator
             ApiProfileEntity.PROVIDER_LOCAL -> localGenerator
             else -> {
-                // Fallback logic or error
-                emit(ImageGenerationState.Error("サポートされていないプロバイダータイプです"))
+                emit(ImageGenerationState.Error("サポートされていないプロバイダータイプです: ${profile.providerType}"))
                 return@flow
             }
         }
 
         emitAll(generator.generate(params, apiKey, baseUrl))
-    }
-    
-    // Helper to get the first flow element for simplicity if needed
-    suspend fun currentProviderType(): String? {
-        val profileId = settingsRepository.selectedChatModel.first()?.profileId ?: return null
-        // We'll need access to the profile DAO to get the type.
-        return null
     }
 }

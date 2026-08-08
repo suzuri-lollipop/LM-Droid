@@ -49,6 +49,11 @@
     <string name="settings_brave_search_title">Brave Search</string>
     <string name="settings_voicevox_title">VOICEVOX互換</string>
     <string name="settings_youtube_data_api_title">YouTube Data API</string>
+    <string name="settings_image_generation_title">画像生成</string>
+    <string name="settings_dashscope_title">Aliyun 百煉 (DashScope)</string>
+    <string name="settings_stable_diffusion_title">Stable Diffusion (WebUI)</string>
+    <string name="settings_comfyui_title">ComfyUI</string>
+    <string name="settings_local_generation_title">ローカル生成 (オンデバイス)</string>
     <string name="youtube_data_api_description">YouTube Musicで曲を検索し、動画IDを取得するためだけに使われます(Google Cloud ConsoleでYouTube Data API v3を有効にして取得したAPIキーを入力してください。無料枠は1日あたり検索100回程度です)。</string>
     <string name="youtube_data_api_key_label">YouTube Data API キー</string>
     <string name="youtube_data_api_key_placeholder">AIza...</string>
@@ -68,6 +73,10 @@
     <string name="api_profile_name_label">プロファイル名</string>
     <string name="api_profile_name_placeholder">例: ローカルサーバー</string>
     <string name="api_profile_provider_label">プロバイダー</string>
+
+    <string name="settings_model_file_label">モデルファイル</string>
+    <string name="settings_model_file_placeholder">例: LyliaEngine/Pony_Diffusion_V6_XL</string>
+    <string name="settings_local_model_description">.safetensors形式などのローカルパス、またはHugging FaceのリポジトリIDを入力してください。</string>
 
     <string name="settings_system_category_title">システム</string>
     <string name="settings_system_description">会話タイトルの生成や入力例の提案に使うモデルを選択します。未選択の場合はチャットで選択中のモデルが使われます。</string>

@@ -17,6 +17,9 @@ interface ApiProfileDao {
     @Query("SELECT * FROM api_profiles ORDER BY createdAt ASC")
     fun observeAll(): Flow<List<ApiProfileEntity>>
 
+    @Query("SELECT * FROM api_profiles ORDER BY createdAt ASC")
+    suspend fun getAll(): List<ApiProfileEntity>
+
     @Query("SELECT * FROM api_profiles WHERE id = :id")
     suspend fun getById(id: Long): ApiProfileEntity?
 

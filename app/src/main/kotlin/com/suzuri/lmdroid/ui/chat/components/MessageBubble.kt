@@ -73,6 +73,25 @@ fun MessageBubble(
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
+        if (message.attachments.isNotEmpty()) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(bottom = 6.dp),
+            ) {
+                message.attachments.forEach { attachment ->
+                    if (attachment.mimeType.startsWith("audio/")) {
+                        AudioAttachmentChip(filePath = attachment.filePath)
+                    } else {
+                        AttachmentThumbnail(
+                            filePath = attachment.filePath,
+                            size = 120.dp, // Slightly larger for assistant's generated images
+                            onClick = { onPreviewAttachment(attachment.filePath) },
+                        )
+                    }
+                }
+            }
+        }
+
         if (message.thinkingTimeline.isNotEmpty()) {
             ThinkingTimelineSection(
                 messageId = message.id,

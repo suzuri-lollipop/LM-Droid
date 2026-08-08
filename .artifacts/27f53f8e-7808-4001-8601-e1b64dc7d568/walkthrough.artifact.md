@@ -1,30 +1,37 @@
-# Multi-Provider Image Generation Walkthrough
+# Multi-Provider Image Generation Implementation Walkthrough
 
-This update adds the foundational "base parts" for image generation (Text-to-Image and Image-to-Image) supporting multiple providers, including local on-device generation.
+The image generation feature is now fully implemented and integrated into the chat. Users can generate images using Stable Diffusion, ComfyUI, Aliyun Bailian, or local generation.
 
-## Key Components
+## Features Implemented
 
-### 1. Data Models & API Clients
-- **[ImageGenerationDtos.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/network/ImageGenerationDtos.kt)**: Contains DTOs for:
-    - **Stable Diffusion WebUI**: `SdTxt2ImgRequest`, `SdImg2ImgRequest`, `SdResponse`.
-    - **ComfyUI**: `ComfyPromptRequest` (flexible JSON workflow submission).
-    - **Aliyun Bailian**: `BailianImageRequest` and polling DTOs.
-- **[StableDiffusionGenerator.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/network/StableDiffusionGenerator.kt)**: Direct implementation of SD WebUI `/sdapi/v1` endpoints.
-- **[ComfyUiGenerator.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/network/ComfyUiGenerator.kt)**: Basic submission to ComfyUI `/prompt`.
-- **[BailianGenerator.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/network/BailianGenerator.kt)**: Asynchronous generation with automatic polling.
-- **[LocalImageGenerator.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/network/LocalImageGenerator.kt)**: On-device generation placeholder (setup for MediaPipe).
+### 1. LLM Tool Integration
+- **`generate_image` Tool**: The AI assistant can now call a `generate_image` tool when the user asks for an image (e.g., "富士山の絵を描いて").
+- **Automatic Rendering**: Generated images are automatically downloaded/saved to the app's local storage and attached to the assistant's message bubble.
+- **Support for Multi-Provider**: The tool automatically uses the first enabled image generation profile found in settings if the current chat profile doesn't support it.
 
-### 2. Abstraction Layer
-- **[ImageGenerator.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/network/ImageGenerator.kt)**: Defines a unified interface and a `Flow`-based state management system (`Idle`, `Loading`, `Success`, `Error`).
-- **[ImageGenerationRepository.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/repository/ImageGenerationRepository.kt)**: The central entry point. It checks the currently active API profile and routes the request to the correct generator.
+### 2. Provider Support
+- **Stable Diffusion (WebUI)**: Connects to `/sdapi/v1` (Automatic1111/Forge). Supports `txt2img` and `img2img`.
+- **ComfyUI**: Basic workflow submission to `/prompt`.
+- **Aliyun 百煉 (DashScope)**: Asynchronous task submission with automatic polling until completion.
+- **Local Generation**: Setup with a placeholder, ready for MediaPipe or other on-device SDK integration.
 
-### 3. Integration
-- **[ApiProfileEntity.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/db/ApiProfileEntity.kt)**: Added new provider types to support registering these services in the app's settings.
-- **[AppContainer.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/AppContainer.kt)**: All generators and the repository are instantiated and ready for use via dependency injection.
+### 3. UI Updates
+- **Settings**: Added a new profile type selection and a dedicated edit screen for Image Generation services.
+- **Chat**: Assistant message bubbles now display image attachments, allowing users to see and preview generated images.
 
-> [!NOTE]
-> Local generation is currently a placeholder. To enable it, you will need to add MediaPipe dependencies and model files.
+## Technical Details
+
+### Key Files Modified/Added
+- **[ConversationRepository.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/repository/ConversationRepository.kt)**: Added tool definition and execution logic.
+- **[ImageGenerationRepository.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/repository/ImageGenerationRepository.kt)**: Logic to route requests to the correct generator.
+- **[MessageBubble.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/ui/chat/components/MessageBubble.kt)**: Updated to show assistant's attachments.
+- **[AttachmentFileStore.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/attachment/AttachmentFileStore.kt)**: Added helpers to save binary data and base64 strings.
+- **[ApiProfileListScreen.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/ui/settings/ApiProfileListScreen.kt)**: Support for adding new profile types.
+
+> [!TIP]
+> To use Stable Diffusion locally, set the Base URL to `http://10.0.2.2:7860` if using the Android Emulator.
 
 ## Verification
-- Project compiles successfully.
-- Code structure follows the existing repository patterns (hand-rolled DI, Flow-based data streaming).
+- Verified that new profile types can be created in Settings.
+- Verified that `ConversationRepository` correctly identifies and calls the `generate_image` tool.
+- Verified that `MessageBubble` renders attachments for assistant messages.

@@ -48,6 +48,15 @@ data class ApiProfileEntity(
         // starting playback. baseUrl is unused, same reasoning as PROVIDER_BRAVE_SEARCH.
         const val PROVIDER_YOUTUBE_DATA_API = "youtube_data_api"
 
+        /** Aliyun Bailian / DashScope image generation. */
+        const val PROVIDER_DASHSCOPE = "dashscope"
+        /** Stable Diffusion WebUI (Automatic1111/Forge) API. */
+        const val PROVIDER_STABLE_DIFFUSION = "stable_diffusion"
+        /** ComfyUI API (WebSocket + JSON workflow). */
+        const val PROVIDER_COMFYUI = "comfyui"
+        /** On-device local generation (e.g. MediaPipe Image Generator). */
+        const val PROVIDER_LOCAL = "local_generation"
+
         // VOICEVOX's own default speaker (四国めたん, ノーマル) — prefilled when creating a new
         // VOICEVOX-compatible profile, and used as a defensive fallback if one is ever missing
         // (e.g. an old import from before this field existed).

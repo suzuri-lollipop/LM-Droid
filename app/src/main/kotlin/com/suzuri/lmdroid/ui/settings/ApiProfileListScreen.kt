@@ -130,6 +130,10 @@ private fun AddProfileDialog(onConfirm: (name: String, providerType: String) -> 
         ApiProfileEntity.PROVIDER_BRAVE_SEARCH to stringResource(R.string.settings_brave_search_title),
         ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE to stringResource(R.string.settings_voicevox_title),
         ApiProfileEntity.PROVIDER_YOUTUBE_DATA_API to stringResource(R.string.settings_youtube_data_api_title),
+        ApiProfileEntity.PROVIDER_DASHSCOPE to stringResource(R.string.settings_dashscope_title),
+        ApiProfileEntity.PROVIDER_STABLE_DIFFUSION to stringResource(R.string.settings_stable_diffusion_title),
+        ApiProfileEntity.PROVIDER_COMFYUI to stringResource(R.string.settings_comfyui_title),
+        ApiProfileEntity.PROVIDER_LOCAL to stringResource(R.string.settings_local_generation_title),
     )
     var selectedProviderType by rememberSaveable { mutableStateOf(ApiProfileEntity.PROVIDER_OPENAI_COMPATIBLE) }
     var expanded by rememberSaveable { mutableStateOf(false) }

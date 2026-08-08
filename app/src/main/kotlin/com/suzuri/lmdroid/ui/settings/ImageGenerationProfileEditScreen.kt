@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -79,16 +80,31 @@ fun ImageGenerationProfileEditScreen(
         }
 
         val showBaseUrl = uiState.providerType == ApiProfileEntity.PROVIDER_STABLE_DIFFUSION ||
-                uiState.providerType == ApiProfileEntity.PROVIDER_COMFYUI
+                uiState.providerType == ApiProfileEntity.PROVIDER_COMFYUI ||
+                uiState.providerType == ApiProfileEntity.PROVIDER_LOCAL
         if (showBaseUrl) {
+            val isLocal = uiState.providerType == ApiProfileEntity.PROVIDER_LOCAL
             OutlinedTextField(
                 value = uiState.baseUrl,
                 onValueChange = viewModel::onBaseUrlChange,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 16.dp),
-                label = { Text(stringResource(R.string.settings_base_url_label)) },
-                placeholder = { Text("http://10.0.2.2:7860") },
+                label = {
+                    Text(
+                        if (isLocal) stringResource(R.string.settings_model_file_label)
+                        else stringResource(R.string.settings_base_url_label)
+                    )
+                },
+                placeholder = {
+                    Text(
+                        if (isLocal) stringResource(R.string.settings_model_file_placeholder)
+                        else "http://10.0.2.2:7860"
+                    )
+                },
+                supportingText = if (isLocal) {
+                    { Text(stringResource(R.string.settings_local_model_description)) }
+                } else null,
                 singleLine = true,
             )
         }

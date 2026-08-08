@@ -1,40 +1,44 @@
-# Aliyun Bailian (DashScope) Image Generation Base Integration
+# Multi-Provider Image Generation Base Integration
 
-This plan implements the "base parts" for Text-to-Image and Image-to-Image functionality using Aliyun Bailian (DashScope) APIs within the Android app.
+This plan implements the "base parts" for Text-to-Image and Image-to-Image functionality across multiple providers: Stable Diffusion (WebUI), ComfyUI, Aliyun Bailian (DashScope), and On-device Local generation.
 
 ## Proposed Changes
 
 ### [Data Layer]
 
 #### [MODIFY] [ApiProfileEntity.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/db/ApiProfileEntity.kt)
-- Add `PROVIDER_DASHSCOPE` constant to support a dedicated DashScope profile type.
+- Added constants for `PROVIDER_STABLE_DIFFUSION`, `PROVIDER_COMFYUI`, `PROVIDER_DASHSCOPE`, and `PROVIDER_LOCAL`.
 
-#### [NEW] [BailianDtos.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/network/BailianDtos.kt)
-- Define DTOs for DashScope Image Synthesis API:
-    - `BailianImageRequest`: Request body for text-to-image and image-to-image.
-    - `BailianImageResponse`: Initial response containing `task_id`.
-    - `BailianTaskResponse`: Polling response containing `task_status` and `results`.
+#### [NEW] [ImageGenerationDtos.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/network/ImageGenerationDtos.kt)
+- Define generic and provider-specific DTOs:
+    - **Stable Diffusion**: `SdTxt2ImgRequest`, `SdImg2ImgRequest`, `SdResponse`.
+    - **ComfyUI**: `ComfyPromptRequest`, `ComfyResponse`.
+    - **Bailian**: `BailianImageRequest`, `BailianTaskResponse`.
 
-#### [NEW] [BailianApiClient.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/network/BailianApiClient.kt)
-- Implement `BailianApiClient` to handle:
-    - `submitImageGeneration`: Starts the generation task.
-    - `checkTaskStatus`: Polls for task progress.
+#### [NEW] [ImageGenerator.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/network/ImageGenerator.kt)
+- Interface `ImageGenerator` defining:
+    - `generate(prompt: String, negativePrompt: String?, width: Int, height: Int, baseImage: String?): Flow<ImageGenerationState>`
+- Implementations:
+    - `StableDiffusionGenerator`
+    - `ComfyUiGenerator`
+    - `BailianGenerator`
+    - `LocalImageGenerator` (On-device implementation via MediaPipe or placeholder)
 
-#### [NEW] [BailianImageRepository.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/repository/BailianImageRepository.kt)
-- Create a repository to coordinate the generation flow:
-    - `generateImage`: High-level method that submits the task, polls until completion, and returns the resulting image URL or error.
+#### [NEW] [ImageGenerationRepository.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/data/repository/ImageGenerationRepository.kt)
+- Coordinates multiple generators.
+- Selects the active generator based on the user's selected API profile.
 
 ### [Dependency Injection]
 
 #### [MODIFY] [AppContainer.kt](file:///C:/home/suzuri/projects/lm-droid/app/src/main/kotlin/com/suzuri/lmdroid/AppContainer.kt)
-- Instantiate and provide `BailianApiClient` and `BailianImageRepository`.
+- Instantiate and provide `ImageGenerationRepository` and its underlying generators.
 
 ## Verification Plan
 
 ### Automated Tests
-- I will create a unit test for `BailianApiClient` to verify DTO serialization/deserialization.
-- Since I don't have a real API key for testing during development, I'll mock the OkHttp responses.
+- Unit tests for each generator's request/response serialization.
+- Mocked OkHttp tests for SD and ComfyUI.
 
 ### Manual Verification
-- Verify that the project compiles with the new classes.
-- (Future) The user can then use these base parts to implement a UI or a Tool for the LLM.
+- Compile and verify the project.
+- Validate that different provider types can be registered in the database.

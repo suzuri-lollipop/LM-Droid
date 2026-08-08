@@ -63,6 +63,8 @@ import com.suzuri.lmdroid.ui.settings.AssistantSettingsScreen
 import com.suzuri.lmdroid.ui.settings.AssistantSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditScreen
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditViewModel
+import com.suzuri.lmdroid.ui.settings.ImageGenerationProfileEditScreen
+import com.suzuri.lmdroid.ui.settings.ImageGenerationProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.LocationSettingsScreen
 import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.MessagingSettingsScreen
@@ -141,6 +143,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val braveSearchProfileEditViewModel: BraveSearchProfileEditViewModel = viewModel(factory = viewModelFactory)
     val voicevoxProfileEditViewModel: VoicevoxProfileEditViewModel = viewModel(factory = viewModelFactory)
     val youtubeDataApiProfileEditViewModel: YoutubeDataApiProfileEditViewModel = viewModel(factory = viewModelFactory)
+    val imageGenerationProfileEditViewModel: ImageGenerationProfileEditViewModel = viewModel(factory = viewModelFactory)
     val apiProfileListViewModel: ApiProfileListViewModel = viewModel(factory = viewModelFactory)
     val systemSettingsViewModel: SystemSettingsViewModel = viewModel(factory = viewModelFactory)
     val webSearchSettingsViewModel: WebSearchSettingsViewModel = viewModel(factory = viewModelFactory)
@@ -272,6 +275,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.BraveSearchProfile -> stringResource(R.string.settings_brave_search_title)
                                     SettingsRoute.VoicevoxProfile -> stringResource(R.string.settings_voicevox_title)
                                     SettingsRoute.YoutubeDataApiProfile -> stringResource(R.string.settings_youtube_data_api_title)
+                                    SettingsRoute.ImageGenerationProfile -> stringResource(R.string.settings_image_generation_title)
                                     SettingsRoute.System -> stringResource(R.string.settings_system_category_title)
                                     SettingsRoute.WebSearch -> stringResource(R.string.settings_websearch_category_title)
                                     SettingsRoute.Voice -> stringResource(R.string.settings_voice_category_title)
@@ -381,6 +385,10 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                         ApiProfileEntity.PROVIDER_BRAVE_SEARCH -> SettingsRoute.BraveSearchProfile
                                         ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE -> SettingsRoute.VoicevoxProfile
                                         ApiProfileEntity.PROVIDER_YOUTUBE_DATA_API -> SettingsRoute.YoutubeDataApiProfile
+                                        ApiProfileEntity.PROVIDER_DASHSCOPE,
+                                        ApiProfileEntity.PROVIDER_STABLE_DIFFUSION,
+                                        ApiProfileEntity.PROVIDER_COMFYUI,
+                                        ApiProfileEntity.PROVIDER_LOCAL -> SettingsRoute.ImageGenerationProfile
                                         else -> SettingsRoute.OpenAiCompatible
                                     }
                                 },
@@ -422,6 +430,16 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                             if (id != null) {
                                 YoutubeDataApiProfileEditScreen(
                                     viewModel = youtubeDataApiProfileEditViewModel,
+                                    profileId = id,
+                                    modifier = Modifier.padding(innerPadding),
+                                )
+                            }
+                        }
+                        SettingsRoute.ImageGenerationProfile -> {
+                            val id = editingProfileId
+                            if (id != null) {
+                                ImageGenerationProfileEditScreen(
+                                    viewModel = imageGenerationProfileEditViewModel,
                                     profileId = id,
                                     modifier = Modifier.padding(innerPadding),
                                 )

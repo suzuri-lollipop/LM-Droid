@@ -11,10 +11,15 @@ import com.suzuri.lmdroid.data.location.DeviceLocationProvider
 import com.suzuri.lmdroid.data.messaging.DeviceMessageController
 import com.suzuri.lmdroid.data.music.DeviceMusicController
 import com.suzuri.lmdroid.data.music.YouTubeDataApiClient
-import com.suzuri.lmdroid.data.notes.DeviceNoteController
+import com.suzuri.lmdroid.data.network.BailianGenerator
+import com.suzuri.lmdroid.data.network.ComfyUiGenerator
+import com.suzuri.lmdroid.data.network.LocalImageGenerator
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
+import com.suzuri.lmdroid.data.network.StableDiffusionGenerator
+import com.suzuri.lmdroid.data.notes.DeviceNoteController
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
+import com.suzuri.lmdroid.data.repository.ImageGenerationRepository
 import com.suzuri.lmdroid.data.repository.SystemPromptRepository
 import com.suzuri.lmdroid.data.settings.ApiKeyCipher
 import com.suzuri.lmdroid.data.settings.SettingsExporter
@@ -117,6 +122,21 @@ class AppContainer(context: Context) {
 
     val systemPromptRepository = SystemPromptRepository(database.systemPromptDao(), settingsRepository)
 
+    val sdGenerator = StableDiffusionGenerator(okHttpClient, json)
+    val comfyUiGenerator = ComfyUiGenerator(okHttpClient, json)
+    val bailianGenerator = BailianGenerator(okHttpClient, json)
+    val localGenerator = LocalImageGenerator(appContext)
+
+    val imageGenerationRepository = ImageGenerationRepository(
+        settingsRepository = settingsRepository,
+        apiProfileRepository = apiProfileRepository,
+        apiProfileDao = database.apiProfileDao(),
+        sdGenerator = sdGenerator,
+        comfyUiGenerator = comfyUiGenerator,
+        bailianGenerator = bailianGenerator,
+        localGenerator = localGenerator,
+    )
+
     val conversationRepository = ConversationRepository(
         conversationDao = database.conversationDao(),
         messageDao = database.messageDao(),
@@ -125,6 +145,7 @@ class AppContainer(context: Context) {
         settingsRepository = settingsRepository,
         openAiApiClient = openAiApiClient,
         attachmentFileStore = attachmentFileStore,
+        imageGenerationRepository = imageGenerationRepository,
         braveSearchClient = braveSearchClient,
         webPageFetcher = webPageFetcher,
         deviceLocationProvider = deviceLocationProvider,

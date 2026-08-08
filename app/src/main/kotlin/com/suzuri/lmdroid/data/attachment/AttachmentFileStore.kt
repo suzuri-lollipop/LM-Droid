@@ -58,6 +58,33 @@ class AttachmentFileStore(context: Context) {
         SavedAttachment(filePath = file.absolutePath, mimeType = "image/jpeg")
     }
 
+    /** Saves raw bytes (e.g. from a network download) as a new attachment file. */
+    suspend fun save(bytes: ByteArray, mimeType: String): SavedAttachment = withContext(Dispatchers.IO) {
+        val extension = when (mimeType) {
+            "image/png" -> "png"
+            "image/gif" -> "gif"
+            "audio/wav" -> "wav"
+            "audio/mpeg" -> "mp3"
+            else -> "jpg"
+        }
+        val file = newAttachmentFile(extension)
+        file.writeBytes(bytes)
+        SavedAttachment(filePath = file.absolutePath, mimeType = mimeType)
+    }
+
+    /** Saves a base64 data URI (e.g. "data:image/png;base64,...") as a new attachment file. */
+    suspend fun saveBase64(dataUri: String): SavedAttachment = withContext(Dispatchers.IO) {
+        val header = dataUri.substringBefore(',', "")
+        val base64Data = dataUri.substringAfter(',', dataUri)
+        val mimeType = if (header.startsWith("data:")) {
+            header.removePrefix("data:").substringBefore(';')
+        } else {
+            "image/png" // Fallback
+        }
+        val bytes = Base64.decode(base64Data, Base64.DEFAULT)
+        save(bytes, mimeType)
+    }
+
     /** Reads a saved attachment back out as a base64 data URI, for the vision request format. */
     suspend fun readAsDataUri(attachment: SavedAttachment): String = withContext(Dispatchers.IO) {
         "data:${attachment.mimeType};base64,${encodeBase64(attachment.filePath)}"

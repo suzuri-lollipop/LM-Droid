@@ -10,6 +10,7 @@ import com.suzuri.lmdroid.ui.settings.AlarmSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
 import com.suzuri.lmdroid.ui.settings.AssistantSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditViewModel
+import com.suzuri.lmdroid.ui.settings.ImageGenerationProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.MessagingSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.MusicSettingsViewModel
@@ -86,6 +87,9 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
 
         modelClass.isAssignableFrom(YoutubeDataApiProfileEditViewModel::class.java) ->
             YoutubeDataApiProfileEditViewModel(container.apiProfileRepository, container.youTubeDataApiClient) as T
+
+        modelClass.isAssignableFrom(ImageGenerationProfileEditViewModel::class.java) ->
+            ImageGenerationProfileEditViewModel(container.apiProfileRepository) as T
 
         modelClass.isAssignableFrom(SystemPromptListViewModel::class.java) ->
             SystemPromptListViewModel(container.systemPromptRepository) as T

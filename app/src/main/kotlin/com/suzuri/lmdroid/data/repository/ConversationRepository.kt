@@ -27,6 +27,9 @@ import com.suzuri.lmdroid.data.network.FunctionSchemaDto
 import com.suzuri.lmdroid.data.network.ImageUrl
 import com.suzuri.lmdroid.data.network.InputAudio
 import com.suzuri.lmdroid.data.network.MessageContent
+import com.suzuri.lmdroid.data.network.ImageGenerationParams
+import com.suzuri.lmdroid.data.network.ImageGenerationState
+import com.suzuri.lmdroid.data.network.ImageGenerator
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.network.OpenAiException
 import com.suzuri.lmdroid.data.network.RequestedToolCall
@@ -46,6 +49,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
@@ -54,6 +58,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import java.io.File
+import java.net.URL
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
@@ -83,6 +89,7 @@ class ConversationRepository(
     private val folderDao: FolderDao,
     private val settingsRepository: SettingsRepository,
     private val openAiApiClient: OpenAiApiClient,
+    private val imageGenerationRepository: ImageGenerationRepository,
     private val attachmentFileStore: AttachmentFileStore,
     private val braveSearchClient: BraveSearchClient,
     private val webPageFetcher: WebPageFetcher,
@@ -582,6 +589,75 @@ class ConversationRepository(
                     }
                 }
             }
+            GENERATE_IMAGE_TOOL_NAME -> {
+                val prompt = extractStringArgument(call.argumentsJson, "prompt")
+                if (prompt == null || prompt.isBlank()) {
+                    "Error: invalid arguments for $GENERATE_IMAGE_TOOL_NAME. Expected JSON like {\"prompt\": \"...\"}."
+                } else {
+                    val negativePrompt = extractStringArgument(call.argumentsJson, "negative_prompt")
+                    val width = extractIntArgument(call.argumentsJson, "width") ?: 512
+                    val height = extractIntArgument(call.argumentsJson, "height") ?: 512
+                    
+                    val params = ImageGenerationParams(
+                        prompt = prompt,
+                        negativePrompt = negativePrompt,
+                        width = width,
+                        height = height
+                    )
+                    
+                    var resultText = "Image generation failed."
+                    imageGenerationRepository.generateImage(params).collect { state ->
+                        when (state) {
+                            is ImageGenerationState.Loading -> {
+                                timeline += ThinkingTimelineEntry.ToolActivity(
+                                    label = "🎨 画像生成中",
+                                    content = state.message ?: "生成中..."
+                                )
+                            }
+                            is ImageGenerationState.Success -> {
+                                val urls = state.imageUrls
+                                val savedAttachments = mutableListOf<SavedAttachment>()
+                                urls.forEach { url ->
+                                    val saved = if (url.startsWith("data:")) {
+                                        attachmentFileStore.saveBase64(url)
+                                    } else {
+                                        // Remote URL - need to download and save
+                                        withContext(Dispatchers.IO) {
+                                            runCatching {
+                                                val bytes = URL(url).readBytes()
+                                                attachmentFileStore.save(bytes, "image/png")
+                                            }.getOrNull()
+                                        }
+                                    }
+                                    saved?.let { savedAttachments.add(it) }
+                                }
+                                
+                                if (savedAttachments.isNotEmpty()) {
+                                    val now = System.currentTimeMillis()
+                                    messageAttachmentDao.insertAll(savedAttachments.map { saved ->
+                                        MessageAttachmentEntity(
+                                            messageId = placeholderId,
+                                            filePath = saved.filePath,
+                                            mimeType = saved.mimeType,
+                                            createdAt = now
+                                        )
+                                    })
+                                    resultText = "Successfully generated ${savedAttachments.size} image(s). They have been attached to your message."
+                                    timeline += ThinkingTimelineEntry.ToolActivity(
+                                        label = "🎨 生成完了",
+                                        content = resultText
+                                    )
+                                }
+                            }
+                            is ImageGenerationState.Error -> {
+                                resultText = "Error: ${state.message}"
+                            }
+                            else -> {}
+                        }
+                    }
+                    resultText
+                }
+            }
             else -> "Error: unknown tool \"${call.name}\"."
         }
 
@@ -841,6 +917,19 @@ class ConversationRepository(
             )
         }
 
+        // Always available if the active profile's provider is an image generation service
+        // (or we can just offer it and the repository handles the check).
+        tools += ToolDefinitionDto(
+            function = FunctionSchemaDto(
+                name = GENERATE_IMAGE_TOOL_NAME,
+                description = "Generate an image from a text prompt (text-to-image). " +
+                    "Explain what the user wants to see in detail. You can also specify a negative " +
+                    "prompt for things you don't want to see. The generated image will be " +
+                    "attached to your response.",
+                parameters = generateImageToolParameters,
+            ),
+        )
+
         Log.d(TAG, "availableTools: ${tools.map { it.function.name }} (locationEnabled=${settingsRepository.currentLocationEnabled()})")
         return tools.takeIf { it.isNotEmpty() }
     }
@@ -937,6 +1026,7 @@ class ConversationRepository(
         const val CREATE_NOTE_TOOL_NAME = "create_note"
         const val SEND_MESSAGE_TOOL_NAME = "send_message"
         const val PLAY_MUSIC_TOOL_NAME = "play_music"
+        const val GENERATE_IMAGE_TOOL_NAME = "generate_image"
 
         // A hard ceiling regardless of the user's own Settings → Web検索 configuration (where 0
         // means "no cap") — purely a safety valve against a truly runaway model that never stops
@@ -1110,6 +1200,41 @@ class ConversationRepository(
                     ),
                 ),
                 "required" to JsonArray(listOf(JsonPrimitive("query"))),
+            ),
+        )
+
+        val generateImageToolParameters: JsonElement = JsonObject(
+            mapOf(
+                "type" to JsonPrimitive("object"),
+                "properties" to JsonObject(
+                    mapOf(
+                        "prompt" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("string"),
+                                "description" to JsonPrimitive("Detailed description of the image to generate."),
+                            ),
+                        ),
+                        "negative_prompt" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("string"),
+                                "description" to JsonPrimitive("Description of what to avoid in the image."),
+                            ),
+                        ),
+                        "width" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("integer"),
+                                "description" to JsonPrimitive("Image width in pixels (default 512)."),
+                            ),
+                        ),
+                        "height" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("integer"),
+                                "description" to JsonPrimitive("Image height in pixels (default 512)."),
+                            ),
+                        ),
+                    ),
+                ),
+                "required" to JsonArray(listOf(JsonPrimitive("prompt"))),
             ),
         )
     }
