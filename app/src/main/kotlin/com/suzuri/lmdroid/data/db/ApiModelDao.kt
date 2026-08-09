@@ -26,7 +26,7 @@ interface ApiModelDao {
     @Query(
         "SELECT api_models.profileId AS profileId, api_profiles.name AS profileName, api_models.modelId AS modelId " +
             "FROM api_models INNER JOIN api_profiles ON api_models.profileId = api_profiles.id " +
-            "WHERE api_profiles.enabled = 1 " +
+            "WHERE api_profiles.enabled = 1 AND api_profiles.providerType = 'openai_compatible' " +
             "ORDER BY api_profiles.createdAt ASC, api_models.modelId ASC",
     )
     fun observeEnabledModelOptions(): Flow<List<ModelOptionRow>>

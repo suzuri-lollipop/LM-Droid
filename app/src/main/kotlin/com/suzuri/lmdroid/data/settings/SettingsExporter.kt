@@ -46,6 +46,8 @@ class SettingsExporter(
                 apiKey = exportedEncryptedValueOf(profile.apiKeyCiphertext, profile.apiKeyIv),
                 models = models.map { it.modelId },
                 voicevoxSpeakerId = profile.voicevoxSpeakerId,
+                openaiTtsModel = profile.openaiTtsModel,
+                openaiTtsVoice = profile.openaiTtsVoice,
             )
         }
         val profileNameById = profiles.associate { it.id to it.name }
@@ -146,6 +148,9 @@ data class ExportedApiProfile(
     val models: List<String>,
     // Only meaningful for PROVIDER_VOICEVOX_COMPATIBLE.
     val voicevoxSpeakerId: Int? = null,
+    // Only meaningful for PROVIDER_OPENAI_TTS.
+    val openaiTtsModel: String? = null,
+    val openaiTtsVoice: String? = null,
 )
 
 @Serializable

@@ -13,18 +13,24 @@ android {
     namespace = "com.suzuri.lmdroid"
     // multiplatform-markdown-renderer 0.43.0's AAR metadata requires compiling against API 37+.
     compileSdk = 37
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.suzuri.lmdroid"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+        
+        ndk {
+            // Limit to 64-bit ABIs which are the ones affected by 16KB requirement
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
 
         externalNativeBuild {
             cmake {
                 cppFlags("-std=c++17")
-                arguments("-DSD_VULKAN=ON") // Enable Vulkan for GPU acceleration
+                arguments("-DSD_VULKAN=ON", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON") // Enable Vulkan and 16KB page support
             }
         }
     }
@@ -105,6 +111,7 @@ dependencies {
 
     implementation(libs.jsoup)
     implementation(libs.kaml)
+    implementation(libs.vosk.android)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

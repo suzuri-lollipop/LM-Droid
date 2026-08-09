@@ -129,6 +129,7 @@ private fun AddProfileDialog(onConfirm: (name: String, providerType: String) -> 
         ApiProfileEntity.PROVIDER_OPENAI_COMPATIBLE to stringResource(R.string.settings_openai_compatible_title),
         ApiProfileEntity.PROVIDER_BRAVE_SEARCH to stringResource(R.string.settings_brave_search_title),
         ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE to stringResource(R.string.settings_voicevox_title),
+        ApiProfileEntity.PROVIDER_OPENAI_TTS to stringResource(R.string.settings_openai_tts_title),
         ApiProfileEntity.PROVIDER_YOUTUBE_DATA_API to stringResource(R.string.settings_youtube_data_api_title),
         ApiProfileEntity.PROVIDER_DASHSCOPE to stringResource(R.string.settings_dashscope_title),
         ApiProfileEntity.PROVIDER_STABLE_DIFFUSION to stringResource(R.string.settings_stable_diffusion_title),

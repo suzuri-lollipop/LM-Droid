@@ -6,6 +6,8 @@ import com.suzuri.lmdroid.data.db.ModelOptionRow
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.settings.AssistantToolLaunchTiming
 import com.suzuri.lmdroid.data.settings.SettingsRepository
+import com.suzuri.lmdroid.service.WakeWordDebugManager
+import com.suzuri.lmdroid.service.WakeWordStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +20,8 @@ import kotlinx.coroutines.launch
  * uses, independently of whatever's active for chat. Leaving nothing selected here falls back to
  * the chat selection — see [SettingsRepository.assistantSettings] — mirrors
  * [SystemSettingsViewModel]'s identical pattern for background "system" tasks.
+ *
+ * Also manages the background "wake word" listener (WakeWordService) settings.
  */
 class AssistantSettingsViewModel(
     private val apiProfileRepository: ApiProfileRepository,
@@ -42,6 +46,23 @@ class AssistantSettingsViewModel(
                 _uiState.update { it.copy(toolLaunchTiming = timing) }
             }
         }
+        viewModelScope.launch {
+            combine(
+                settingsRepository.wakeWordEnabled,
+                settingsRepository.wakeWord,
+                WakeWordDebugManager.status,
+                WakeWordDebugManager.lastResult,
+            ) { enabled, word, status, result -> 
+                AssistantSettingsWakeWordState(enabled, word, status, result)
+            }.collect { state ->
+                _uiState.update { it.copy(
+                    wakeWordEnabled = state.enabled,
+                    wakeWord = state.word,
+                    wakeWordStatus = state.status,
+                    wakeWordLastResult = state.lastResult
+                ) }
+            }
+        }
     }
 
     fun onSelectModel(option: ModelOptionRow) {
@@ -56,4 +77,19 @@ class AssistantSettingsViewModel(
     fun onSelectToolLaunchTiming(timing: AssistantToolLaunchTiming) {
         viewModelScope.launch { settingsRepository.setAssistantToolLaunchTiming(timing) }
     }
+
+    fun onToggleWakeWord(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setWakeWordEnabled(enabled) }
+    }
+
+    fun onUpdateWakeWord(word: String) {
+        viewModelScope.launch { settingsRepository.setWakeWord(word) }
+    }
 }
+
+private data class AssistantSettingsWakeWordState(
+    val enabled: Boolean,
+    val word: String,
+    val status: WakeWordStatus,
+    val lastResult: String,
+)

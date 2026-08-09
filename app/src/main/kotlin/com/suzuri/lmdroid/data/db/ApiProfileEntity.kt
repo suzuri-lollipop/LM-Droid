@@ -32,6 +32,10 @@ data class ApiProfileEntity(
     // Preferred image dimensions for image generation providers.
     val imageWidth: Int? = null,
     val imageHeight: Int? = null,
+    // Only meaningful for PROVIDER_OPENAI_TTS — which model and voice to use for synthesis.
+    // Models: tts-1, tts-1-hd. Voices: alloy, echo, fable, onyx, nova, shimmer.
+    val openaiTtsModel: String? = null,
+    val openaiTtsVoice: String? = null,
 ) {
     companion object {
         const val PROVIDER_OPENAI_COMPATIBLE = "openai_compatible"
@@ -44,6 +48,9 @@ data class ApiProfileEntity(
         // http://127.0.0.1:50021 for VOICEVOX or :10101 for AivisSpeech). No API key: these are
         // unauthenticated local servers, so apiKeyCiphertext/apiKeyIv stay null.
         const val PROVIDER_VOICEVOX_COMPATIBLE = "voicevox_compatible"
+        // OpenAI's Text-to-Speech API — requires an API key and a model/voice choice.
+        // baseUrl points to https://api.openai.com/v1 by default.
+        const val PROVIDER_OPENAI_TTS = "openai_tts"
         // The official YouTube Data API v3 (just an API key, no OAuth) — used only to resolve the
         // "play_music" tool's free-text query to a specific video id (see YouTubeDataApiClient,
         // DeviceMusicController.prepareOpenYoutubeMusicTrack), since YouTube Music's own
@@ -64,5 +71,8 @@ data class ApiProfileEntity(
         // VOICEVOX-compatible profile, and used as a defensive fallback if one is ever missing
         // (e.g. an old import from before this field existed).
         const val DEFAULT_VOICEVOX_SPEAKER_ID = 2
+
+        const val DEFAULT_OPENAI_TTS_MODEL = "tts-1"
+        const val DEFAULT_OPENAI_TTS_VOICE = "alloy"
     }
 }

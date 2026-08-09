@@ -13,6 +13,7 @@ enum class SettingsRoute {
     BraveSearchProfile,
     VoicevoxProfile,
     YoutubeDataApiProfile,
+    OpenAiTtsProfile,
     System,
     WebSearch,
     Voice,
@@ -34,6 +35,7 @@ fun SettingsRoute.parent(): SettingsRoute? = when (this) {
     SettingsRoute.BraveSearchProfile -> SettingsRoute.ApiSettings
     SettingsRoute.VoicevoxProfile -> SettingsRoute.ApiSettings
     SettingsRoute.YoutubeDataApiProfile -> SettingsRoute.ApiSettings
+    SettingsRoute.OpenAiTtsProfile -> SettingsRoute.ApiSettings
     SettingsRoute.ImageGenerationProfile -> SettingsRoute.ApiSettings
     SettingsRoute.System -> SettingsRoute.Root
     SettingsRoute.WebSearch -> SettingsRoute.Root

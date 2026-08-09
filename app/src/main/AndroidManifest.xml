@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Only needed pre-scoped-storage (API ≤ 28) to save an attachment into the public Pictures
@@ -16,6 +17,11 @@
          clock app without its own confirmation screen (EXTRA_SKIP_UI). Normal (install-time)
          permission — no runtime request needed. -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Lets PackageManager list/resolve installed note-taking apps (Google Keep and others) for
          the "create_note" tool (Settings → メモ) without needing the broad QUERY_ALL_PACKAGES
@@ -48,6 +54,8 @@
     <application
         android:name=".LmDroidApplication"
         android:allowBackup="false"
+        android:pageSizeCompat="enabled"
+        tools:targetApi="36"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -89,6 +97,21 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".service.WakeWordService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <receiver
+            android:name=".service.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Grants other apps temporary read access to a picked attachment's file (share sheet,
              image clipboard paste) without exposing the app's whole private storage. -->

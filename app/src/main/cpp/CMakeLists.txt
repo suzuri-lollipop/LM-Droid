@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project("lmdroid_native")
 
+# Support 16 KB page alignment for all native libraries (Android 15+)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-z,max-page-size=16384")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,-z,max-page-size=16384")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
+
 # Set options for stable-diffusion.cpp BEFORE adding the subdirectory
 set(SD_BUILD_EXAMPLES OFF CACHE BOOL "sd: build examples" FORCE)
 set(SD_BUILD_TESTS OFF CACHE BOOL "sd: build tests" FORCE)
@@ -18,6 +23,9 @@ add_subdirectory(${SD_CPP_DIR})
 add_library(sd_jni SHARED
         sd_jni.cpp
 )
+
+# Explicitly force 16 KB page alignment for this target
+target_link_options(sd_jni PRIVATE "-Wl,-z,max-page-size=16384")
 
 # Include directories
 target_include_directories(sd_jni PRIVATE

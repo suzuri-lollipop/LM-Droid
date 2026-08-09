@@ -51,6 +51,16 @@ class ApiProfileRepository(
                 } else {
                     null
                 },
+                openaiTtsModel = if (providerType == ApiProfileEntity.PROVIDER_OPENAI_TTS) {
+                    ApiProfileEntity.DEFAULT_OPENAI_TTS_MODEL
+                } else {
+                    null
+                },
+                openaiTtsVoice = if (providerType == ApiProfileEntity.PROVIDER_OPENAI_TTS) {
+                    ApiProfileEntity.DEFAULT_OPENAI_TTS_VOICE
+                } else {
+                    null
+                },
             ),
         )
     }
@@ -77,6 +87,29 @@ class ApiProfileRepository(
                 name = name.ifBlank { existing.name },
                 baseUrl = baseUrl.ifBlank { existing.baseUrl },
                 voicevoxSpeakerId = speakerId,
+            ),
+        )
+    }
+
+    /** Specifically for OpenAI TTS profiles. */
+    suspend fun updateOpenAiTtsProfile(
+        id: Long,
+        name: String,
+        apiKey: String,
+        baseUrl: String,
+        model: String,
+        voice: String
+    ) {
+        val existing = apiProfileDao.getById(id) ?: return
+        val encrypted = apiKey.takeIf { it.isNotBlank() }?.let { cipher.encrypt(it) }
+        apiProfileDao.update(
+            existing.copy(
+                name = name.ifBlank { existing.name },
+                apiKeyCiphertext = encrypted?.ciphertextBase64,
+                apiKeyIv = encrypted?.ivBase64,
+                baseUrl = baseUrl.ifBlank { AppSettings.DEFAULT_BASE_URL },
+                openaiTtsModel = model,
+                openaiTtsVoice = voice,
             ),
         )
     }

@@ -48,6 +48,7 @@
     <string name="settings_openai_compatible_title">OpenAI Compatible</string>
     <string name="settings_brave_search_title">Brave Search</string>
     <string name="settings_voicevox_title">VOICEVOX互換</string>
+    <string name="settings_openai_tts_title">OpenAI TTS</string>
     <string name="settings_youtube_data_api_title">YouTube Data API</string>
     <string name="settings_image_generation_title">画像生成</string>
     <string name="settings_dashscope_title">Aliyun 百煉 (DashScope)</string>
@@ -117,6 +118,8 @@
     <string name="voice_profile_label">使用する音声</string>
     <string name="voice_on_device_option">この端末の音声合成を使う</string>
     <string name="voice_profile_empty_message">まだVOICEVOX互換のプロファイルがありません。「API設定」から追加してください。</string>
+    <string name="openai_tts_model_label">モデル</string>
+    <string name="openai_tts_voice_label">ボイス</string>
     <string name="voicevox_speaker_id_label">話者ID</string>
     <string name="voicevox_speaker_id_description">VOICEVOXやAivisSpeechの管理画面で確認できる話者(スピーカー)のIDを入力してください。</string>
 
@@ -173,6 +176,18 @@
     <string name="assistant_settings_tool_timing_description">メモやメッセージ送信などでアプリを開く操作を、返信の読み上げに対してどのタイミングで行うか</string>
     <string name="assistant_settings_tool_timing_while_speaking">読み上げをバックグラウンドで続けながら開く</string>
     <string name="assistant_settings_tool_timing_after_speaking">読み上げが終わってから開く</string>
+
+    <string name="settings_wake_word_title">ウェイクアップワード</string>
+    <string name="settings_wake_word_enable">ウェイクアップワードを有効にする</string>
+    <string name="settings_wake_word_description">有効にすると、バックグラウンドでマイクを監視し、設定した言葉を検知してアシスタントを自動起動します（バッテリー消費に影響します）。</string>
+    <string name="settings_wake_word_label">起動する言葉</string>
+    <string name="settings_wake_word_placeholder">例: エルエムドロイド</string>
+    <string name="settings_wake_word_hint">3〜5音節の、特徴的なひらがな・カタカナでの入力が安定します。</string>
+
+    <string name="wake_word_notification_channel">ウェイクアップワード監視</string>
+    <string name="wake_word_notification_description">ウェイクアップワードの検知に必要なバックグラウンド処理です。</string>
+    <string name="wake_word_notification_title">ウェイクアップワード待機中</string>
+    <string name="wake_word_notification_text">設定した言葉でアシスタントを起動できます</string>
 
     <string name="history_title">履歴</string>
     <string name="history_new_conversation">新しい会話</string>

@@ -268,6 +268,24 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs -> prefs[KEY_MUSIC_TOOL_ENABLED] = enabled }
     }
 
+    /** Whether the background wake word listener (WakeWordService) is active. */
+    val wakeWordEnabled: Flow<Boolean> = context.settingsDataStore.data.map { it[KEY_WAKE_WORD_ENABLED] ?: false }
+
+    suspend fun currentWakeWordEnabled(): Boolean = wakeWordEnabled.first()
+
+    suspend fun setWakeWordEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_WAKE_WORD_ENABLED] = enabled }
+    }
+
+    /** The phrase that triggers the assistant overlay — dynamic Vosk grammar means this can be anything, though localized guidance recommends 3-5 syllables for stability. */
+    val wakeWord: Flow<String> = context.settingsDataStore.data.map { it[KEY_WAKE_WORD] ?: "エルエムドロイド" }
+
+    suspend fun currentWakeWord(): String = wakeWord.first()
+
+    suspend fun setWakeWord(word: String) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_WAKE_WORD] = word }
+    }
+
     /** Which installed app's package name (see DeviceMusicController.installedMusicApps) the "play_music" tool targets directly — null lets the system resolve it itself (its own disambiguation dialog if more than one app can handle it and none is set as default). */
     val preferredMusicAppPackage: Flow<String?> = context.settingsDataStore.data.map { it[KEY_PREFERRED_MUSIC_APP_PACKAGE] }
 
@@ -363,5 +381,7 @@ class SettingsRepository(
         val KEY_MUSIC_TOOL_ENABLED = booleanPreferencesKey("music_tool_enabled")
         val KEY_PREFERRED_MUSIC_APP_PACKAGE = stringPreferencesKey("preferred_music_app_package")
         val KEY_SELECTED_YOUTUBE_DATA_API_PROFILE_ID = longPreferencesKey("selected_youtube_data_api_profile_id")
+        val KEY_WAKE_WORD_ENABLED = booleanPreferencesKey("wake_word_enabled")
+        val KEY_WAKE_WORD = stringPreferencesKey("wake_word")
     }
 }

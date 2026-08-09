@@ -15,6 +15,7 @@ import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.MessagingSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.MusicSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.NotesSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.OpenAiTtsProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsExportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsImportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsViewModel
@@ -57,6 +58,9 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
 
         modelClass.isAssignableFrom(VoicevoxProfileEditViewModel::class.java) ->
             VoicevoxProfileEditViewModel(container.apiProfileRepository, container.voicevoxCompatibleClient) as T
+
+        modelClass.isAssignableFrom(OpenAiTtsProfileEditViewModel::class.java) ->
+            OpenAiTtsProfileEditViewModel(container.apiProfileRepository, container.openAiTtsClient) as T
 
         modelClass.isAssignableFrom(VoiceSettingsViewModel::class.java) ->
             VoiceSettingsViewModel(container.settingsRepository, container.apiProfileRepository) as T

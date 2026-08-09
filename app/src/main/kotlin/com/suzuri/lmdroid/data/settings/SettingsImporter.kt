@@ -53,6 +53,8 @@ class SettingsImporter(
                     // this loop runs fast enough for currentTimeMillis() to repeat.
                     createdAt = baseProfileTime + index,
                     voicevoxSpeakerId = profile.voicevoxSpeakerId,
+                    openaiTtsModel = profile.openaiTtsModel,
+                    openaiTtsVoice = profile.openaiTtsVoice,
                 ),
             )
             profileIdMap[profile.id] = newId

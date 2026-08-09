@@ -10,7 +10,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,9 +20,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,9 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.settings.AssistantToolLaunchTiming
-
+import com.suzuri.lmdroid.service.WakeWordStatus
 /**
  * Settings → アシスタント: registers this app as the device's assist app, so the system assist
  * gesture opens AssistActivity. On Android 10+ this goes through RoleManager's system picker;
@@ -65,6 +72,7 @@ fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Mod
     Column(
         modifier = modifier
             .fillMaxSize()
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {
@@ -85,7 +93,7 @@ fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Mod
             onClick = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     val roleManager = context.getSystemService(RoleManager::class.java)
-                    if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_ASSISTANT)) {
+                    if ((roleManager != null) && roleManager.isRoleAvailable(RoleManager.ROLE_ASSISTANT)) {
                         roleRequestLauncher.launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT))
                     }
                 } else {
@@ -131,6 +139,86 @@ fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Mod
                 modifier = Modifier.clickable { viewModel.onSelectModel(option) },
             )
             HorizontalDivider()
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))
+
+        Text(
+            text = stringResource(R.string.settings_wake_word_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = stringResource(R.string.settings_wake_word_description),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.settings_wake_word_enable)) },
+            trailingContent = {
+                Switch(checked = uiState.wakeWordEnabled, onCheckedChange = viewModel::onToggleWakeWord)
+            },
+            modifier = Modifier.clickable { viewModel.onToggleWakeWord(!uiState.wakeWordEnabled) },
+        )
+
+        if (uiState.wakeWordEnabled) {
+            var wakeWordDraft by remember { mutableStateOf(uiState.wakeWord) }
+            LaunchedEffect(uiState.wakeWord) {
+                if (wakeWordDraft != uiState.wakeWord) {
+                    wakeWordDraft = uiState.wakeWord
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = wakeWordDraft,
+                onValueChange = {
+                    wakeWordDraft = it
+                    viewModel.onUpdateWakeWord(it)
+                },
+                label = { Text(stringResource(R.string.settings_wake_word_label)) },
+                placeholder = { Text(stringResource(R.string.settings_wake_word_placeholder)) },
+                supportingText = { Text(stringResource(R.string.settings_wake_word_hint)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(16.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = "Debug Info",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Status: ${
+                            when (uiState.wakeWordStatus) {
+                                is WakeWordStatus.Idle -> "Idle"
+                                is WakeWordStatus.LoadingModel -> "Loading Model..."
+                                is WakeWordStatus.Listening -> "Listening"
+                                is WakeWordStatus.Error -> "Error: ${(uiState.wakeWordStatus as WakeWordStatus.Error).message}"
+                            }
+                        }",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (uiState.wakeWordLastResult.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Last Result: ${uiState.wakeWordLastResult}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
 
         HorizontalDivider(modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))

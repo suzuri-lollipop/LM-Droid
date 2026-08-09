@@ -35,7 +35,10 @@ class VoiceSettingsViewModel(
                 settingsRepository.selectedTtsProfileId,
             ) { profiles, selectedId ->
                 profiles
-                    .filter { it.providerType == ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE }
+                    .filter {
+                        it.providerType == ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE ||
+                            it.providerType == ApiProfileEntity.PROVIDER_OPENAI_TTS
+                    }
                     .map { VoiceProfileOptionUiModel(id = it.id, name = it.name) } to selectedId
             }.collect { (profiles, selectedId) ->
                 _uiState.update { it.copy(profiles = profiles, selectedProfileId = selectedId) }

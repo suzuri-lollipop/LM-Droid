@@ -1,0 +1,20 @@
+- [x] `ApiProfileEntity.kt` に `PROVIDER_OPENAI_TTS` と新フィールドを追加
+- [x] `ApiProfileRepository.kt` に OpenAI TTS 用のロジックを追加
+- [x] `OpenAiTtsClient.kt` を作成
+- [x] `SettingsExporter.kt` / `SettingsImporter.kt` を更新
+- [x] `SettingsRoute.kt` にルートを追加
+- [x] `MainActivity.kt` で新画面をハンドル
+- [x] `ApiProfileListScreen.kt` のダイアログを更新
+- [x] `OpenAiTtsProfileEditViewModel.kt` を作成
+- [x] `OpenAiTtsProfileEditScreen.kt` を作成
+- [x] `VoiceSettingsViewModel.kt` を更新
+- [x] `AssistSpeechPlayer.kt` を更新
+- [x] `AppContainer.kt` を更新
+- [x] `ViewModelFactory.kt` を更新
+- [x] `strings.xml` に文字列を追加
+- [x] `AppDatabase.kt` のバージョンを 11 に上げ、スキーマ不一致によるクラッシュを修正
+- [x] `ApiModelDao.kt` のクエリを更新（チャット用モデルのフィルタリング）
+- [x] `OpenAiTtsClient.kt` に `listModels` / `listVoices` を追加
+- [x] `OpenAiTtsProfileEditViewModel.kt` に取得ロジックと状態を追加
+- [x] `OpenAiTtsProfileEditScreen.kt` を更新（直接入力・取得ボタン・ドロップダウン）
+- [x] `ViewModelFactory.kt` の修正

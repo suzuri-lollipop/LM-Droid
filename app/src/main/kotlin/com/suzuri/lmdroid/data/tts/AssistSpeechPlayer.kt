@@ -27,7 +27,9 @@ import kotlin.coroutines.resume
 class AssistSpeechPlayer(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
+    private val apiProfileRepository: com.suzuri.lmdroid.data.repository.ApiProfileRepository,
     private val voicevoxCompatibleClient: VoicevoxCompatibleClient,
+    private val openAiTtsClient: OpenAiTtsClient,
     private val onDeviceSpeechSynthesizer: OnDeviceSpeechSynthesizer,
 ) {
     // MediaPlayer is explicitly documented as not thread-safe, but this one gets touched from more
@@ -59,14 +61,37 @@ class AssistSpeechPlayer(
         if (spokenText.isBlank()) return null
 
         val profile = settingsRepository.currentTtsProfile() ?: return PreparedSpeech.OnDevice(spokenText)
-        val speakerId = profile.voicevoxSpeakerId ?: ApiProfileEntity.DEFAULT_VOICEVOX_SPEAKER_ID
-        val result = voicevoxCompatibleClient.synthesize(profile.baseUrl, spokenText, speakerId)
-        val audioBytes = result.getOrNull()
-        if (audioBytes == null) {
-            Log.w(TAG, "prepare: VOICEVOX-compatible synthesis failed, falling back to on-device voice", result.exceptionOrNull())
-            return PreparedSpeech.OnDevice(spokenText)
+        return when (profile.providerType) {
+            ApiProfileEntity.PROVIDER_OPENAI_TTS -> {
+                val apiKey = apiProfileRepository.decryptApiKey(profile)
+                if (apiKey == null) {
+                    Log.w(TAG, "prepare: No API key for OpenAI TTS, falling back to on-device voice")
+                    return PreparedSpeech.OnDevice(spokenText)
+                }
+                val model = profile.openaiTtsModel ?: ApiProfileEntity.DEFAULT_OPENAI_TTS_MODEL
+                val voice = profile.openaiTtsVoice ?: ApiProfileEntity.DEFAULT_OPENAI_TTS_VOICE
+                val result = openAiTtsClient.synthesize(apiKey, profile.baseUrl, model, voice, spokenText)
+                val audioBytes = result.getOrNull()
+                if (audioBytes == null) {
+                    Log.w(TAG, "prepare: OpenAI TTS synthesis failed, falling back to on-device voice", result.exceptionOrNull())
+                    PreparedSpeech.OnDevice(spokenText)
+                } else {
+                    PreparedSpeech.Wav(audioBytes)
+                }
+            }
+            ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE -> {
+                val speakerId = profile.voicevoxSpeakerId ?: ApiProfileEntity.DEFAULT_VOICEVOX_SPEAKER_ID
+                val result = voicevoxCompatibleClient.synthesize(profile.baseUrl, spokenText, speakerId)
+                val audioBytes = result.getOrNull()
+                if (audioBytes == null) {
+                    Log.w(TAG, "prepare: VOICEVOX-compatible synthesis failed, falling back to on-device voice", result.exceptionOrNull())
+                    PreparedSpeech.OnDevice(spokenText)
+                } else {
+                    PreparedSpeech.Wav(audioBytes)
+                }
+            }
+            else -> PreparedSpeech.OnDevice(spokenText)
         }
-        return PreparedSpeech.Wav(audioBytes)
     }
 
     /** Actually speaks a chunk [prepare] already did the slow work for — the part that must stay strictly sequential (see AssistViewModel's playback queue), since audio output can't overlap itself. */

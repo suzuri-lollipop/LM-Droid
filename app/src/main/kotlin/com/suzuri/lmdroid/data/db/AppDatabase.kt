@@ -14,7 +14,7 @@ import androidx.room.TypeConverters
         MessageAttachmentEntity::class,
         SystemPromptEntity::class,
     ],
-    version = 10,
+    version = 12,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

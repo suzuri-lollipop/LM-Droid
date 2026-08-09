@@ -74,6 +74,8 @@ import com.suzuri.lmdroid.ui.settings.MusicSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.NotesSettingsScreen
 import com.suzuri.lmdroid.ui.settings.NotesSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.OpenAiCompatibleScreen
+import com.suzuri.lmdroid.ui.settings.OpenAiTtsProfileEditScreen
+import com.suzuri.lmdroid.ui.settings.OpenAiTtsProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsExportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsImportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsRoute
@@ -142,6 +144,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val settingsViewModel: SettingsViewModel = viewModel(factory = viewModelFactory)
     val braveSearchProfileEditViewModel: BraveSearchProfileEditViewModel = viewModel(factory = viewModelFactory)
     val voicevoxProfileEditViewModel: VoicevoxProfileEditViewModel = viewModel(factory = viewModelFactory)
+    val openAiTtsProfileEditViewModel: OpenAiTtsProfileEditViewModel = viewModel(factory = viewModelFactory)
     val youtubeDataApiProfileEditViewModel: YoutubeDataApiProfileEditViewModel = viewModel(factory = viewModelFactory)
     val imageGenerationProfileEditViewModel: ImageGenerationProfileEditViewModel = viewModel(factory = viewModelFactory)
     val apiProfileListViewModel: ApiProfileListViewModel = viewModel(factory = viewModelFactory)
@@ -274,6 +277,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.OpenAiCompatible -> stringResource(R.string.settings_openai_compatible_title)
                                     SettingsRoute.BraveSearchProfile -> stringResource(R.string.settings_brave_search_title)
                                     SettingsRoute.VoicevoxProfile -> stringResource(R.string.settings_voicevox_title)
+                                    SettingsRoute.OpenAiTtsProfile -> stringResource(R.string.settings_openai_tts_title)
                                     SettingsRoute.YoutubeDataApiProfile -> stringResource(R.string.settings_youtube_data_api_title)
                                     SettingsRoute.ImageGenerationProfile -> stringResource(R.string.settings_image_generation_title)
                                     SettingsRoute.System -> stringResource(R.string.settings_system_category_title)
@@ -384,6 +388,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     settingsRoute = when (providerType) {
                                         ApiProfileEntity.PROVIDER_BRAVE_SEARCH -> SettingsRoute.BraveSearchProfile
                                         ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE -> SettingsRoute.VoicevoxProfile
+                                        ApiProfileEntity.PROVIDER_OPENAI_TTS -> SettingsRoute.OpenAiTtsProfile
                                         ApiProfileEntity.PROVIDER_YOUTUBE_DATA_API -> SettingsRoute.YoutubeDataApiProfile
                                         ApiProfileEntity.PROVIDER_DASHSCOPE,
                                         ApiProfileEntity.PROVIDER_STABLE_DIFFUSION,
@@ -420,6 +425,16 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                             if (id != null) {
                                 VoicevoxProfileEditScreen(
                                     viewModel = voicevoxProfileEditViewModel,
+                                    profileId = id,
+                                    modifier = Modifier.padding(innerPadding),
+                                )
+                            }
+                        }
+                        SettingsRoute.OpenAiTtsProfile -> {
+                            val id = editingProfileId
+                            if (id != null) {
+                                OpenAiTtsProfileEditScreen(
+                                    viewModel = openAiTtsProfileEditViewModel,
                                     profileId = id,
                                     modifier = Modifier.padding(innerPadding),
                                 )
