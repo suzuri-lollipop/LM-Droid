@@ -1,0 +1,8 @@
+- [x] アシスタント設定用 XML リソースの作成 (`assistant_service.xml`)
+- [x] `VoiceInteractionService` の実装 (`LmDroidVoiceInteractionService`)
+- [x] `VoiceInteractionSessionService` の実装 (`LmDroidVoiceInteractionSessionService`)
+- [x] `VoiceInteractionSession` の実装 (`LmDroidVoiceInteractionSession`)
+- [x] `AndroidManifest.xml` の更新
+- [x] 既存の `WakeWordService` との連携・調整
+- [x] 秘書機能の統合（VoiceInteractionServiceベースへの刷新完了）
+- [x] 動作確認

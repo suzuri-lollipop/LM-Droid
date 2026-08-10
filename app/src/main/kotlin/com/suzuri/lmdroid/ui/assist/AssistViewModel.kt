@@ -107,10 +107,12 @@ class AssistViewModel(
     }
 
     fun onPartialTranscript(text: String) {
+        if (_uiState.value.isStreaming) return
         _uiState.update { it.copy(transcript = text) }
     }
 
     fun onFinalTranscript(text: String) {
+        if (_uiState.value.isStreaming) return
         _uiState.update { it.copy(transcript = text) }
         if (text.isNotBlank()) {
             send(text)

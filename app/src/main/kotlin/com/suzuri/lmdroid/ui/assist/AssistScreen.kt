@@ -41,7 +41,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,13 +59,14 @@ import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.model.rememberMarkdownState
 import com.suzuri.lmdroid.R
-import com.suzuri.lmdroid.ui.chat.components.rememberVoiceInputState
+import com.suzuri.lmdroid.ui.chat.components.rememberLocalVoiceInputState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import kotlinx.coroutines.delay
 
 /**
  * The overlay shown by AssistActivity (launched via the system assist gesture — see
@@ -85,26 +88,40 @@ fun AssistScreen(
     val voiceUnavailableMessage = stringResource(R.string.chat_voice_input_unavailable)
     val voicePermissionDeniedMessage = stringResource(R.string.chat_voice_input_permission_denied)
 
-    val voiceInputState = rememberVoiceInputState(
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val voiceInputState = rememberLocalVoiceInputState(
         onResult = viewModel::onFinalTranscript,
         onPartialResult = viewModel::onPartialTranscript,
         onError = viewModel::onListeningError,
     )
 
-    fun hasRecordAudioPermission() =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    // Tracks whether we've attempted to start listening since the last trigger/reset.
+    // Used to avoid showing "not detected" during the initial stabilization delay.
+    var hasStartedListening by remember(uiState.triggerCount) { mutableStateOf(false) }
+
+    fun beginListening() {
+        hasStartedListening = true
+        when {
+            !voiceInputState.isAvailable -> viewModel.onListeningError(voiceUnavailableMessage)
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> voiceInputState.start(scope)
+            else -> {} // Handled by permission launcher
+        }
+    }
 
     val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted) voiceInputState.start() else viewModel.onListeningError(voicePermissionDeniedMessage)
+        if (granted) beginListening() else viewModel.onListeningError(voicePermissionDeniedMessage)
     }
 
-    fun beginListening() {
-        when {
-            !voiceInputState.isAvailable -> viewModel.onListeningError(voiceUnavailableMessage)
-            hasRecordAudioPermission() -> voiceInputState.start()
-            else -> recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    // Re-check permission and launch either recognition or permission request
+    fun requestOrStartListening() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            beginListening()
+        } else if (voiceInputState.isAvailable) {
+            recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        } else {
+            viewModel.onListeningError(voiceUnavailableMessage)
         }
     }
 
@@ -112,7 +129,10 @@ fun AssistScreen(
     // into listening without also having to tap a mic button first.
     // We react to uiState.triggerCount so that subsequent external triggers (e.g. earphone button)
     // while the overlay is already open will restart the listening process.
-    LaunchedEffect(uiState.triggerCount) { beginListening() }
+    LaunchedEffect(uiState.triggerCount) {
+        delay(300)
+        requestOrStartListening()
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -207,6 +227,7 @@ fun AssistScreen(
                         else -> {
                             AssistConversationContent(
                                 isListening = voiceInputState.isListening,
+                                isStarted = hasStartedListening,
                                 isStreaming = uiState.isStreaming,
                                 transcript = uiState.transcript,
                                 hasSent = uiState.hasSent,
@@ -215,7 +236,7 @@ fun AssistScreen(
                                 markdownEnabled = uiState.markdownEnabled,
                                 onMicClick = {
                                     viewModel.onAskFollowUp()
-                                    beginListening()
+                                    requestOrStartListening()
                                 },
                             )
 
@@ -238,6 +259,7 @@ fun AssistScreen(
 @Composable
 private fun AssistConversationContent(
     isListening: Boolean,
+    isStarted: Boolean,
     isStreaming: Boolean,
     transcript: String,
     hasSent: Boolean,
@@ -265,6 +287,9 @@ private fun AssistConversationContent(
                     text = when {
                         transcript.isNotBlank() -> transcript
                         isListening -> stringResource(R.string.assist_listening_hint)
+                        // If we haven't even attempted to listen yet (during the initial delay),
+                        // show the hint instead of "not detected".
+                        !isStarted -> stringResource(R.string.assist_listening_hint)
                         else -> stringResource(R.string.assist_no_speech_detected)
                     },
                     style = MaterialTheme.typography.bodyLarge,

@@ -1,0 +1,5 @@
+- [x] `strings.xml` にローカライズされたエラーメッセージを追加
+- [x] `VoiceInput.kt` を更新して `LocalVoiceInputState` で日本語エラーを返すように修正
+- [x] `AssistScreen.kt` にマイク安定化のための遅延を追加
+- [x] `LmDroidVoiceInteractionSession.kt` にウェイクアップワードの一時停止/再開処理を追加
+- [x] 動作確認（ビルド確認および必要に応じた修正）

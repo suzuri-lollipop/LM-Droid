@@ -1,0 +1,3 @@
+- [x] `VoiceInput.kt` の `LocalVoiceInputState` を修正し、確定結果が得られたら自動停止するようにする
+- [x] `AssistViewModel.kt` に応答中の入力ガードを追加する
+- [x] 動作確認

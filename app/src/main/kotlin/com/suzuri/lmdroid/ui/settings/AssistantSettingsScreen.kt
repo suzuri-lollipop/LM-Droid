@@ -1,13 +1,16 @@
 package com.suzuri.lmdroid.ui.settings
 
+import android.Manifest
 import android.app.role.RoleManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,11 +35,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.core.content.ContextCompat
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.settings.AssistantToolLaunchTiming
 import com.suzuri.lmdroid.service.WakeWordStatus
@@ -67,6 +72,22 @@ fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Mod
         ActivityResultContracts.StartActivityForResult(),
     ) {
         roleHeld = isRoleHeld()
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results[Manifest.permission.RECORD_AUDIO] == true) {
+            viewModel.onToggleWakeWord(true)
+        }
+    }
+
+    fun requestWakeWordPermissions() {
+        val permissions = mutableListOf(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        permissionLauncher.launch(permissions.toTypedArray())
     }
 
     Column(
@@ -158,9 +179,35 @@ fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Mod
         ListItem(
             headlineContent = { Text(stringResource(R.string.settings_wake_word_enable)) },
             trailingContent = {
-                Switch(checked = uiState.wakeWordEnabled, onCheckedChange = viewModel::onToggleWakeWord)
+                Switch(
+                    checked = uiState.wakeWordEnabled,
+                    onCheckedChange = { enabled ->
+                        if (enabled) {
+                            val hasMic = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                            if (hasMic) {
+                                viewModel.onToggleWakeWord(true)
+                            } else {
+                                requestWakeWordPermissions()
+                            }
+                        } else {
+                            viewModel.onToggleWakeWord(false)
+                        }
+                    }
+                )
             },
-            modifier = Modifier.clickable { viewModel.onToggleWakeWord(!uiState.wakeWordEnabled) },
+            modifier = Modifier.clickable {
+                val target = !uiState.wakeWordEnabled
+                if (target) {
+                    val hasMic = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                    if (hasMic) {
+                        viewModel.onToggleWakeWord(true)
+                    } else {
+                        requestWakeWordPermissions()
+                    }
+                } else {
+                    viewModel.onToggleWakeWord(false)
+                }
+            },
         )
 
         if (uiState.wakeWordEnabled) {
@@ -174,16 +221,22 @@ fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Mod
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = wakeWordDraft,
-                onValueChange = {
-                    wakeWordDraft = it
-                    viewModel.onUpdateWakeWord(it)
-                },
+                onValueChange = { wakeWordDraft = it },
                 label = { Text(stringResource(R.string.settings_wake_word_label)) },
                 placeholder = { Text(stringResource(R.string.settings_wake_word_placeholder)) },
                 supportingText = { Text(stringResource(R.string.settings_wake_word_hint)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = { viewModel.onUpdateWakeWord(wakeWordDraft) },
+                enabled = wakeWordDraft.isNotBlank() && wakeWordDraft != uiState.wakeWord,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text(stringResource(R.string.settings_save))
+            }
 
             Spacer(Modifier.height(16.dp))
             Surface(
@@ -204,6 +257,7 @@ fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Mod
                                 is WakeWordStatus.Idle -> "Idle"
                                 is WakeWordStatus.LoadingModel -> "Loading Model..."
                                 is WakeWordStatus.Listening -> "Listening"
+                                is WakeWordStatus.Paused -> "Paused (Assistant active)"
                                 is WakeWordStatus.Error -> "Error: ${(uiState.wakeWordStatus as WakeWordStatus.Error).message}"
                             }
                         }",

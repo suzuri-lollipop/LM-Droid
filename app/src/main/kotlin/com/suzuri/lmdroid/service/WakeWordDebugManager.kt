@@ -28,5 +28,6 @@ sealed class WakeWordStatus {
     object Idle : WakeWordStatus()
     object LoadingModel : WakeWordStatus()
     object Listening : WakeWordStatus()
+    object Paused : WakeWordStatus()
     data class Error(val message: String) : WakeWordStatus()
 }
