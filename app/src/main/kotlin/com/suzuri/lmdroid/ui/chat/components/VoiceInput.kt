@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Bundle
@@ -22,12 +23,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
 import com.suzuri.lmdroid.LmDroidApplication
+import com.suzuri.lmdroid.data.settings.SettingsRepository
+import com.suzuri.lmdroid.data.stt.SpeechEngineType
+import com.suzuri.lmdroid.data.stt.SpeechModel
+import com.suzuri.lmdroid.data.stt.SpeechModelManager
+import com.suzuri.lmdroid.data.stt.WhisperEngine
+import com.suzuri.lmdroid.data.vosk.VoskEngine
 import com.suzuri.lmdroid.data.vosk.VoskRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import org.json.JSONObject
-import org.vosk.Recognizer
 import java.util.Locale
 
 /**
@@ -58,11 +63,13 @@ class VoiceInputState internal constructor(private val recognizer: SpeechRecogni
 }
 
 /**
- * Local version of VoiceInputState that uses Vosk for on-device recognition.
+ * Local version of VoiceInputState that uses on-device recognition (Vosk or Whisper).
  */
 class LocalVoiceInputState(
     private val context: Context,
+    private val settingsRepository: SettingsRepository,
     private val voskRepository: VoskRepository,
+    private val speechModelManager: SpeechModelManager,
     private val onResult: (String) -> Unit,
     private val onPartialResult: (String) -> Unit,
     private val onError: (String) -> Unit,
@@ -71,6 +78,7 @@ class LocalVoiceInputState(
         private set
 
     private var job: Job? = null
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     val isAvailable: Boolean get() = true
 
@@ -79,13 +87,42 @@ class LocalVoiceInputState(
         isListening = true
         job = scope.launch(Dispatchers.IO) {
             try {
-                val model = voskRepository.getModel() ?: run {
+                val modelId = settingsRepository.currentSelectedSttModelId()
+                val speechModel = SpeechModel.ALL_MODELS.find { it.id == modelId } ?: SpeechModel.VOSK_SMALL_JP
+
+                if (!speechModelManager.isModelAvailable(speechModel)) {
                     launch(Dispatchers.Main) { onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error_model)) }
                     isListening = false
                     return@launch
                 }
+
+                val engine = when (speechModel.engineType) {
+                    SpeechEngineType.VOSK -> {
+                        val model = voskRepository.getModel(speechModel) ?: run {
+                            launch(Dispatchers.Main) { onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error_model)) }
+                            isListening = false
+                            return@launch
+                        }
+                        VoskEngine(model)
+                    }
+                    SpeechEngineType.WHISPER -> {
+                        val modelFile = speechModelManager.getModelDir(speechModel)
+                        if (!modelFile.exists()) {
+                            launch(Dispatchers.Main) { onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error_model)) }
+                            isListening = false
+                            return@launch
+                        }
+                        WhisperEngine(modelFile.absolutePath)
+                    }
+                }
                 
-                val recognizer = Recognizer(model, 16000.0f)
+                // Start Bluetooth SCO if available
+                if (audioManager.isBluetoothScoAvailableOffCall) {
+                    Log.d("LocalVoiceInput", "Starting Bluetooth SCO for UI listening")
+                    audioManager.startBluetoothSco()
+                    audioManager.isBluetoothScoOn = true
+                }
+
                 val bufferSize = 8000
                 val minBufSize = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
                 
@@ -110,14 +147,14 @@ class LocalVoiceInputState(
                     while (isListening) {
                         val read = recorder.read(buffer, 0, buffer.size)
                         if (read > 0) {
-                            if (recognizer.acceptWaveForm(buffer, read)) {
-                                val result = JSONObject(recognizer.result).getString("text")
+                            if (engine.acceptAudio(buffer, read)) {
+                                val result = engine.getResult()
                                 if (result.isNotBlank()) {
                                     launch(Dispatchers.Main) { onResult(result) }
                                     isListening = false // Stop after a final result
                                 }
                             } else {
-                                val partial = JSONObject(recognizer.partialResult).getString("partial")
+                                val partial = engine.getPartialResult()
                                 if (partial.isNotBlank()) {
                                     launch(Dispatchers.Main) { onPartialResult(partial) }
                                 }
@@ -125,9 +162,14 @@ class LocalVoiceInputState(
                         }
                     }
                 } finally {
+                    if (audioManager.isBluetoothScoOn) {
+                        Log.d("LocalVoiceInput", "Stopping Bluetooth SCO")
+                        audioManager.stopBluetoothSco()
+                        audioManager.isBluetoothScoOn = false
+                    }
                     recorder.stop()
                     recorder.release()
-                    recognizer.close()
+                    engine.release()
                 }
             } catch (e: Exception) {
                 Log.e("LocalVoiceInput", "Recognition error", e)
@@ -223,7 +265,10 @@ fun rememberLocalVoiceInputState(
     onPartialResult: (String) -> Unit = {},
 ): LocalVoiceInputState {
     val context = LocalContext.current
-    val voskRepository = (context.applicationContext as LmDroidApplication).container.voskRepository
+    val container = (context.applicationContext as LmDroidApplication).container
+    val voskRepository = container.voskRepository
+    val settingsRepository = container.settingsRepository
+    val speechModelManager = container.speechModelManager
     
     val currentOnResult by rememberUpdatedState(onResult)
     val currentOnError by rememberUpdatedState(onError)
@@ -232,10 +277,12 @@ fun rememberLocalVoiceInputState(
     val state = remember {
         LocalVoiceInputState(
             context = context,
+            settingsRepository = settingsRepository,
             voskRepository = voskRepository,
+            speechModelManager = speechModelManager,
             onResult = { currentOnResult(it) },
             onPartialResult = { currentOnPartialResult(it) },
-            onError = { currentOnError(it) }
+            onError = { currentOnError(it) },
         )
     }
 

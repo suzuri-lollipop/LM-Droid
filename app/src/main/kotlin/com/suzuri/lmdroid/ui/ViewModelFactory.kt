@@ -63,7 +63,7 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
             OpenAiTtsProfileEditViewModel(container.apiProfileRepository, container.openAiTtsClient) as T
 
         modelClass.isAssignableFrom(VoiceSettingsViewModel::class.java) ->
-            VoiceSettingsViewModel(container.settingsRepository, container.apiProfileRepository) as T
+            VoiceSettingsViewModel(container.settingsRepository, container.apiProfileRepository, container.speechModelManager) as T
 
         modelClass.isAssignableFrom(HistoryViewModel::class.java) ->
             HistoryViewModel(container.conversationRepository) as T

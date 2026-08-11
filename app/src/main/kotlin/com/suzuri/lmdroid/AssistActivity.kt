@@ -24,6 +24,7 @@ class AssistActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d("AssistActivity", "onCreate: intent=$intent")
         Log.d("AssistActivity", "onCreate: Pausing wake word")
         sendBroadcast(Intent(WakeWordService.ACTION_PAUSE))
 
@@ -48,6 +49,7 @@ class AssistActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        Log.d("AssistActivity", "onNewIntent: intent=$intent")
         Log.d("AssistActivity", "onNewIntent: Pausing wake word (just in case)")
         sendBroadcast(Intent(WakeWordService.ACTION_PAUSE))
         // If the activity is already on screen, singleInstance means it won't be recreated.

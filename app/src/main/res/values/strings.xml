@@ -204,4 +204,12 @@
     <string name="history_delete_folder">このフォルダを削除</string>
     <string name="history_move_to_folder">フォルダに追加</string>
     <string name="history_no_folder">フォルダなし</string>
+
+    <string name="settings_stt_category_title">音声認識 (STT)</string>
+    <string name="stt_model_label">使用するモデル</string>
+    <string name="stt_model_download">ダウンロード</string>
+    <string name="stt_model_downloading">ダウンロード中… (%d%%)</string>
+    <string name="stt_model_delete">削除</string>
+    <string name="stt_model_bundled">同梱</string>
+    <string name="stt_model_download_failed">ダウンロードに失敗しました</string>
 </resources>

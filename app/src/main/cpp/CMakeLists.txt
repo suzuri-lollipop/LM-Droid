@@ -24,13 +24,25 @@ add_library(sd_jni SHARED
         sd_jni.cpp
 )
 
-# Explicitly force 16 KB page alignment for this target
+# Define the Whisper JNI library
+add_library(whisper_jni SHARED
+        whisper.cpp
+        whisper_jni.cpp
+)
+
+# Explicitly force 16 KB page alignment for these targets
 target_link_options(sd_jni PRIVATE "-Wl,-z,max-page-size=16384")
+target_link_options(whisper_jni PRIVATE "-Wl,-z,max-page-size=16384")
 
 # Include directories
 target_include_directories(sd_jni PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${SD_CPP_DIR}/include
+)
+
+target_include_directories(whisper_jni PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${SD_CPP_DIR}/ggml/include
 )
 
 # Link against Android libraries and stable-diffusion
@@ -41,4 +53,9 @@ target_link_libraries(sd_jni
         stable-diffusion
         ${log-lib}
         ${jnigraphics-lib}
+)
+
+target_link_libraries(whisper_jni
+        ggml
+        ${log-lib}
 )

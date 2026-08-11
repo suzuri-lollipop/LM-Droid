@@ -286,6 +286,15 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs -> prefs[KEY_WAKE_WORD] = word }
     }
 
+    /** Which speech recognition model is used for voice input. */
+    val selectedSttModelId: Flow<String> = context.settingsDataStore.data.map { it[KEY_SELECTED_STT_MODEL_ID] ?: "vosk-jp-small" }
+
+    suspend fun currentSelectedSttModelId(): String = selectedSttModelId.first()
+
+    suspend fun setSelectedSttModelId(id: String) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_SELECTED_STT_MODEL_ID] = id }
+    }
+
     /** Which installed app's package name (see DeviceMusicController.installedMusicApps) the "play_music" tool targets directly — null lets the system resolve it itself (its own disambiguation dialog if more than one app can handle it and none is set as default). */
     val preferredMusicAppPackage: Flow<String?> = context.settingsDataStore.data.map { it[KEY_PREFERRED_MUSIC_APP_PACKAGE] }
 
@@ -383,5 +392,6 @@ class SettingsRepository(
         val KEY_SELECTED_YOUTUBE_DATA_API_PROFILE_ID = longPreferencesKey("selected_youtube_data_api_profile_id")
         val KEY_WAKE_WORD_ENABLED = booleanPreferencesKey("wake_word_enabled")
         val KEY_WAKE_WORD = stringPreferencesKey("wake_word")
+        val KEY_SELECTED_STT_MODEL_ID = stringPreferencesKey("selected_stt_model_id")
     }
 }

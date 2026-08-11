@@ -12,6 +12,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
@@ -24,6 +25,7 @@ import com.suzuri.lmdroid.AssistActivity
 import com.suzuri.lmdroid.LmDroidApplication
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.settings.SettingsRepository
+import com.suzuri.lmdroid.data.stt.SpeechModel
 import com.suzuri.lmdroid.data.vosk.VoskRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +55,7 @@ class WakeWordService : Service() {
 
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var voskRepository: VoskRepository
+    private lateinit var audioManager: AudioManager
 
     private var isPausedByAssistant = false
 
@@ -83,6 +86,7 @@ class WakeWordService : Service() {
         val container = (application as LmDroidApplication).container
         settingsRepository = container.settingsRepository
         voskRepository = container.voskRepository
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         createNotificationChannel()
 
         val filter = IntentFilter().apply {
@@ -128,7 +132,7 @@ class WakeWordService : Service() {
             try {
                 if (model == null) {
                     WakeWordDebugManager.updateStatus(WakeWordStatus.LoadingModel)
-                    model = voskRepository.getModel()
+                    model = voskRepository.getModel(SpeechModel.VOSK_SMALL_JP)
                 }
                 val m = model ?: return@launch
 
@@ -148,6 +152,13 @@ class WakeWordService : Service() {
                         return@launch
                     }
                     
+                    // Start Bluetooth SCO if a headset is connected
+                    if (audioManager.isBluetoothScoAvailableOffCall) {
+                        Log.d(TAG, "Starting Bluetooth SCO for background listening")
+                        audioManager.startBluetoothSco()
+                        audioManager.isBluetoothScoOn = true
+                    }
+
                     val recorder = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minBufSize.coerceAtLeast(bufferSize))
 
                     if (recorder.state != AudioRecord.STATE_INITIALIZED) {
@@ -176,6 +187,11 @@ class WakeWordService : Service() {
                         }
                         recorder.stop()
                     } finally {
+                        if (audioManager.isBluetoothScoOn) {
+                            Log.d(TAG, "Stopping Bluetooth SCO")
+                            audioManager.stopBluetoothSco()
+                            audioManager.isBluetoothScoOn = false
+                        }
                         recorder.release()
                     }
                 } finally {

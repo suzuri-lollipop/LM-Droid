@@ -29,6 +29,7 @@ import com.suzuri.lmdroid.data.tts.AssistSpeechPlayer
 import com.suzuri.lmdroid.data.tts.OnDeviceSpeechSynthesizer
 import com.suzuri.lmdroid.data.tts.OpenAiTtsClient
 import com.suzuri.lmdroid.data.tts.VoicevoxCompatibleClient
+import com.suzuri.lmdroid.data.stt.SpeechModelManager
 import com.suzuri.lmdroid.data.vosk.VoskRepository
 import com.suzuri.lmdroid.data.websearch.BraveSearchClient
 import com.suzuri.lmdroid.data.websearch.WebPageFetcher
@@ -88,6 +89,8 @@ class AppContainer(context: Context) {
     val settingsImporter = SettingsImporter(database.apiProfileDao(), database.apiModelDao(), database.systemPromptDao(), settingsRepository)
 
     val openAiApiClient = OpenAiApiClient(okHttpClient, json)
+
+    val speechModelManager = SpeechModelManager(appContext, okHttpClient)
 
     val voskRepository = VoskRepository(appContext)
 

@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.settings.SettingsRepository
+import com.suzuri.lmdroid.data.stt.SpeechModel
+import com.suzuri.lmdroid.data.stt.SpeechModelManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +25,7 @@ import kotlinx.coroutines.launch
 class VoiceSettingsViewModel(
     private val settingsRepository: SettingsRepository,
     private val apiProfileRepository: ApiProfileRepository,
+    private val speechModelManager: SpeechModelManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(VoiceSettingsUiState())
@@ -33,15 +36,28 @@ class VoiceSettingsViewModel(
             combine(
                 apiProfileRepository.observeProfiles(),
                 settingsRepository.selectedTtsProfileId,
-            ) { profiles, selectedId ->
-                profiles
+                settingsRepository.selectedSttModelId,
+            ) { profiles, selectedTtsId, selectedSttId ->
+                val ttsProfiles = profiles
                     .filter {
                         it.providerType == ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE ||
                             it.providerType == ApiProfileEntity.PROVIDER_OPENAI_TTS
                     }
-                    .map { VoiceProfileOptionUiModel(id = it.id, name = it.name) } to selectedId
-            }.collect { (profiles, selectedId) ->
-                _uiState.update { it.copy(profiles = profiles, selectedProfileId = selectedId) }
+                    .map { VoiceProfileOptionUiModel(id = it.id, name = it.name) }
+                
+                Triple(ttsProfiles, selectedTtsId, selectedSttId)
+            }.collect { (ttsProfiles, selectedTtsId, selectedSttId) ->
+                _uiState.update { it.copy(
+                    profiles = ttsProfiles, 
+                    selectedProfileId = selectedTtsId,
+                    selectedSttModelId = selectedSttId,
+                    sttModels = SpeechModel.ALL_MODELS.map { model ->
+                        SpeechModelUiModel(
+                            model = model,
+                            isAvailable = speechModelManager.isModelAvailable(model),
+                        )
+                    }
+                ) }
             }
         }
     }
@@ -53,5 +69,62 @@ class VoiceSettingsViewModel(
 
     fun onSelectProfile(id: Long) {
         viewModelScope.launch { settingsRepository.setSelectedTtsProfileId(id) }
+    }
+
+    fun onSelectSttModel(id: String) {
+        viewModelScope.launch { settingsRepository.setSelectedSttModelId(id) }
+    }
+
+    fun onDownloadModel(model: SpeechModel) {
+        viewModelScope.launch {
+            _uiState.update { state ->
+                state.copy(
+                    sttModels = state.sttModels.map { 
+                        if (it.model.id == model.id) it.copy(isDownloading = true, progress = 0f) else it 
+                    },
+                    downloadError = null
+                )
+            }
+
+            val result = speechModelManager.downloadModel(model) { progress ->
+                _uiState.update { state ->
+                    state.copy(
+                        sttModels = state.sttModels.map {
+                            if (it.model.id == model.id) it.copy(progress = progress) else it
+                        }
+                    )
+                }
+            }
+
+            if (result.isSuccess) {
+                _uiState.update { state ->
+                    state.copy(
+                        sttModels = state.sttModels.map {
+                            if (it.model.id == model.id) it.copy(isDownloading = false, isAvailable = true) else it
+                        }
+                    )
+                }
+            } else {
+                _uiState.update { state ->
+                    state.copy(
+                        sttModels = state.sttModels.map {
+                            if (it.model.id == model.id) it.copy(isDownloading = false) else it
+                        },
+                        downloadError = result.exceptionOrNull()?.message ?: "Download failed"
+                    )
+                }
+            }
+        }
+    }
+
+    fun onDeleteModel(model: SpeechModel) {
+        speechModelManager.deleteModel(model)
+        _uiState.update { state ->
+            state.copy(
+                sttModels = state.sttModels.map {
+                    if (it.model.id == model.id) it.copy(isAvailable = false) else it
+                }
+            )
+        }
     }
 }

@@ -22,6 +22,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!-- Lets PackageManager list/resolve installed note-taking apps (Google Keep and others) for
          the "create_note" tool (Settings → メモ) without needing the broad QUERY_ALL_PACKAGES
@@ -90,10 +93,12 @@
             android:launchMode="singleInstance"
             android:taskAffinity=""
             android:theme="@style/Theme.LmDroid.Assist">
-            <intent-filter>
+            <intent-filter android:priority="2147483647">
                 <action android:name="android.intent.action.ASSIST" />
                 <action android:name="android.intent.action.VOICE_COMMAND" />
                 <action android:name="android.intent.action.SEARCH_LONG_PRESS" />
+                <action android:name="android.speech.action.WEB_SEARCH" />
+                <action android:name="android.speech.action.VOICE_SEARCH_HANDS_FREE" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
@@ -139,6 +144,15 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".service.MediaButtonReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </receiver>
 
