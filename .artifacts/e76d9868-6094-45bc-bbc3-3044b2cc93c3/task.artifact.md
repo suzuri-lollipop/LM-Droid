@@ -1,0 +1,7 @@
+- `[ ]` Implement asynchronous inference in `WhisperEngine.kt`
+    - `[ ]` Add `CoroutineScope` and `Job` management
+    - `[ ]` Implement periodic partial inference during speech
+    - `[ ]` Add thread safety for Whisper context access
+- `[ ]` Update `VoiceInput.kt` to handle potentially delayed final results if necessary (though the current interface might suffice)
+- `[ ]` Verify build and basic functionality
+- `[ ]` Test with different Whisper models

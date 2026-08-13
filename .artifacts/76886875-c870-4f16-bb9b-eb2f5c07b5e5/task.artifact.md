@@ -1,0 +1,4 @@
+- [ ] Implement pseudo-partial results and lower threshold in `WhisperEngine.kt`
+- [ ] Add robust error handling and status checks in `VoiceInput.kt`
+- [ ] Add debug logging to `whisper_jni.cpp`
+- [ ] Verify changes via Logcat and manual testing
