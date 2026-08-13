@@ -33,10 +33,14 @@ extern "C"
 JNIEXPORT jint JNICALL
 Java_com_suzuri_lmdroid_data_stt_WhisperNative_full(JNIEnv *env, jobject thiz, jlong context, jfloatArray samples) {
     struct whisper_context * ctx = reinterpret_cast<struct whisper_context *>(context);
-    if (!ctx) return -1;
+    if (!ctx) {
+        LOGE("Whisper context is null in full()");
+        return -1;
+    }
 
     jfloat *pcm = env->GetFloatArrayElements(samples, nullptr);
     jsize len = env->GetArrayLength(samples);
+    LOGD("Running inference on %d samples", len);
 
     struct whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
     params.n_threads = 4;
@@ -46,6 +50,7 @@ Java_com_suzuri_lmdroid_data_stt_WhisperNative_full(JNIEnv *env, jobject thiz, j
     int ret = whisper_full(ctx, params, pcm, len);
 
     env->ReleaseFloatArrayElements(samples, pcm, JNI_ABORT);
+    LOGD("Inference finished with code %d", ret);
 
     return ret;
 }

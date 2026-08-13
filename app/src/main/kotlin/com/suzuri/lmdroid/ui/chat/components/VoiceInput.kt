@@ -115,6 +115,12 @@ class LocalVoiceInputState(
                         WhisperEngine(modelFile.absolutePath)
                     }
                 }
+
+                if (!engine.isReady) {
+                    launch(Dispatchers.Main) { onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error)) }
+                    isListening = false
+                    return@launch
+                }
                 
                 // Start Bluetooth SCO if available
                 if (audioManager.isBluetoothScoAvailableOffCall) {
@@ -149,9 +155,11 @@ class LocalVoiceInputState(
                         if (read > 0) {
                             if (engine.acceptAudio(buffer, read)) {
                                 val result = engine.getResult()
-                                if (result.isNotBlank()) {
-                                    launch(Dispatchers.Main) { onResult(result) }
-                                    isListening = false // Stop after a final result
+                                launch(Dispatchers.Main) { 
+                                    if (result.isNotBlank()) {
+                                        onResult(result) 
+                                    }
+                                    isListening = false // Stop on any final result (including empty)
                                 }
                             } else {
                                 val partial = engine.getPartialResult()
@@ -171,9 +179,16 @@ class LocalVoiceInputState(
                     recorder.release()
                     engine.release()
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e("LocalVoiceInput", "Recognition error", e)
-                launch(Dispatchers.Main) { onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error)) }
+                launch(Dispatchers.Main) { 
+                    val errorMsg = if (e is UnsatisfiedLinkError) {
+                        "Native library failed to load. Please try restarting the app."
+                    } else {
+                        context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error)
+                    }
+                    onError(errorMsg) 
+                }
             } finally {
                 launch(Dispatchers.Main) { isListening = false }
             }
