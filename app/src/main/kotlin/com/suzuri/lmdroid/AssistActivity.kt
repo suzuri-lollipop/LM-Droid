@@ -62,5 +62,8 @@ class AssistActivity : ComponentActivity() {
         super.onDestroy()
         Log.d("AssistActivity", "onDestroy: Resuming wake word")
         sendBroadcast(Intent(WakeWordService.ACTION_RESUME))
+        // Belt-and-suspenders on top of AssistViewModel.onCleared: guarantees a reply whose
+        // audio hadn't started yet can never begin speaking after the overlay is gone.
+        ((application as LmDroidApplication).container).assistSpeechPlayer.stop()
     }
 }
