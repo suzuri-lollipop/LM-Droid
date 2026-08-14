@@ -47,4 +47,16 @@ class AssistViewModelTest {
 
         assertEquals("完成した文。".length, boundary)
     }
+
+    @Test
+    fun `keeps the spoken progress while the content is still growing`() {
+        assertEquals(6, adjustedSpokenIndex(6, "確認しますね。今日は"))
+        assertEquals(6, adjustedSpokenIndex(6, "確認しますね。"))
+    }
+
+    @Test
+    fun `restarts from zero when a tool round discarded the preamble and the content shrank`() {
+        assertEquals(0, adjustedSpokenIndex(12, ""))
+        assertEquals(0, adjustedSpokenIndex(12, "晴れです。"))
+    }
 }

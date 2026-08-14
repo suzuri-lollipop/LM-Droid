@@ -40,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -60,6 +61,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.model.rememberMarkdownState
@@ -116,11 +120,33 @@ fun AssistScreen(
         onError = viewModel::onListeningError,
     )
 
+    // Stop recognition the moment the overlay leaves the foreground (home gesture, another
+    // activity on top, ...): Whisper's final inference lands a few seconds after the utterance
+    // ends, and a result delivered while the overlay is hidden would still be auto-sent — the
+    // "previous input got sent in the background and started speaking" bug. Both hosts drive
+    // real lifecycle events: AssistActivity is a regular ComponentActivity, and
+    // LmDroidVoiceInteractionSession fires ON_START/ON_STOP from onShow/onHide.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                voiceInputState.stop()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // Tracks whether we've attempted to start listening since the last trigger/reset.
     // Used to avoid showing "not detected" during the initial stabilization delay.
     var hasStartedListening by remember(uiState.triggerCount) { mutableStateOf(false) }
 
     fun beginListening() {
+        // The initial start is delayed a beat (see the LaunchedEffect below); never let it fire
+        // if the overlay went to the background in the meantime. Read the live state rather
+        // than a mirrored flag so observer-dispatch ordering (e.g. a permission-dialog result
+        // arriving mid-resume) can't leave a stale value behind.
+        if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
         hasStartedListening = true
         when {
             !voiceInputState.isAvailable -> viewModel.onListeningError(voiceUnavailableMessage)
@@ -164,6 +190,7 @@ fun AssistScreen(
         AssistBottomSheet(
             uiState = uiState,
             isListening = voiceInputState.isListening,
+            isPreparing = voiceInputState.isPreparing,
             hasStartedListening = hasStartedListening,
             onOpenApp = onOpenApp,
             onDismiss = onDismiss,
@@ -175,6 +202,7 @@ fun AssistScreen(
         AssistStage(
             uiState = uiState,
             isListening = voiceInputState.isListening,
+            isPreparing = voiceInputState.isPreparing,
             hasStartedListening = hasStartedListening,
             onOpenApp = onOpenApp,
             onDismiss = onDismiss,
@@ -185,11 +213,12 @@ fun AssistScreen(
     }
 }
 
-/** The original bottom-sheet overlay — used whenever no character is configured, so nothing about the pre-character behavior changes. */
+/** The original bottom-sheet overlay — used whenever no character is configured. */
 @Composable
 private fun AssistBottomSheet(
     uiState: AssistUiState,
     isListening: Boolean,
+    isPreparing: Boolean,
     hasStartedListening: Boolean,
     onOpenApp: () -> Unit,
     onDismiss: () -> Unit,
@@ -290,6 +319,7 @@ private fun AssistBottomSheet(
                         else -> {
                             AssistConversationContent(
                                 isListening = isListening,
+                                isPreparing = isPreparing,
                                 isStarted = hasStartedListening,
                                 isStreaming = uiState.isStreaming,
                                 transcript = uiState.transcript,
@@ -326,6 +356,7 @@ private fun AssistBottomSheet(
 private fun AssistStage(
     uiState: AssistUiState,
     isListening: Boolean,
+    isPreparing: Boolean,
     hasStartedListening: Boolean,
     onOpenApp: () -> Unit,
     onDismiss: () -> Unit,
@@ -406,6 +437,7 @@ private fun AssistStage(
                 StageWindowContent(
                     uiState = uiState,
                     isListening = isListening,
+                    isPreparing = isPreparing,
                     hasStartedListening = hasStartedListening,
                     onOpenApp = onOpenApp,
                 )
@@ -451,12 +483,16 @@ private fun AssistStage(
 private fun StageWindowContent(
     uiState: AssistUiState,
     isListening: Boolean,
+    isPreparing: Boolean,
     hasStartedListening: Boolean,
     onOpenApp: () -> Unit,
 ) {
     val typewriterState = rememberTypewriterState()
     val scrollState = rememberScrollState()
-    val contentScroll = Modifier.verticalScroll(scrollState)
+    // heightIn must come BEFORE verticalScroll: reversed, the scroll container grants its child
+    // an unbounded height and the cap clamps the laid-out content instead of the viewport — so a
+    // reply longer than the window neither scrolled nor showed past the frame's edge.
+    val contentScroll = Modifier.heightIn(max = STAGE_WINDOW_MAX_HEIGHT).verticalScroll(scrollState)
 
     // Keep the newest revealed text in view while the typewriter runs / the reply streams.
     LaunchedEffect(typewriterState.visibleChars, uiState.assistantText) {
@@ -487,9 +523,11 @@ private fun StageWindowContent(
             val hintText = when {
                 uiState.transcript.isNotBlank() -> uiState.transcript
                 isListening -> stringResource(R.string.assist_listening_hint)
-                // If we haven't even attempted to listen yet (during the initial delay),
-                // show the hint instead of "not detected".
-                !hasStartedListening -> stringResource(R.string.assist_listening_hint)
+                // Never prompt "speak now" before the mic is actually recording — starting a
+                // session first loads the STT model, which can take seconds. Until then (and
+                // during the initial delay before the attempt even starts) show the preparing
+                // hint instead of either "speak" or "not detected".
+                isPreparing || !hasStartedListening -> stringResource(R.string.assist_preparing_hint)
                 else -> stringResource(R.string.assist_no_speech_detected)
             }
             TypewriterText(
@@ -513,7 +551,7 @@ private fun StageWindowContent(
             ThinkingDots(modifier = contentScroll)
         }
         uiState.characterSettings.typewriterEnabled -> {
-            Column(modifier = contentScroll.heightIn(max = STAGE_WINDOW_MAX_HEIGHT)) {
+            Column(modifier = contentScroll) {
                 TypewriterText(
                     text = uiState.assistantText,
                     enabled = true,
@@ -534,7 +572,7 @@ private fun StageWindowContent(
             Markdown(
                 markdownState = markdownState,
                 colors = markdownColor(text = MaterialTheme.colorScheme.onSurface),
-                modifier = contentScroll.heightIn(max = STAGE_WINDOW_MAX_HEIGHT),
+                modifier = contentScroll,
             )
         }
         else -> {
@@ -542,7 +580,7 @@ private fun StageWindowContent(
                 text = uiState.assistantText,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = contentScroll.heightIn(max = STAGE_WINDOW_MAX_HEIGHT),
+                modifier = contentScroll,
             )
         }
     }
@@ -580,6 +618,7 @@ private fun StageBackground(backgroundPath: String?) {
 @Composable
 private fun AssistConversationContent(
     isListening: Boolean,
+    isPreparing: Boolean,
     isStarted: Boolean,
     isStreaming: Boolean,
     transcript: String,
@@ -608,9 +647,9 @@ private fun AssistConversationContent(
                     text = when {
                         transcript.isNotBlank() -> transcript
                         isListening -> stringResource(R.string.assist_listening_hint)
-                        // If we haven't even attempted to listen yet (during the initial delay),
-                        // show the hint instead of "not detected".
-                        !isStarted -> stringResource(R.string.assist_listening_hint)
+                        // Same rule as the stage: no "speak now" until the mic actually records
+                        // (see StageWindowContent), so model loading shows the preparing hint.
+                        isPreparing || !isStarted -> stringResource(R.string.assist_preparing_hint)
                         else -> stringResource(R.string.assist_no_speech_detected)
                     },
                     style = MaterialTheme.typography.bodyLarge,

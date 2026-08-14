@@ -117,7 +117,8 @@ class WhisperEngine(
         if (shouldTriggerFinal && audioBuffer.size >= minAudioForInference) {
             Log.d(TAG, "Triggering final inference, buffer size: ${audioBuffer.size}")
             isFinalizing = true
-            partialResult = "Processing..."
+            // The last partial stays on screen while the final pass runs — overwriting it with a
+            // status string made the transcript flicker into junk like "Processing...".
             runInference(isFinal = true)
         } else if (!isSpeaking && audioBuffer.size > 16000 * 5) {
             // Clear buffer if it's just long silence
@@ -163,12 +164,17 @@ class WhisperEngine(
                             sb.append(native.getSegmentText(context, i))
                         }
                     }
-                    val text = sb.toString().trim()
-                    
+                    // Drop whisper's hallucinations ("(音楽)", "Thank you for watching",
+                    // repetition loops...) before they can reach the transcript or be sent
+                    // as the user's message — see cleanWhisperTranscript.
+                    val text = cleanWhisperTranscript(sb.toString().trim())
+
                     if (isFinal) {
                         result = if (text.isEmpty()) " " else text // Ensure not empty to signal completion
                         Log.d(TAG, "Final inference took ${duration}ms. Result: $result")
-                    } else {
+                    } else if (text.isNotEmpty()) {
+                        // Keep the last real partial when a follow-up pass comes back empty,
+                        // so the transcript doesn't flicker blank mid-utterance.
                         partialResult = text
                         Log.d(TAG, "Partial inference took ${duration}ms. Result: $partialResult")
                     }

@@ -690,6 +690,17 @@ class ConversationRepository(
                 if (requestedToolCalls.isEmpty()) break
                 round++
 
+                // Whatever text the model streamed before deciding to call a tool is preamble
+                // ("let me check your location…"), not the answer — the post-tool round answers
+                // from the top. Keeping it would show/speak it first and then restart the reply,
+                // and leave both concatenated in the saved message; discard it (UI and speech
+                // progress reset on the shrink — see AssistViewModel.resetSpokenIndexIfContentReplaced)
+                // so only the actual post-tool answer is shown and spoken.
+                if (accumulated.isNotEmpty()) {
+                    accumulated.setLength(0)
+                    messageDao.updateContent(placeholderId, "", timelineJson())
+                }
+
                 // Echo the model's own tool-call request back before the results, as the OpenAI
                 // tool-calling protocol requires, then answer each with a "tool" role message.
                 history += ChatMessageDto(

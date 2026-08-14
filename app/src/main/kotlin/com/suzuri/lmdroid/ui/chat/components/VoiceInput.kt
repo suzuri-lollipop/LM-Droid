@@ -31,6 +31,7 @@ import com.suzuri.lmdroid.data.stt.SpeechModelManager
 import com.suzuri.lmdroid.data.stt.WhisperEngine
 import com.suzuri.lmdroid.data.vosk.VoskEngine
 import com.suzuri.lmdroid.data.vosk.VoskRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -66,6 +67,10 @@ class VoiceInputState internal constructor(private val recognizer: SpeechRecogni
 
 /**
  * Local version of VoiceInputState that uses on-device recognition (Vosk or Whisper).
+ * [isPreparing] covers the wind-up between [start] and the microphone actually recording (model
+ * loading can take seconds), so callers can hold their "speak now" prompt until [isListening].
+ * [onResult] is called for every finished recognition, *including* a blank one — blank means the
+ * session ended without usable speech, and callers rely on it to drop a stale partial transcript.
  */
 class LocalVoiceInputState(
     private val context: Context,
@@ -79,30 +84,45 @@ class LocalVoiceInputState(
     var isListening by mutableStateOf(false)
         private set
 
+    var isPreparing by mutableStateOf(false)
+        private set
+
     private var job: Job? = null
+    // Bumped on every start() and stop(); callbacks capture the value of the session that
+    // produced them and are dropped if it no longer matches. Whisper's final inference finishes
+    // seconds after the utterance ends, so a session stopped in the meantime (overlay dismissed,
+    // a retry/retrigger starting a fresh one) would otherwise still deliver — and auto-send — the
+    // stale transcript once it lands. Volatile because the capture loop reads it on the IO
+    // dispatcher while start()/stop() bump it on Main.
+    @Volatile
+    private var generation = 0
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     val isAvailable: Boolean get() = true
 
     fun start(scope: kotlinx.coroutines.CoroutineScope) {
-        if (isListening) return
-        isListening = true
+        if (isListening || isPreparing) return
+        isPreparing = true
+        val sessionGeneration = ++generation
         job = scope.launch(Dispatchers.IO) {
             try {
                 val modelId = settingsRepository.currentSelectedSttModelId()
                 val speechModel = SpeechModel.ALL_MODELS.find { it.id == modelId } ?: SpeechModel.VOSK_SMALL_JP
 
+                // Every failure path below just reports and returns — the finally block is what
+                // clears isPreparing/isListening, so no flag bookkeeping in between. The error is
+                // only delivered if this session is still current (see generation's comment) —
+                // some of these checks take seconds, and a session stopped in the meantime must
+                // not surface its error into whatever session runs next.
                 if (!speechModelManager.isModelAvailable(speechModel)) {
-                    launch(Dispatchers.Main) { onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error_model)) }
-                    isListening = false
+                    launch(Dispatchers.Main) { if (sessionGeneration == generation) onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error_model)) }
                     return@launch
                 }
 
                 val engine = when (speechModel.engineType) {
                     SpeechEngineType.VOSK -> {
                         val model = voskRepository.getModel(speechModel) ?: run {
-                            launch(Dispatchers.Main) { onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error_model)) }
-                            isListening = false
+                            launch(Dispatchers.Main) { if (sessionGeneration == generation) onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error_model)) }
                             return@launch
                         }
                         VoskEngine(model)
@@ -110,8 +130,7 @@ class LocalVoiceInputState(
                     SpeechEngineType.WHISPER -> {
                         val modelFile = speechModelManager.getModelDir(speechModel)
                         if (!modelFile.exists()) {
-                            launch(Dispatchers.Main) { onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error_model)) }
-                            isListening = false
+                            launch(Dispatchers.Main) { if (sessionGeneration == generation) onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error_model)) }
                             return@launch
                         }
                         WhisperEngine(modelFile.absolutePath, settingsRepository.currentSelectedSttLanguage())
@@ -119,8 +138,7 @@ class LocalVoiceInputState(
                 }
 
                 if (!engine.isReady) {
-                    launch(Dispatchers.Main) { onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error)) }
-                    isListening = false
+                    launch(Dispatchers.Main) { if (sessionGeneration == generation) onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error)) }
                     return@launch
                 }
                 
@@ -139,25 +157,32 @@ class LocalVoiceInputState(
                 val minBufSize = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
                 
                 if (ActivityCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                    launch(Dispatchers.Main) { onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_permission_denied)) }
-                    isListening = false
+                    launch(Dispatchers.Main) { if (sessionGeneration == generation) onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_permission_denied)) }
                     return@launch
                 }
 
                 val recorder = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minBufSize.coerceAtLeast(bufferSize))
 
                 if (recorder.state != AudioRecord.STATE_INITIALIZED) {
-                    launch(Dispatchers.Main) { onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error_mic)) }
-                    isListening = false
+                    launch(Dispatchers.Main) { if (sessionGeneration == generation) onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error_mic)) }
                     return@launch
                 }
 
                 recorder.startRecording()
+                // Only now — mic actually capturing — is it honest to prompt the user to speak.
+                // Set synchronously (not via Dispatchers.Main): the capture loop below checks
+                // isListening on this thread and would exit at once if it had to wait for Main.
+                isPreparing = false
+                isListening = true
                 val buffer = ShortArray(bufferSize)
 
                 try {
                     var buffersRead = 0
-                    while (isListening) {
+                    // The generation check covers a session stopped while still preparing (model
+                    // loading takes seconds): this coroutine then flips isListening back on after
+                    // stop() cleared it, and without this the mic would keep capturing for a
+                    // session nobody is looking at anymore.
+                    while (isListening && sessionGeneration == generation) {
                         val read = recorder.read(buffer, 0, buffer.size)
                         if (read > 0) {
                             if (buffersRead++ % 2 == 0) {
@@ -170,16 +195,22 @@ class LocalVoiceInputState(
                             }
                             if (engine.acceptAudio(buffer, read)) {
                                 val result = engine.getResult()
-                                launch(Dispatchers.Main) { 
-                                    if (result.isNotBlank()) {
-                                        onResult(result) 
-                                    }
-                                    isListening = false // Stop on any final result (including empty)
+                                launch(Dispatchers.Main) {
+                                    // Stop on any final result (including empty) — even one
+                                    // belonging to a session that was stopped/replaced in flight.
+                                    isListening = false
+                                    if (sessionGeneration != generation) return@launch
+                                    // Delivered even when blank: the caller shows nothing and
+                                    // drops any stale partial transcript (a blank final means
+                                    // the session ended without usable speech).
+                                    onResult(result.trim())
                                 }
                             } else {
                                 val partial = engine.getPartialResult()
                                 if (partial.isNotBlank()) {
-                                    launch(Dispatchers.Main) { onPartialResult(partial) }
+                                    launch(Dispatchers.Main) {
+                                        if (sessionGeneration == generation) onPartialResult(partial)
+                                    }
                                 }
                             }
                         }
@@ -194,24 +225,34 @@ class LocalVoiceInputState(
                     recorder.release()
                     engine.release()
                 }
+            } catch (e: CancellationException) {
+                // Session was stopped or the composition went away — not an error worth showing.
+                throw e
             } catch (e: Throwable) {
                 Log.e("LocalVoiceInput", "Recognition error", e)
-                launch(Dispatchers.Main) { 
+                launch(Dispatchers.Main) {
+                    if (sessionGeneration != generation) return@launch
                     val errorMsg = if (e is UnsatisfiedLinkError) {
                         "Native library failed to load. Please try restarting the app."
                     } else {
                         context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error)
                     }
-                    onError(errorMsg) 
+                    onError(errorMsg)
                 }
             } finally {
-                launch(Dispatchers.Main) { isListening = false }
+                launch(Dispatchers.Main) {
+                    isListening = false
+                    isPreparing = false
+                }
             }
         }
     }
 
     fun stop() {
+        // Invalidate this session's not-yet-delivered callbacks too (see generation's comment).
+        generation++
         isListening = false
+        isPreparing = false
         job?.cancel()
     }
 }

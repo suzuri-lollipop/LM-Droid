@@ -56,7 +56,15 @@ class AssistViewModel(
 
     // Created lazily on the first send (see ensureConversationId) and reused for any follow-up
     // question asked without leaving the overlay, so a follow-up continues the same conversation.
+    // Reset to null by onRetry(): a retrigger (assist gesture / voice-interaction show) is a new
+    // session, and keeping the old id would leave the message-flow collector below observing the
+    // previous conversation into the new session.
     private val conversationId = MutableStateFlow<Long?>(null)
+
+    // The in-flight sendUserMessage coroutine of the current turn, if any — onRetry() cancels it
+    // so a retrigger never inherits a previous session's still-streaming reply (or its deferred
+    // tool side effects firing mid-new-session).
+    private var sendJob: Job? = null
 
     // This turn's two-stage speech pipeline — sentence chunks detected by the message-flow
     // collector (see init) are pushed onto speechChannel; prepareJob synthesizes each one (the
@@ -142,9 +150,25 @@ class AssistViewModel(
         _uiState.update { it.copy(transcript = "", errorMessage = null, apiKeyMissing = false) }
     }
 
-    /** Resets the UI state and increments triggerCount to signal AssistScreen to start listening again. Used when triggered by an external intent (e.g. earphone button). */
+    /**
+     * Starts a completely fresh session: cancels whatever the previous one was still doing,
+     * clears its speech pipeline and conversation, resets the UI state, and increments
+     * triggerCount to signal AssistScreen to start listening again. Called when triggered while
+     * an instance is already alive (external intent / retrigger via the assist gesture, earphone
+     * button, voice-interaction session re-show) — without the cancel/reset here, a previous
+     * session's in-flight send kept streaming its reply (and firing its deferred tool side
+     * effects) into the new one, which read as "the previous assistant carried over".
+     */
     fun onRetry() {
+        sendJob?.cancel()
+        sendJob = null
         cancelSpeech()
+        // cancelSpeech only interrupts the pipeline jobs; a chunk already mid-playback needs the
+        // player itself stopped (same reasoning as onCleared).
+        assistSpeechPlayer.stop()
+        conversationId.value = null
+        speakingMessageId = null
+        spokenUpToIndex = 0
         _uiState.update {
             it.copy(
                 transcript = "",
@@ -182,7 +206,7 @@ class AssistViewModel(
         _uiState.update {
             it.copy(hasSent = true, isStreaming = true, assistantText = "", isAssistantError = false, apiKeyMissing = false, errorMessage = null)
         }
-        viewModelScope.launch {
+        sendJob = viewModelScope.launch {
             val id = ensureConversationId()
             val settings = settingsRepository.currentAssistantSettings()
             val result = conversationRepository.sendUserMessage(id, text, settingsOverride = settings)
@@ -256,6 +280,7 @@ class AssistViewModel(
     private fun dispatchNewSpeechChunks(messageId: Long, fullText: String) {
         val channel = speechChannel ?: return
         adoptMessageIfNew(messageId)
+        resetSpokenIndexIfContentReplaced(fullText)
         if (spokenUpToIndex >= fullText.length) return
         val unspoken = fullText.substring(spokenUpToIndex)
         val boundary = lastSentenceBoundary(unspoken) ?: return
@@ -279,6 +304,7 @@ class AssistViewModel(
         if (lastAssistantMessage.message.isError) return
         adoptMessageIfNew(lastAssistantMessage.message.id)
         val fullText = lastAssistantMessage.message.content
+        resetSpokenIndexIfContentReplaced(fullText)
         if (spokenUpToIndex >= fullText.length) return
         val remaining = fullText.substring(spokenUpToIndex)
         spokenUpToIndex = fullText.length
@@ -293,6 +319,11 @@ class AssistViewModel(
             speakingMessageId = messageId
             spokenUpToIndex = 0
         }
+    }
+
+    /** See [adjustedSpokenIndex] — the repository discards pre-tool-call preamble mid-turn, so content can shrink below what was already spoken. */
+    private fun resetSpokenIndexIfContentReplaced(fullText: String) {
+        spokenUpToIndex = adjustedSpokenIndex(spokenUpToIndex, fullText)
     }
 
     /**
@@ -340,3 +371,14 @@ fun lastSentenceBoundary(text: String): Int? {
     val index = text.indexOfLast { it in SENTENCE_BOUNDARY_CHARS }
     return if (index == -1) null else index + 1
 }
+
+/**
+ * The spoken-progress counter counts against the content as it was last seen, but the repository
+ * discards the model's pre-tool-call preamble when a tool round starts (see
+ * ConversationRepository's tool loop), so the content can shrink below what was already spoken.
+ * In that case restart from the head of the replacement text rather than skipping its first
+ * characters (or indexing past the end of it). Top-level for the same testability reason as
+ * [lastSentenceBoundary].
+ */
+fun adjustedSpokenIndex(spokenUpToIndex: Int, fullText: String): Int =
+    if (spokenUpToIndex > fullText.length) 0 else spokenUpToIndex
