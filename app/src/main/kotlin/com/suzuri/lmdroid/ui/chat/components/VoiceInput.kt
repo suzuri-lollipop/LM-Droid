@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
@@ -34,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.Locale
+import kotlin.math.abs
 
 /**
  * Drives the composer's mic button. [isAvailable] reflects whether this device even has a speech
@@ -122,8 +124,12 @@ class LocalVoiceInputState(
                     return@launch
                 }
                 
-                // Start Bluetooth SCO if available
-                if (audioManager.isBluetoothScoAvailableOffCall) {
+                // Route to a Bluetooth headset mic only while one is actually connected.
+                // Starting SCO unconditionally leaves the built-in mic silent on devices
+                // (e.g. the emulator) that report SCO as available without a headset.
+                val btScoConnected = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                    .any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+                if (btScoConnected) {
                     Log.d("LocalVoiceInput", "Starting Bluetooth SCO for UI listening")
                     audioManager.startBluetoothSco()
                     audioManager.isBluetoothScoOn = true
@@ -148,11 +154,20 @@ class LocalVoiceInputState(
 
                 recorder.startRecording()
                 val buffer = ShortArray(bufferSize)
-                
+
                 try {
+                    var buffersRead = 0
                     while (isListening) {
                         val read = recorder.read(buffer, 0, buffer.size)
                         if (read > 0) {
+                            if (buffersRead++ % 2 == 0) {
+                                var peak = 0
+                                for (i in 0 until read) {
+                                    val amplitude = abs(buffer[i].toInt())
+                                    if (amplitude > peak) peak = amplitude
+                                }
+                                Log.d("LocalVoiceInput", "Mic peak amplitude: $peak")
+                            }
                             if (engine.acceptAudio(buffer, read)) {
                                 val result = engine.getResult()
                                 launch(Dispatchers.Main) { 

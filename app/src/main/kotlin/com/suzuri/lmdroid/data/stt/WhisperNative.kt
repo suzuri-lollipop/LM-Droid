@@ -11,5 +11,6 @@ class WhisperNative {
     external fun full(context: Long, samples: FloatArray): Int
     external fun getNSegments(context: Long): Int
     external fun getSegmentText(context: Long, index: Int): String
+    external fun getSegmentNoSpeechProb(context: Long, index: Int): Float
     external fun free(context: Long)
 }

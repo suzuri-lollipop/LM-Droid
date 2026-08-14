@@ -13,6 +13,21 @@ set(SD_BUILD_TESTS OFF CACHE BOOL "sd: build tests" FORCE)
 set(SD_VULKAN OFF CACHE BOOL "sd: vulkan backend" FORCE)
 set(SD_BUILD_SHARED_LIBS OFF CACHE BOOL "sd: build shared libs" FORCE)
 
+# NDK debug builds compile native code at -O0, which makes ggml/Whisper inference
+# 5-10x slower; keep the numeric native code optimized in debug builds too.
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O2")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O2")
+
+# ggml disables every x86 SIMD kernel when cross-compiling, which leaves Whisper
+# inference ~20x slower than realtime on the x86_64 emulator. The x86_64 ABI only
+# ever runs there, and AVX2/FMA/F16C are baseline on any host that can run it.
+if (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
+    set(GGML_AVX ON CACHE BOOL "ggml: enable AVX" FORCE)
+    set(GGML_AVX2 ON CACHE BOOL "ggml: enable AVX2" FORCE)
+    set(GGML_FMA ON CACHE BOOL "ggml: enable FMA" FORCE)
+    set(GGML_F16C ON CACHE BOOL "ggml: enable F16C" FORCE)
+endif()
+
 # stable-diffusion.cpp directory
 set(SD_CPP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/stable-diffusion.cpp)
 

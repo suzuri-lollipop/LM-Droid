@@ -12,44 +12,47 @@ import kotlin.math.sqrt
 
 class WhisperEngine(private val modelPath: String) : SpeechRecognizerEngine {
     private val native = WhisperNative()
-    private var context: Long = 0L
-    private var result: String = ""
-    private var partialResult: String = ""
-    
+    private val context: Long
+    @Volatile private var result: String = ""
+    @Volatile private var partialResult: String = ""
+
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-    private val mutex = Mutex()
     private var inferenceJob: Job? = null
-    
+
     // Audio accumulation buffer
     private val audioBuffer = mutableListOf<Float>()
-    
+
     // VAD state
     private var isSpeaking = false
     private var silenceChunks = 0
     private var framesProcessed = 0
     private var samplesSinceLastInference = 0
-    private var isFinalizing = false
+    @Volatile private var isFinalizing = false
 
     private val silenceThreshold = 6 // approx 3 seconds (0.5s per chunk * 6)
     private val minAudioForInference = 16000 * 1 // at least 1 second of audio
     private val energyThreshold = 0.005f // Lowered RMS threshold for better sensitivity
     private val noSpeechTimeoutFrames = 10 // approx 5 seconds
     private val partialInferenceIntervalSamples = 16000 * 1.5 // 1.5 seconds
+    // Partials re-run whisper_full over the snapshot, so bound their cost to recent audio.
+    private val maxPartialInferenceSamples = 16000 * 10
 
     override val isReady: Boolean
         get() = context != 0L
 
     init {
-        try {
-            Log.d(TAG, "Loading model from $modelPath")
-            context = native.init(modelPath)
-            if (context == 0L) {
-                Log.e(TAG, "Failed to init whisper context")
-            } else {
-                Log.d(TAG, "Whisper initialized successfully")
+        context = try {
+            Log.d(TAG, "Acquiring whisper context for $modelPath")
+            acquireContext(native, modelPath).also {
+                if (it == 0L) {
+                    Log.e(TAG, "Failed to init whisper context")
+                } else {
+                    Log.d(TAG, "Whisper initialized successfully")
+                }
             }
         } catch (e: Throwable) {
             Log.e(TAG, "Error initializing Whisper", e)
+            0L
         }
     }
 
@@ -135,17 +138,25 @@ class WhisperEngine(private val modelPath: String) : SpeechRecognizerEngine {
         inferenceJob = scope.launch {
             val startTime = System.currentTimeMillis()
             val audioCopy = synchronized(audioBuffer) {
-                audioBuffer.toFloatArray()
+                if (isFinal || audioBuffer.size <= maxPartialInferenceSamples) {
+                    audioBuffer.toFloatArray()
+                } else {
+                    audioBuffer.subList(audioBuffer.size - maxPartialInferenceSamples, audioBuffer.size).toFloatArray()
+                }
             }
 
-            mutex.withLock {
+            inferenceLock.withLock {
                 val ret = native.full(context, audioCopy)
                 val duration = System.currentTimeMillis() - startTime
                 if (ret == 0) {
                     val nSegments = native.getNSegments(context)
                     val sb = StringBuilder()
                     for (i in 0 until nSegments) {
-                        sb.append(native.getSegmentText(context, i))
+                        // Whisper hallucinates ("thank you for watching", "[Music]", ...)
+                        // on noise and silence; drop segments it flags as non-speech.
+                        if (native.getSegmentNoSpeechProb(context, i) < 0.6f) {
+                            sb.append(native.getSegmentText(context, i))
+                        }
                     }
                     val text = sb.toString().trim()
                     
@@ -188,13 +199,29 @@ class WhisperEngine(private val modelPath: String) : SpeechRecognizerEngine {
 
     override fun release() {
         inferenceJob?.cancel()
-        if (context != 0L) {
-            native.free(context)
-            context = 0L
-        }
     }
-    
+
     companion object {
         private const val TAG = "WhisperEngine"
+        private val initLock = Any()
+        // Shared so concurrent engines can never run whisper_full on one context at once.
+        private val inferenceLock = Mutex()
+        private var cachedModelPath: String? = null
+        private var cachedContext: Long = 0L
+
+        // Loading a Whisper model takes seconds and hundreds of MB of parsing; keep one
+        // context alive across listening sessions, mirroring VoskRepository's caching.
+        private fun acquireContext(native: WhisperNative, modelPath: String): Long = synchronized(initLock) {
+            if (cachedContext != 0L && cachedModelPath != modelPath) {
+                native.free(cachedContext)
+                cachedContext = 0L
+                cachedModelPath = null
+            }
+            if (cachedContext == 0L) {
+                cachedContext = native.init(modelPath)
+                cachedModelPath = modelPath
+            }
+            cachedContext
+        }
     }
 }

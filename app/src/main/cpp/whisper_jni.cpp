@@ -46,6 +46,13 @@ Java_com_suzuri_lmdroid_data_stt_WhisperNative_full(JNIEnv *env, jobject thiz, j
     params.n_threads = 4;
     params.print_realtime = false;
     params.print_progress = false;
+    // One utterance per inference: stops whisper from chaining hallucinated segments
+    // ("...of the day of the day") once the actual speech runs out.
+    params.single_segment = true;
+    params.no_timestamps = true;
+    // Disable the temperature fallback retries that re-run the decoder on low
+    // confidence and multiply inference time.
+    params.temperature_inc = 0.0f;
 
     int ret = whisper_full(ctx, params, pcm, len);
 
@@ -61,6 +68,14 @@ Java_com_suzuri_lmdroid_data_stt_WhisperNative_getNSegments(JNIEnv *env, jobject
     struct whisper_context * ctx = reinterpret_cast<struct whisper_context *>(context);
     if (!ctx) return 0;
     return whisper_full_n_segments(ctx);
+}
+
+extern "C"
+JNIEXPORT jfloat JNICALL
+Java_com_suzuri_lmdroid_data_stt_WhisperNative_getSegmentNoSpeechProb(JNIEnv *env, jobject thiz, jlong context, jint index) {
+    struct whisper_context * ctx = reinterpret_cast<struct whisper_context *>(context);
+    if (!ctx) return 1.0f;
+    return whisper_full_get_segment_no_speech_prob(ctx, index);
 }
 
 extern "C"
