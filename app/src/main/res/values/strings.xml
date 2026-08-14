@@ -230,4 +230,8 @@
     <string name="stt_model_delete">削除</string>
     <string name="stt_model_bundled">同梱</string>
     <string name="stt_model_download_failed">ダウンロードに失敗しました</string>
+    <string name="stt_language_label">認識言語 (Whisper)</string>
+    <string name="stt_language_ja">日本語</string>
+    <string name="stt_language_en">英語</string>
+    <string name="stt_language_auto">自動検出</string>
 </resources>

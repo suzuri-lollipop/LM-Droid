@@ -313,6 +313,15 @@ class AssistViewModel(
         preparedAudioChannel = null
     }
 
+    // Job cancellation alone races a chunk that is just about to start playing (see
+    // AssistSpeechPlayer's onPrepared guard), which is exactly the "overlay closed but it keeps
+    // talking" case — stopping the player outright when the overlay goes away closes that gap.
+    override fun onCleared() {
+        super.onCleared()
+        cancelSpeech()
+        assistSpeechPlayer.stop()
+    }
+
     private companion object {
         const val TAG = "AssistViewModel"
     }

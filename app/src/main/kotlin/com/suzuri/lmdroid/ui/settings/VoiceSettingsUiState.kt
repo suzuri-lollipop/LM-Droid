@@ -18,7 +18,10 @@ data class VoiceSettingsUiState(
     // Speech recognition (STT) models
     val sttModels: List<SpeechModelUiModel> = emptyList(),
     val selectedSttModelId: String = "vosk-jp-small",
-    val downloadError: String? = null
+    val downloadError: String? = null,
+
+    // The language Whisper listens for (see SettingsRepository.selectedSttLanguage) — "ja", "en" or "auto".
+    val selectedSttLanguage: String = "ja",
 )
 
 data class SpeechModelUiModel(

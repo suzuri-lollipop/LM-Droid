@@ -8,7 +8,7 @@ class WhisperNative {
     }
 
     external fun init(modelPath: String): Long
-    external fun full(context: Long, samples: FloatArray): Int
+    external fun full(context: Long, samples: FloatArray, language: String): Int
     external fun getNSegments(context: Long): Int
     external fun getSegmentText(context: Long, index: Int): String
     external fun getSegmentNoSpeechProb(context: Long, index: Int): Float

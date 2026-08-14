@@ -114,7 +114,7 @@ class LocalVoiceInputState(
                             isListening = false
                             return@launch
                         }
-                        WhisperEngine(modelFile.absolutePath)
+                        WhisperEngine(modelFile.absolutePath, settingsRepository.currentSelectedSttLanguage())
                     }
                 }
 

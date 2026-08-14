@@ -37,20 +37,20 @@ class VoiceSettingsViewModel(
                 apiProfileRepository.observeProfiles(),
                 settingsRepository.selectedTtsProfileId,
                 settingsRepository.selectedSttModelId,
-            ) { profiles, selectedTtsId, selectedSttId ->
+                settingsRepository.selectedSttLanguage,
+            ) { profiles, selectedTtsId, selectedSttId, selectedSttLanguage ->
                 val ttsProfiles = profiles
                     .filter {
                         it.providerType == ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE ||
                             it.providerType == ApiProfileEntity.PROVIDER_OPENAI_TTS
                     }
                     .map { VoiceProfileOptionUiModel(id = it.id, name = it.name) }
-                
-                Triple(ttsProfiles, selectedTtsId, selectedSttId)
-            }.collect { (ttsProfiles, selectedTtsId, selectedSttId) ->
+
                 _uiState.update { it.copy(
-                    profiles = ttsProfiles, 
+                    profiles = ttsProfiles,
                     selectedProfileId = selectedTtsId,
                     selectedSttModelId = selectedSttId,
+                    selectedSttLanguage = selectedSttLanguage,
                     sttModels = SpeechModel.ALL_MODELS.map { model ->
                         SpeechModelUiModel(
                             model = model,
@@ -58,7 +58,7 @@ class VoiceSettingsViewModel(
                         )
                     }
                 ) }
-            }
+            }.collect { }
         }
     }
 
@@ -73,6 +73,10 @@ class VoiceSettingsViewModel(
 
     fun onSelectSttModel(id: String) {
         viewModelScope.launch { settingsRepository.setSelectedSttModelId(id) }
+    }
+
+    fun onSelectSttLanguage(code: String) {
+        viewModelScope.launch { settingsRepository.setSelectedSttLanguage(code) }
     }
 
     fun onDownloadModel(model: SpeechModel) {

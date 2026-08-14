@@ -10,7 +10,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.math.sqrt
 
-class WhisperEngine(private val modelPath: String) : SpeechRecognizerEngine {
+class WhisperEngine(
+    private val modelPath: String,
+    // ISO language code ("ja", "en", ...) or "auto" — whisper's own default is "en", which
+    // mangles any non-English speech, so this must always be set explicitly.
+    private val language: String,
+) : SpeechRecognizerEngine {
     private val native = WhisperNative()
     private val context: Long
     @Volatile private var result: String = ""
@@ -146,7 +151,7 @@ class WhisperEngine(private val modelPath: String) : SpeechRecognizerEngine {
             }
 
             inferenceLock.withLock {
-                val ret = native.full(context, audioCopy)
+                val ret = native.full(context, audioCopy, language)
                 val duration = System.currentTimeMillis() - startTime
                 if (ret == 0) {
                     val nSegments = native.getNSegments(context)

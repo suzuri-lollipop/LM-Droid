@@ -139,7 +139,13 @@ class AssistSpeechPlayer(
                 synchronized(mediaPlayerLock) { mediaPlayer = player }
                 try {
                     player.setDataSource(file.absolutePath)
-                    player.setOnPreparedListener { it.start() }
+                    // stop() may have claimed and released this player between prepareAsync()
+                    // and the prepared callback (overlay dismissed mid-prepare) — starting an
+                    // already-released player is what let speech survive the overlay closing.
+                    player.setOnPreparedListener { p ->
+                        val stillCurrent = synchronized(mediaPlayerLock) { mediaPlayer === p }
+                        if (stillCurrent) p.start()
+                    }
                     player.setOnCompletionListener { finish(it) }
                     player.setOnErrorListener { mp, what, extra ->
                         Log.w(TAG, "playWav: MediaPlayer error what=$what extra=$extra")

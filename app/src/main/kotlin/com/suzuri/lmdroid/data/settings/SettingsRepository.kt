@@ -298,6 +298,15 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs -> prefs[KEY_SELECTED_STT_MODEL_ID] = id }
     }
 
+    /** The language Whisper listens for — an ISO code ("ja", "en", ...) or "auto". Defaults to "ja" because whisper's own default ("en") transcribes Japanese speech as English. */
+    val selectedSttLanguage: Flow<String> = context.settingsDataStore.data.map { it[KEY_SELECTED_STT_LANGUAGE] ?: "ja" }
+
+    suspend fun currentSelectedSttLanguage(): String = selectedSttLanguage.first()
+
+    suspend fun setSelectedSttLanguage(code: String) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_SELECTED_STT_LANGUAGE] = code }
+    }
+
     /** Which installed app's package name (see DeviceMusicController.installedMusicApps) the "play_music" tool targets directly — null lets the system resolve it itself (its own disambiguation dialog if more than one app can handle it and none is set as default). */
     val preferredMusicAppPackage: Flow<String?> = context.settingsDataStore.data.map { it[KEY_PREFERRED_MUSIC_APP_PACKAGE] }
 
@@ -446,6 +455,7 @@ class SettingsRepository(
         val KEY_WAKE_WORD_ENABLED = booleanPreferencesKey("wake_word_enabled")
         val KEY_WAKE_WORD = stringPreferencesKey("wake_word")
         val KEY_SELECTED_STT_MODEL_ID = stringPreferencesKey("selected_stt_model_id")
+        val KEY_SELECTED_STT_LANGUAGE = stringPreferencesKey("selected_stt_language")
         val KEY_CHARACTER_MODEL_TYPE = stringPreferencesKey("character_model_type")
         val KEY_CHARACTER_MODEL_PATH = stringPreferencesKey("character_model_path")
         val KEY_CHARACTER_BACKGROUND_PATH = stringPreferencesKey("character_background_path")

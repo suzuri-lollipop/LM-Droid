@@ -31,7 +31,7 @@ Java_com_suzuri_lmdroid_data_stt_WhisperNative_init(JNIEnv *env, jobject thiz, j
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_suzuri_lmdroid_data_stt_WhisperNative_full(JNIEnv *env, jobject thiz, jlong context, jfloatArray samples) {
+Java_com_suzuri_lmdroid_data_stt_WhisperNative_full(JNIEnv *env, jobject thiz, jlong context, jfloatArray samples, jstring language) {
     struct whisper_context * ctx = reinterpret_cast<struct whisper_context *>(context);
     if (!ctx) {
         LOGE("Whisper context is null in full()");
@@ -40,12 +40,17 @@ Java_com_suzuri_lmdroid_data_stt_WhisperNative_full(JNIEnv *env, jobject thiz, j
 
     jfloat *pcm = env->GetFloatArrayElements(samples, nullptr);
     jsize len = env->GetArrayLength(samples);
-    LOGD("Running inference on %d samples", len);
+    const char *lang = env->GetStringUTFChars(language, nullptr);
+    LOGD("Running inference on %d samples (language=%s)", len, lang);
 
     struct whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
     params.n_threads = 4;
     params.print_realtime = false;
     params.print_progress = false;
+    // whisper's own default is "en", which forces Japanese speech to be transcribed as
+    // English ("疎通テストです" -> "So 2 test"). The caller passes the configured language;
+    // "auto" makes whisper detect it instead.
+    params.language = lang;
     // One utterance per inference: stops whisper from chaining hallucinated segments
     // ("...of the day of the day") once the actual speech runs out.
     params.single_segment = true;
@@ -56,6 +61,7 @@ Java_com_suzuri_lmdroid_data_stt_WhisperNative_full(JNIEnv *env, jobject thiz, j
 
     int ret = whisper_full(ctx, params, pcm, len);
 
+    env->ReleaseStringUTFChars(language, lang);
     env->ReleaseFloatArrayElements(samples, pcm, JNI_ABORT);
     LOGD("Inference finished with code %d", ret);
 

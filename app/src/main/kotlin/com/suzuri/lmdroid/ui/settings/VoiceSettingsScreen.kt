@@ -165,8 +165,34 @@ fun VoiceSettingsScreen(viewModel: VoiceSettingsViewModel, modifier: Modifier = 
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 24.dp))
+
+        Text(stringResource(R.string.stt_language_label), style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(8.dp))
+
+        sttLanguageOptions.forEach { (code, labelRes) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { viewModel.onSelectSttLanguage(code) },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(
+                    selected = code == uiState.selectedSttLanguage,
+                    onClick = { viewModel.onSelectSttLanguage(code) },
+                )
+                Text(stringResource(labelRes))
+            }
+        }
     }
 }
+
+private val sttLanguageOptions = listOf(
+    "ja" to R.string.stt_language_ja,
+    "en" to R.string.stt_language_en,
+    "auto" to R.string.stt_language_auto,
+)
 
 private fun formatSize(bytes: Long): String {
     val mb = bytes / (1024 * 1024)
