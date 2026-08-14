@@ -22,6 +22,7 @@ fun SettingsRootScreen(
     onNavigateToMusic: () -> Unit,
     onNavigateToSystemPrompts: () -> Unit,
     onNavigateToAssistant: () -> Unit,
+    onNavigateToCharacter: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -68,6 +69,10 @@ fun SettingsRootScreen(
         SettingsMenuRow(
             title = stringResource(R.string.settings_assistant_category_title),
             onClick = onNavigateToAssistant,
+        )
+        SettingsMenuRow(
+            title = stringResource(R.string.settings_character_category_title),
+            onClick = onNavigateToCharacter,
         )
     }
 }

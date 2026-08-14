@@ -2,9 +2,11 @@ package com.suzuri.lmdroid.ui.assist
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,6 +51,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Image
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -59,6 +64,16 @@ import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.model.rememberMarkdownState
 import com.suzuri.lmdroid.R
+import com.suzuri.lmdroid.data.character.CharacterModelType
+import com.suzuri.lmdroid.ui.assist.components.NamePlate
+import com.suzuri.lmdroid.ui.assist.components.NovelContinueIndicator
+import com.suzuri.lmdroid.ui.assist.components.NovelMessageWindow
+import com.suzuri.lmdroid.ui.assist.components.ThinkingDots
+import com.suzuri.lmdroid.ui.assist.components.TypewriterText
+import com.suzuri.lmdroid.ui.assist.components.rememberTypewriterState
+import com.suzuri.lmdroid.ui.character.CharacterStage
+import com.suzuri.lmdroid.ui.character.decodeDownsampled
+import com.suzuri.lmdroid.ui.character.deriveCharacterState
 import com.suzuri.lmdroid.ui.chat.components.rememberLocalVoiceInputState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -66,7 +81,9 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * The overlay shown by AssistActivity (launched via the system assist gesture — see
@@ -74,6 +91,10 @@ import kotlinx.coroutines.delay
  * as it's recognized, then sends it through [AssistViewModel] and streams the reply in place —
  * a bottom-sheet-style scrim over whatever app was already on screen, like Google Assistant,
  * rather than switching full-screen into this app.
+ *
+ * Layout switches on Settings → キャラクター: with no character configured (the default) it's the
+ * original bottom sheet; otherwise the whole overlay becomes a novel-game-style stage —
+ * background, character, name plate and message window (see [AssistStage]).
  */
 @Composable
 fun AssistScreen(
@@ -134,6 +155,48 @@ fun AssistScreen(
         requestOrStartListening()
     }
 
+    val onMicClick = {
+        viewModel.onAskFollowUp()
+        requestOrStartListening()
+    }
+
+    if (uiState.characterSettings.modelType == CharacterModelType.NONE) {
+        AssistBottomSheet(
+            uiState = uiState,
+            isListening = voiceInputState.isListening,
+            hasStartedListening = hasStartedListening,
+            onOpenApp = onOpenApp,
+            onDismiss = onDismiss,
+            onMicClick = onMicClick,
+            onRetryListening = ::beginListening,
+            modifier = modifier,
+        )
+    } else {
+        AssistStage(
+            uiState = uiState,
+            isListening = voiceInputState.isListening,
+            hasStartedListening = hasStartedListening,
+            onOpenApp = onOpenApp,
+            onDismiss = onDismiss,
+            onMicClick = onMicClick,
+            onRetryListening = ::beginListening,
+            modifier = modifier,
+        )
+    }
+}
+
+/** The original bottom-sheet overlay — used whenever no character is configured, so nothing about the pre-character behavior changes. */
+@Composable
+private fun AssistBottomSheet(
+    uiState: AssistUiState,
+    isListening: Boolean,
+    hasStartedListening: Boolean,
+    onOpenApp: () -> Unit,
+    onDismiss: () -> Unit,
+    onMicClick: () -> Unit,
+    onRetryListening: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -219,14 +282,14 @@ fun AssistScreen(
                             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                                 ListeningIndicator(
                                     isListening = false,
-                                    onClick = ::beginListening,
+                                    onClick = onRetryListening,
                                     contentDescription = stringResource(R.string.assist_retry_listening),
                                 )
                             }
                         }
                         else -> {
                             AssistConversationContent(
-                                isListening = voiceInputState.isListening,
+                                isListening = isListening,
                                 isStarted = hasStartedListening,
                                 isStreaming = uiState.isStreaming,
                                 transcript = uiState.transcript,
@@ -234,10 +297,7 @@ fun AssistScreen(
                                 assistantText = uiState.assistantText,
                                 isAssistantError = uiState.isAssistantError,
                                 markdownEnabled = uiState.markdownEnabled,
-                                onMicClick = {
-                                    viewModel.onAskFollowUp()
-                                    requestOrStartListening()
-                                },
+                                onMicClick = onMicClick,
                             )
 
                             if (uiState.hasSent && !uiState.isStreaming) {
@@ -253,6 +313,267 @@ fun AssistScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * The novel-game-style stage: background layer, character layer, then the UI layer (close button,
+ * the user's own words, name plate + message window, the one mic control). Tapping the empty
+ * stage dismisses the overlay like the sheet's scrim does; the message window absorbs taps (its
+ * text handles the typewriter skip itself).
+ */
+@Composable
+private fun AssistStage(
+    uiState: AssistUiState,
+    isListening: Boolean,
+    hasStartedListening: Boolean,
+    onOpenApp: () -> Unit,
+    onDismiss: () -> Unit,
+    onMicClick: () -> Unit,
+    onRetryListening: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val characterState = deriveCharacterState(
+        isListening = isListening,
+        hasSent = uiState.hasSent,
+        assistantText = uiState.assistantText,
+        isStreaming = uiState.isStreaming,
+        isSpeaking = uiState.isSpeaking,
+        hasError = uiState.errorMessage != null || uiState.isAssistantError,
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
+    ) {
+        StageBackground(backgroundPath = uiState.characterSettings.backgroundPath)
+
+        CharacterStage(
+            settings = uiState.characterSettings,
+            characterState = characterState,
+            lipSyncEnabled = uiState.characterSettings.lipSyncEnabled,
+            onTap = null,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.assist_close),
+                        tint = Color.White.copy(alpha = 0.9f),
+                    )
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            // "This is what you said", small and right-aligned above the window — the message
+            // window itself is the character's, so the user's line stays visually distinct.
+            if (uiState.hasSent && uiState.transcript.isNotBlank()) {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    Text(
+                        text = uiState.transcript,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.92f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .widthIn(max = 300.dp)
+                            .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+
+            NamePlate(name = uiState.modelProfileName ?: stringResource(R.string.assist_title))
+
+            Spacer(Modifier.height(4.dp))
+
+            NovelMessageWindow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}),
+            ) {
+                StageWindowContent(
+                    uiState = uiState,
+                    isListening = isListening,
+                    hasStartedListening = hasStartedListening,
+                    onOpenApp = onOpenApp,
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                if (uiState.errorMessage != null) {
+                    ListeningIndicator(
+                        isListening = false,
+                        onClick = onRetryListening,
+                        contentDescription = stringResource(R.string.assist_retry_listening),
+                        onStage = true,
+                    )
+                } else if (!uiState.isStreaming) {
+                    ListeningIndicator(
+                        isListening = isListening,
+                        onClick = onMicClick,
+                        contentDescription = if (uiState.hasSent) {
+                            stringResource(R.string.assist_ask_follow_up)
+                        } else {
+                            stringResource(R.string.assist_retry_listening)
+                        },
+                        onStage = true,
+                    )
+                }
+            }
+
+            if (uiState.hasSent && !uiState.isStreaming) {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    TextButton(onClick = onOpenApp) {
+                        Text(stringResource(R.string.assist_open_in_app))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** What goes inside the stage's message window — mirrors the bottom sheet's state branches, but in the novel-window style (typewriter reveal, thinking dots). */
+@Composable
+private fun StageWindowContent(
+    uiState: AssistUiState,
+    isListening: Boolean,
+    hasStartedListening: Boolean,
+    onOpenApp: () -> Unit,
+) {
+    val typewriterState = rememberTypewriterState()
+    val scrollState = rememberScrollState()
+    val contentScroll = Modifier.verticalScroll(scrollState)
+
+    // Keep the newest revealed text in view while the typewriter runs / the reply streams.
+    LaunchedEffect(typewriterState.visibleChars, uiState.assistantText) {
+        scrollState.scrollTo(scrollState.maxValue)
+    }
+
+    when {
+        uiState.apiKeyMissing -> {
+            Column(modifier = contentScroll) {
+                Text(
+                    text = stringResource(R.string.chat_api_key_missing_message),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = onOpenApp) { Text(stringResource(R.string.chat_go_to_settings)) }
+            }
+        }
+        uiState.errorMessage != null -> {
+            Text(
+                text = uiState.errorMessage.orEmpty(),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.error,
+                modifier = contentScroll,
+            )
+        }
+        !uiState.hasSent -> {
+            val hintText = when {
+                uiState.transcript.isNotBlank() -> uiState.transcript
+                isListening -> stringResource(R.string.assist_listening_hint)
+                // If we haven't even attempted to listen yet (during the initial delay),
+                // show the hint instead of "not detected".
+                !hasStartedListening -> stringResource(R.string.assist_listening_hint)
+                else -> stringResource(R.string.assist_no_speech_detected)
+            }
+            TypewriterText(
+                text = hintText,
+                enabled = uiState.characterSettings.typewriterEnabled,
+                typewriterState = typewriterState,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (uiState.transcript.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                modifier = contentScroll,
+            )
+        }
+        uiState.isAssistantError -> {
+            Text(
+                text = uiState.assistantText.ifBlank { "…" },
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.error,
+                modifier = contentScroll,
+            )
+        }
+        uiState.assistantText.isBlank() -> {
+            ThinkingDots(modifier = contentScroll)
+        }
+        uiState.characterSettings.typewriterEnabled -> {
+            Column(modifier = contentScroll.heightIn(max = STAGE_WINDOW_MAX_HEIGHT)) {
+                TypewriterText(
+                    text = uiState.assistantText,
+                    enabled = true,
+                    typewriterState = typewriterState,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                if (typewriterState.isComplete(uiState.assistantText) && !uiState.isStreaming) {
+                    Spacer(Modifier.height(4.dp))
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                        NovelContinueIndicator()
+                    }
+                }
+            }
+        }
+        uiState.markdownEnabled -> {
+            val markdownState = rememberMarkdownState(content = uiState.assistantText, retainState = true)
+            Markdown(
+                markdownState = markdownState,
+                colors = markdownColor(text = MaterialTheme.colorScheme.onSurface),
+                modifier = contentScroll.heightIn(max = STAGE_WINDOW_MAX_HEIGHT),
+            )
+        }
+        else -> {
+            Text(
+                text = uiState.assistantText,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = contentScroll.heightIn(max = STAGE_WINDOW_MAX_HEIGHT),
+            )
+        }
+    }
+}
+
+/** The stage's background layer: the user's chosen image when set, otherwise a plain dark scrim — plus a light readability scrim over either. */
+@Composable
+private fun StageBackground(backgroundPath: String?) {
+    // The raw Bitmap (rather than ImageBitmap) so it can be recycled when replaced.
+    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(backgroundPath) {
+        val previous = bitmap
+        bitmap = backgroundPath?.let { path ->
+            withContext(Dispatchers.IO) { decodeDownsampled(path) }
+        }
+        previous?.let { previousBitmap ->
+            if (bitmap !== previousBitmap) previousBitmap.recycle()
+        }
+    }
+
+    val current = bitmap
+    if (current != null) {
+        Image(
+            bitmap = current.asImageBitmap(),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f)))
+    } else {
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)))
     }
 }
 
@@ -356,8 +677,10 @@ private fun AssistConversationContent(
 /**
  * The one mic control shown throughout the whole overlay — pulses gently while actively
  * listening; tapping it (re)starts listening, whether that's the very first prompt, a retry after
- * silence/an error, or a follow-up after a reply. Reused as-is everywhere rather than introducing
- * a second, smaller mic button, so there's only ever one mic affordance on screen at a time.
+ * silence/an error, or a follow-up after a reply. Reused everywhere rather than introducing a
+ * second, smaller mic button, so there's only ever one mic affordance on screen at a time.
+ * On the stage ([onStage] = true) it swaps the tonal surface for a dark disc with a bright ring
+ * so it reads against an arbitrary background image instead of the sheet's surface.
  */
 @Composable
 private fun ListeningIndicator(
@@ -365,6 +688,7 @@ private fun ListeningIndicator(
     onClick: () -> Unit,
     contentDescription: String,
     modifier: Modifier = Modifier,
+    onStage: Boolean = false,
 ) {
     val transition = rememberInfiniteTransition(label = "assist-listening")
     val scale by transition.animateFloat(
@@ -378,15 +702,20 @@ private fun ListeningIndicator(
             .size(64.dp)
             .scale(if (isListening) scale else 1f)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer)
+            .background(if (onStage) Color.Black.copy(alpha = 0.45f) else MaterialTheme.colorScheme.primaryContainer)
+            .then(
+                if (onStage) Modifier.border(2.dp, Color.White.copy(alpha = 0.75f), CircleShape) else Modifier,
+            )
             .clickable(enabled = !isListening, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = Icons.Filled.Mic,
             contentDescription = contentDescription,
-            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            tint = if (onStage) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
             modifier = Modifier.size(28.dp),
         )
     }
 }
+
+private val STAGE_WINDOW_MAX_HEIGHT = 240.dp

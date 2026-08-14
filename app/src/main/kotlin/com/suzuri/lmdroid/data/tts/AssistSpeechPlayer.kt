@@ -5,6 +5,9 @@ import android.media.MediaPlayer
 import android.util.Log
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import com.suzuri.lmdroid.data.settings.SettingsRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import java.io.IOException
@@ -41,6 +44,13 @@ class AssistSpeechPlayer(
     // surfaces as a native "destroyed mutex" crash rather than a catchable Kotlin exception.
     private val mediaPlayerLock = Any()
     private var mediaPlayer: MediaPlayer? = null
+
+    // True while play() is actively speaking a chunk (either backend). AssistViewModel mirrors
+    // this into AssistUiState.isSpeaking so the character can lip-sync / show its "speaking"
+    // state — playback is strictly sequential through one playbackJob, so a plain flag never has
+    // to count overlapping chunks.
+    private val _isSpeaking = MutableStateFlow(false)
+    val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
 
     /** What [play] needs to actually speak a chunk — the result of whatever synthesis [prepare] did (or didn't need to do). */
     sealed class PreparedSpeech {
@@ -96,9 +106,14 @@ class AssistSpeechPlayer(
 
     /** Actually speaks a chunk [prepare] already did the slow work for — the part that must stay strictly sequential (see AssistViewModel's playback queue), since audio output can't overlap itself. */
     suspend fun play(prepared: PreparedSpeech) {
-        when (prepared) {
-            is PreparedSpeech.OnDevice -> onDeviceSpeechSynthesizer.speak(prepared.text)
-            is PreparedSpeech.Wav -> playWav(prepared.audioBytes)
+        _isSpeaking.value = true
+        try {
+            when (prepared) {
+                is PreparedSpeech.OnDevice -> onDeviceSpeechSynthesizer.speak(prepared.text)
+                is PreparedSpeech.Wav -> playWav(prepared.audioBytes)
+            }
+        } finally {
+            _isSpeaking.value = false
         }
     }
 
@@ -145,6 +160,7 @@ class AssistSpeechPlayer(
 
     /** Stops any in-progress speech from either backend — called when the user dismisses the overlay or starts a follow-up question, so playback never keeps going after the user has moved on. */
     fun stop() {
+        _isSpeaking.value = false
         onDeviceSpeechSynthesizer.stop()
         // Atomically takes ownership of whatever mediaPlayer currently is (if anything) so
         // finish()'s own claim check above sees it already cleared and won't also try to release

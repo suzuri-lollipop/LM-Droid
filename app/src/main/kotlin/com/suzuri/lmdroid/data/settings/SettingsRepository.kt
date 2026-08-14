@@ -4,11 +4,14 @@ import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.suzuri.lmdroid.data.character.CharacterModelType
+import com.suzuri.lmdroid.data.character.CharacterSettings
 import com.suzuri.lmdroid.data.db.ApiProfileDao
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -328,6 +331,56 @@ class SettingsRepository(
         return runCatching { cipher.decrypt(ciphertext, iv) }.getOrNull()
     }
 
+    /**
+     * The character shown on the assistant overlay (Settings → キャラクター) — model type,
+     * asset paths managed by CharacterModelStore, and the novel-game effect toggles. A single map
+     * over the preferences (rather than combine over six flows) since every field comes from the
+     * same DataStore anyway.
+     */
+    val characterSettings: Flow<CharacterSettings> = context.settingsDataStore.data.map { prefs ->
+        CharacterSettings(
+            modelType = prefs[KEY_CHARACTER_MODEL_TYPE]
+                ?.let { stored -> runCatching { CharacterModelType.valueOf(stored) }.getOrNull() }
+                ?: CharacterModelType.NONE,
+            modelPath = prefs[KEY_CHARACTER_MODEL_PATH],
+            backgroundPath = prefs[KEY_CHARACTER_BACKGROUND_PATH],
+            scale = prefs[KEY_CHARACTER_SCALE] ?: 1f,
+            typewriterEnabled = prefs[KEY_CHARACTER_TYPWRITER_ENABLED] ?: true,
+            lipSyncEnabled = prefs[KEY_CHARACTER_LIP_SYNC_ENABLED] ?: true,
+        )
+    }
+
+    suspend fun currentCharacterSettings(): CharacterSettings = characterSettings.first()
+
+    suspend fun setCharacterModelType(type: CharacterModelType) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_CHARACTER_MODEL_TYPE] = type.name }
+    }
+
+    /** Null clears the stored path (the slot's file itself is removed by CharacterModelStore). */
+    suspend fun setCharacterModelPath(path: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (path == null) prefs.remove(KEY_CHARACTER_MODEL_PATH) else prefs[KEY_CHARACTER_MODEL_PATH] = path
+        }
+    }
+
+    suspend fun setCharacterBackgroundPath(path: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (path == null) prefs.remove(KEY_CHARACTER_BACKGROUND_PATH) else prefs[KEY_CHARACTER_BACKGROUND_PATH] = path
+        }
+    }
+
+    suspend fun setCharacterScale(scale: Float) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_CHARACTER_SCALE] = scale.coerceIn(0.5f, 2f) }
+    }
+
+    suspend fun setCharacterTypewriterEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_CHARACTER_TYPWRITER_ENABLED] = enabled }
+    }
+
+    suspend fun setCharacterLipSyncEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_CHARACTER_LIP_SYNC_ENABLED] = enabled }
+    }
+
     private fun resolve(selected: SelectedModel?): Flow<AppSettings> {
         if (selected == null) {
             return markdownEnabledFlow.map { markdownEnabled ->
@@ -393,5 +446,11 @@ class SettingsRepository(
         val KEY_WAKE_WORD_ENABLED = booleanPreferencesKey("wake_word_enabled")
         val KEY_WAKE_WORD = stringPreferencesKey("wake_word")
         val KEY_SELECTED_STT_MODEL_ID = stringPreferencesKey("selected_stt_model_id")
+        val KEY_CHARACTER_MODEL_TYPE = stringPreferencesKey("character_model_type")
+        val KEY_CHARACTER_MODEL_PATH = stringPreferencesKey("character_model_path")
+        val KEY_CHARACTER_BACKGROUND_PATH = stringPreferencesKey("character_background_path")
+        val KEY_CHARACTER_SCALE = floatPreferencesKey("character_scale")
+        val KEY_CHARACTER_TYPWRITER_ENABLED = booleanPreferencesKey("character_typewriter_enabled")
+        val KEY_CHARACTER_LIP_SYNC_ENABLED = booleanPreferencesKey("character_lip_sync_enabled")
     }
 }

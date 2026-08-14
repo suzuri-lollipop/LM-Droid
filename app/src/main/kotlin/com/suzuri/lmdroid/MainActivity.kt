@@ -63,6 +63,8 @@ import com.suzuri.lmdroid.ui.settings.AssistantSettingsScreen
 import com.suzuri.lmdroid.ui.settings.AssistantSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditScreen
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditViewModel
+import com.suzuri.lmdroid.ui.settings.CharacterSettingsScreen
+import com.suzuri.lmdroid.ui.settings.CharacterSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.ImageGenerationProfileEditScreen
 import com.suzuri.lmdroid.ui.settings.ImageGenerationProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.LocationSettingsScreen
@@ -159,6 +161,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val systemPromptListViewModel: SystemPromptListViewModel = viewModel(factory = viewModelFactory)
     val systemPromptEditViewModel: SystemPromptEditViewModel = viewModel(factory = viewModelFactory)
     val assistantSettingsViewModel: AssistantSettingsViewModel = viewModel(factory = viewModelFactory)
+    val characterSettingsViewModel: CharacterSettingsViewModel = viewModel(factory = viewModelFactory)
     val historyViewModel: HistoryViewModel = viewModel(factory = viewModelFactory)
     val settingsExportViewModel: SettingsExportViewModel = viewModel(factory = viewModelFactory)
     val settingsImportViewModel: SettingsImportViewModel = viewModel(factory = viewModelFactory)
@@ -291,6 +294,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.SystemPromptList -> stringResource(R.string.settings_system_prompt_category_title)
                                     SettingsRoute.SystemPromptEdit -> stringResource(R.string.settings_system_prompt_category_title)
                                     SettingsRoute.Assistant -> stringResource(R.string.settings_assistant_category_title)
+                                    SettingsRoute.Character -> stringResource(R.string.settings_character_category_title)
                                 }
                             },
                             maxLines = 1,
@@ -377,6 +381,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 onNavigateToMusic = { settingsRoute = SettingsRoute.Music },
                                 onNavigateToSystemPrompts = { settingsRoute = SettingsRoute.SystemPromptList },
                                 onNavigateToAssistant = { settingsRoute = SettingsRoute.Assistant },
+                                onNavigateToCharacter = { settingsRoute = SettingsRoute.Character },
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }
@@ -533,6 +538,12 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                         SettingsRoute.Assistant -> {
                             AssistantSettingsScreen(
                                 viewModel = assistantSettingsViewModel,
+                                modifier = Modifier.padding(innerPadding),
+                            )
+                        }
+                        SettingsRoute.Character -> {
+                            CharacterSettingsScreen(
+                                viewModel = characterSettingsViewModel,
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }

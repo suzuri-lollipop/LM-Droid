@@ -180,6 +180,24 @@
     <string name="assistant_settings_tool_timing_while_speaking">読み上げをバックグラウンドで続けながら開く</string>
     <string name="assistant_settings_tool_timing_after_speaking">読み上げが終わってから開く</string>
 
+    <string name="settings_character_category_title">キャラクター</string>
+    <string name="character_settings_description">アシスタント画面にキャラクターを表示します。Live2DとMMDは今後のバージョンで対応予定です。</string>
+    <string name="character_model_type_label">表示タイプ</string>
+    <string name="character_model_type_none">表示しない</string>
+    <string name="character_model_type_static">静止画(立ち絵)</string>
+    <string name="character_model_type_live2d">Live2D (準備中)</string>
+    <string name="character_model_type_mmd">MMD (準備中)</string>
+    <string name="character_sprite_label">立ち絵画像</string>
+    <string name="character_sprite_select">ファイルを選択...</string>
+    <string name="character_sprite_clear">削除</string>
+    <string name="character_background_label">背景画像</string>
+    <string name="character_scale_label">キャラクターの大きさ</string>
+    <string name="character_typewriter_label">テキストの文字送り演出</string>
+    <string name="character_typewriter_description">ノベルゲームのように返信を1文字ずつ表示します。タップすると全文を表示します。</string>
+    <string name="character_lip_sync_label">リップシンク</string>
+    <string name="character_lip_sync_description">返信の読み上げ中にキャラクターを動かします。</string>
+    <string name="character_import_failed">ファイルのインポートに失敗しました</string>
+
     <string name="settings_wake_word_title">ウェイクアップワード</string>
     <string name="settings_wake_word_enable">ウェイクアップワードを有効にする</string>
     <string name="settings_wake_word_description">有効にすると、バックグラウンドでマイクを監視し、設定した言葉を検知してアシスタントを自動起動します（バッテリー消費に影響します）。</string>

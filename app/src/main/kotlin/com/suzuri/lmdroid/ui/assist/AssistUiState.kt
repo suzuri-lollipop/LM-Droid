@@ -1,5 +1,7 @@
 package com.suzuri.lmdroid.ui.assist
 
+import com.suzuri.lmdroid.data.character.CharacterSettings
+
 /**
  * Drives the assistant overlay (see AssistActivity) end to end: listen → transcribe → send →
  * stream the reply. A single always-forward flow (no back/forth navigation), so one flat state
@@ -27,4 +29,10 @@ data class AssistUiState(
     val apiKeyMissing: Boolean = false,
     val errorMessage: String? = null,
     val triggerCount: Int = 0,
+    // Settings → キャラクター — when modelType != NONE the overlay switches from the bottom
+    // sheet to the novel-game-style stage layout with the character (see AssistScreen).
+    val characterSettings: CharacterSettings = CharacterSettings(),
+    // Mirrors AssistSpeechPlayer.isSpeaking so the character can show its "speaking" state /
+    // lip-sync while the reply is being read aloud.
+    val isSpeaking: Boolean = false,
 )

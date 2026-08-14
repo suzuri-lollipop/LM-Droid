@@ -26,6 +26,7 @@ enum class SettingsRoute {
     SystemPromptList,
     SystemPromptEdit,
     Assistant,
+    Character,
 }
 
 fun SettingsRoute.parent(): SettingsRoute? = when (this) {
@@ -48,4 +49,5 @@ fun SettingsRoute.parent(): SettingsRoute? = when (this) {
     SettingsRoute.SystemPromptList -> SettingsRoute.Root
     SettingsRoute.SystemPromptEdit -> SettingsRoute.SystemPromptList
     SettingsRoute.Assistant -> SettingsRoute.Root
+    SettingsRoute.Character -> SettingsRoute.Root
 }

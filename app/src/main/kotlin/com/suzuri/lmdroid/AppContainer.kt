@@ -6,6 +6,7 @@ import androidx.room.Room
 import com.suzuri.lmdroid.data.alarm.DeviceAlarmController
 import com.suzuri.lmdroid.data.attachment.AttachmentFileStore
 import com.suzuri.lmdroid.data.attachment.AudioRecorder
+import com.suzuri.lmdroid.data.character.CharacterModelStore
 import com.suzuri.lmdroid.data.db.AppDatabase
 import com.suzuri.lmdroid.data.location.DeviceLocationProvider
 import com.suzuri.lmdroid.data.messaging.DeviceMessageController
@@ -104,6 +105,8 @@ class AppContainer(context: Context) {
     val attachmentFileStore = AttachmentFileStore(appContext)
 
     val audioRecorder = AudioRecorder(attachmentFileStore)
+
+    val characterModelStore = CharacterModelStore(appContext)
 
     val braveSearchClient = BraveSearchClient(okHttpClient, json)
 

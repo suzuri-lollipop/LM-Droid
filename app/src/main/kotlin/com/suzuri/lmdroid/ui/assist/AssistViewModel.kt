@@ -89,6 +89,18 @@ class AssistViewModel(
         }
 
         viewModelScope.launch {
+            settingsRepository.characterSettings.collect { character ->
+                _uiState.update { it.copy(characterSettings = character) }
+            }
+        }
+
+        viewModelScope.launch {
+            assistSpeechPlayer.isSpeaking.collect { speaking ->
+                _uiState.update { it.copy(isSpeaking = speaking) }
+            }
+        }
+
+        viewModelScope.launch {
             conversationId.filterNotNull().flatMapLatest { id ->
                 conversationRepository.observeMessages(id)
             }.collect { entities ->

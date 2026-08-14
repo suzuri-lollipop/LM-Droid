@@ -10,6 +10,7 @@ import com.suzuri.lmdroid.ui.settings.AlarmSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
 import com.suzuri.lmdroid.ui.settings.AssistantSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditViewModel
+import com.suzuri.lmdroid.ui.settings.CharacterSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.ImageGenerationProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.MessagingSettingsViewModel
@@ -106,6 +107,9 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
 
         modelClass.isAssignableFrom(AssistantSettingsViewModel::class.java) ->
             AssistantSettingsViewModel(container.apiProfileRepository, container.settingsRepository) as T
+
+        modelClass.isAssignableFrom(CharacterSettingsViewModel::class.java) ->
+            CharacterSettingsViewModel(container.settingsRepository, container.characterModelStore) as T
 
         else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }
