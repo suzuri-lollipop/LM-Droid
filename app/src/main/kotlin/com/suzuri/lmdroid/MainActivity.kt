@@ -243,6 +243,9 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        // Swipe-to-open only belongs on the Chat screen — on Settings the same left-to-right
+        // swipe kept summoning the conversation history drawer by accident.
+        gesturesEnabled = currentScreen != Screen.Settings,
         drawerContent = {
             ModalDrawerSheet {
                 Column(modifier = Modifier.fillMaxSize()) {

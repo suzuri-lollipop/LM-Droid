@@ -42,7 +42,10 @@ fun SystemSettingsScreen(
             modifier = Modifier.padding(16.dp),
         )
         HorizontalDivider()
-        LazyColumn {
+        // weight(1f): without it the LazyColumn measures against the Column's FULL height
+        // (not the space left after the description header) and its bottom rows — notably
+        // エクスポート/インポート — overflow past the screen edge in landscape.
+        LazyColumn(modifier = Modifier.weight(1f)) {
             item {
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.settings_system_use_chat_model)) },

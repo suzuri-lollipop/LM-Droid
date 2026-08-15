@@ -2,6 +2,8 @@ package com.suzuri.lmdroid.ui.settings
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -25,7 +27,13 @@ fun SettingsRootScreen(
     onNavigateToCharacter: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxSize()) {
+    // Scrollable so every category stays reachable even in landscape, where the 12 rows
+    // together are taller than the screen.
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+    ) {
         SettingsMenuRow(
             title = stringResource(R.string.settings_api_category_title),
             onClick = onNavigateToApiSettings,
