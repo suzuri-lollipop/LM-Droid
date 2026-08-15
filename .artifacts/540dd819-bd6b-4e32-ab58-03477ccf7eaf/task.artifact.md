@@ -17,12 +17,12 @@
 - [ ] `CMakeLists.txt` を更新
 - [ ] GLSurfaceView 埋め込みとリップシンク（`ParamMouthOpenY`）連動を確認
 
-## Phase 4: MMD対応（方式B: NDKネイティブに決定）
-- [ ] PMXパーサ・VMDプレイヤーを `app/src/main/cpp/mmd/` に実装
-- [ ] MMDトゥーンレンダラー（OpenGL ES 3.x）を実装
-- [ ] Bullet Physics（剛体・ジョイント）を組み込み
-- [ ] `mmd_jni.cpp` と `MmdNativeRenderer`（`CharacterRenderer` 実装）を実装
-- [ ] PMX表示・口パクモーフ連動（リップシンク）を確認
+## Phase 4: MMD対応（方式B: NDKネイティブに決定）※ Phase 3 に先行して実装
+- [x] PMXパーサ・VMDプレイヤーを `app/src/main/cpp/mmd/` に実装（`pmx_parser.cpp` / `vmd_parser.cpp`。VMDのShift-JIS名はKotlin側のCharsetでデコード）
+- [x] MMDトゥーンレンダラー（OpenGL ES 3.x）を実装（`mmd_renderer.cpp`: トゥーン＋スフィア合成＋エッジパス。スキニング・CCD IK・モーフは `mmd_engine.cpp`）
+- [x] Bullet Physics（剛体・ジョイント）を組み込み（bullet3 3.25 を `app/src/main/cpp/bullet3` にvendoring、`mmd_physics.cpp`）
+- [x] `mmd_jni.cpp` と `MmdNativeRenderer`（`CharacterRenderer` 実装）を実装（GLSurfaceView埋め込みは `MmdSurface.kt`、SAFフォルダインポートは `CharacterModelStore.importMmdModel`）
+- [ ] PMX表示・口パクモーフ連動（リップシンク）を実機で確認（ビルド・パッケージング検証済み、実機検証待ち）
 
 ## 共通
 - [x] `AssistSpeechPlayer` からリップシンク用の再生情報を公開（`isSpeaking: StateFlow<Boolean>`）

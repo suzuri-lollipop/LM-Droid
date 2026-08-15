@@ -352,6 +352,7 @@ class SettingsRepository(
                 ?.let { stored -> runCatching { CharacterModelType.valueOf(stored) }.getOrNull() }
                 ?: CharacterModelType.NONE,
             modelPath = prefs[KEY_CHARACTER_MODEL_PATH],
+            motionPath = prefs[KEY_CHARACTER_MOTION_PATH],
             backgroundPath = prefs[KEY_CHARACTER_BACKGROUND_PATH],
             scale = prefs[KEY_CHARACTER_SCALE] ?: 1f,
             typewriterEnabled = prefs[KEY_CHARACTER_TYPWRITER_ENABLED] ?: true,
@@ -369,6 +370,12 @@ class SettingsRepository(
     suspend fun setCharacterModelPath(path: String?) {
         context.settingsDataStore.edit { prefs ->
             if (path == null) prefs.remove(KEY_CHARACTER_MODEL_PATH) else prefs[KEY_CHARACTER_MODEL_PATH] = path
+        }
+    }
+
+    suspend fun setCharacterMotionPath(path: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (path == null) prefs.remove(KEY_CHARACTER_MOTION_PATH) else prefs[KEY_CHARACTER_MOTION_PATH] = path
         }
     }
 
@@ -458,6 +465,7 @@ class SettingsRepository(
         val KEY_SELECTED_STT_LANGUAGE = stringPreferencesKey("selected_stt_language")
         val KEY_CHARACTER_MODEL_TYPE = stringPreferencesKey("character_model_type")
         val KEY_CHARACTER_MODEL_PATH = stringPreferencesKey("character_model_path")
+        val KEY_CHARACTER_MOTION_PATH = stringPreferencesKey("character_motion_path")
         val KEY_CHARACTER_BACKGROUND_PATH = stringPreferencesKey("character_background_path")
         val KEY_CHARACTER_SCALE = floatPreferencesKey("character_scale")
         val KEY_CHARACTER_TYPWRITER_ENABLED = booleanPreferencesKey("character_typewriter_enabled")

@@ -20,6 +20,10 @@ captures/
 # Note: app/schemas/ (Room schema history) is intentionally NOT ignored —
 # those JSON files are committed for migration tracking.
 
+# Note: vendored native third-party sources (whisper.cpp, stable-diffusion.cpp,
+# bullet3) under app/src/main/cpp/ are intentionally tracked. bullet3 is trimmed
+# to src/ + root CMake files (demos/data/examples removed) — see CMakeLists.txt.
+
 # Log/OS files
 *.log
 .DS_Store

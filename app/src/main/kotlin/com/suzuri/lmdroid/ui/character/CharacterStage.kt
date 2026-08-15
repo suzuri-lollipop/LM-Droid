@@ -60,9 +60,19 @@ fun CharacterStage(
                 lipSyncEnabled = lipSyncEnabled,
                 onTap = onTap,
             )
+            CharacterModelType.MMD -> {
+                val pmxPath = settings.modelPath
+                if (MmdNative.isAvailable && pmxPath != null) {
+                    MmdSurface(
+                        pmxPath = pmxPath,
+                        vmdPath = settings.motionPath,
+                        characterState = characterState,
+                        lipSyncEnabled = lipSyncEnabled,
+                    )
+                }
+            }
             CharacterModelType.NONE,
-            CharacterModelType.LIVE2D,
-            CharacterModelType.MMD -> Unit // No renderer wired up yet (NONE by definition).
+            CharacterModelType.LIVE2D -> Unit // NONE by definition; Live2D lands in Phase 3.
         }
     }
 }

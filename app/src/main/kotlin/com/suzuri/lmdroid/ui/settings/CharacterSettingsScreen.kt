@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -51,6 +53,18 @@ fun CharacterSettingsScreen(viewModel: CharacterSettingsViewModel, modifier: Mod
     }
     val backgroundPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) viewModel.onBackgroundSelected(uri)
+    }
+    // Primary flow: pick the .pmx file itself (textures are recovered from its folder when the
+    // provider allows). The tree picker stays as a fallback for providers where siblings can't
+    // be reached from a single-file grant.
+    val pmxFilePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) viewModel.onPmxFileSelected(uri)
+    }
+    val mmdFolderPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) viewModel.onMmdModelSelected(uri)
+    }
+    val motionPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) viewModel.onMotionSelected(uri)
     }
 
     val importFailedMessage = stringResource(R.string.character_import_failed)
@@ -105,11 +119,62 @@ fun CharacterSettingsScreen(viewModel: CharacterSettingsViewModel, modifier: Mod
         CharacterModelTypeRadioRow(
             label = stringResource(R.string.character_model_type_mmd),
             selected = uiState.settings.modelType == CharacterModelType.MMD,
-            enabled = false,
+            enabled = true,
             onSelect = { viewModel.onSelectModelType(CharacterModelType.MMD) },
         )
 
         HorizontalDivider(modifier = Modifier.padding(top = 24.dp, bottom = 16.dp))
+
+        if (uiState.settings.modelType == CharacterModelType.MMD) {
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.character_mmd_model_label)) },
+                supportingContent = {
+                    Column {
+                        Text(stringResource(R.string.character_mmd_model_description))
+                        Spacer(Modifier.height(8.dp))
+                        Row {
+                            Button(
+                                onClick = { pmxFilePickerLauncher.launch("*/*") },
+                                enabled = !uiState.importing,
+                            ) {
+                                Text(stringResource(R.string.character_mmd_model_select))
+                            }
+                            Spacer(Modifier.weight(1f))
+                            TextButton(
+                                onClick = { mmdFolderPickerLauncher.launch(null) },
+                                enabled = !uiState.importing,
+                            ) {
+                                Text(stringResource(R.string.character_mmd_model_select_folder))
+                            }
+                        }
+                        if (uiState.settings.modelPath != null) {
+                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                                TextButton(onClick = viewModel::onClearMmd) {
+                                    Text(stringResource(R.string.character_sprite_clear))
+                                }
+                            }
+                        }
+                    }
+                },
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.character_mmd_motion_label)) },
+                supportingContent = {
+                    Column {
+                        Text(stringResource(R.string.character_mmd_motion_description))
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = { motionPickerLauncher.launch("*/*") },
+                            enabled = !uiState.importing,
+                        ) {
+                            Text(stringResource(R.string.character_sprite_select))
+                        }
+                    }
+                },
+            )
+            HorizontalDivider()
+        }
 
         ListItem(
             headlineContent = { Text(stringResource(R.string.character_sprite_label)) },

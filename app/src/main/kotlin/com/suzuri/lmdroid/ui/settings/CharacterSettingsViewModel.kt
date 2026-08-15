@@ -74,6 +74,57 @@ class CharacterSettingsViewModel(
         }
     }
 
+    /** The user picked the .pmx file itself: copies it (plus sibling textures when recoverable), flips the type to MMD. */
+    fun onPmxFileSelected(uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(importing = true) }
+            val path = characterModelStore.importMmdModelFromFile(uri)
+            if (path != null) {
+                settingsRepository.setCharacterModelPath(path)
+                settingsRepository.setCharacterModelType(CharacterModelType.MMD)
+            } else {
+                _uiState.update { it.copy(importFailed = true) }
+            }
+            _uiState.update { it.copy(importing = false) }
+        }
+    }
+
+    /** Folder-picking fallback (needed when the provider doesn't expose sibling files): copies .pmx + textures in, flips the type to MMD. */
+    fun onMmdModelSelected(treeUri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(importing = true) }
+            val path = characterModelStore.importMmdModel(treeUri)
+            if (path != null) {
+                settingsRepository.setCharacterModelPath(path)
+                settingsRepository.setCharacterModelType(CharacterModelType.MMD)
+            } else {
+                _uiState.update { it.copy(importFailed = true) }
+            }
+            _uiState.update { it.copy(importing = false) }
+        }
+    }
+
+    fun onMotionSelected(uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(importing = true) }
+            val path = characterModelStore.importMotion(uri)
+            if (path != null) {
+                settingsRepository.setCharacterMotionPath(path)
+            } else {
+                _uiState.update { it.copy(importFailed = true) }
+            }
+            _uiState.update { it.copy(importing = false) }
+        }
+    }
+
+    fun onClearMmd() {
+        viewModelScope.launch {
+            characterModelStore.clearMmdModel()
+            settingsRepository.setCharacterModelPath(null)
+            settingsRepository.setCharacterMotionPath(null)
+        }
+    }
+
     fun onClearBackground() {
         viewModelScope.launch {
             characterModelStore.clear(CharacterModelStore.SLOT_BACKGROUND)

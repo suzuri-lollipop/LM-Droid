@@ -1,10 +1,9 @@
 package com.suzuri.lmdroid.data.character
 
 /**
- * Which renderer draws the assistant character on the overlay (see CharacterStage). Only NONE
- * and STATIC are wired up so far; LIVE2D and MMD are reserved for the later phases of the
- * character plan (Cubism SDK for Native via JNI, and the NDK-native PMX/VMD renderer
- * respectively) — the settings screen shows them as disabled options until then.
+ * Which renderer draws the assistant character on the overlay (see CharacterStage). NONE,
+ * STATIC and MMD (NDK-native PMX/VMD renderer, Phase 4) are wired up; LIVE2D is reserved for
+ * the Cubism SDK phase (Phase 3) and the settings screen shows it as a disabled option.
  */
 enum class CharacterModelType { NONE, STATIC, LIVE2D, MMD }
 
@@ -21,6 +20,9 @@ enum class CharacterModelType { NONE, STATIC, LIVE2D, MMD }
 data class CharacterSettings(
     val modelType: CharacterModelType = CharacterModelType.NONE,
     val modelPath: String? = null,
+    // MMD only: the optional VMD motion looped while the model idles (CharacterModelStore's
+    // SLOT_MOTION copy); null draws the model in its default pose with procedural blink/lip sync.
+    val motionPath: String? = null,
     val backgroundPath: String? = null,
     val scale: Float = 1f,
     val typewriterEnabled: Boolean = true,

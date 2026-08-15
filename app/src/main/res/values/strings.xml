@@ -190,12 +190,18 @@
     <string name="assistant_settings_tool_timing_after_speaking">読み上げが終わってから開く</string>
 
     <string name="settings_character_category_title">キャラクター</string>
-    <string name="character_settings_description">アシスタント画面にキャラクターを表示します。Live2DとMMDは今後のバージョンで対応予定です。</string>
+    <string name="character_settings_description">アシスタント画面にキャラクターを表示します。Live2Dは今後のバージョンで対応予定です。</string>
     <string name="character_model_type_label">表示タイプ</string>
     <string name="character_model_type_none">表示しない</string>
     <string name="character_model_type_static">静止画(立ち絵)</string>
     <string name="character_model_type_live2d">Live2D (準備中)</string>
-    <string name="character_model_type_mmd">MMD (準備中)</string>
+    <string name="character_model_type_mmd">MMD</string>
+    <string name="character_mmd_model_label">MMDモデル (PMX)</string>
+    <string name="character_mmd_model_description">PMXファイルを選択してください。同じフォルダにあるテクスチャもあわせて取り込みます。</string>
+    <string name="character_mmd_model_select">PMXファイルを選択...</string>
+    <string name="character_mmd_model_select_folder">フォルダごと選択...</string>
+    <string name="character_mmd_motion_label">モーション (VMD)</string>
+    <string name="character_mmd_motion_description">待機中にループ再生するVMDモーションファイルです。未設定の場合はデフォルトのポーズで表示されます。</string>
     <string name="character_sprite_label">立ち絵画像</string>
     <string name="character_sprite_select">ファイルを選択...</string>
     <string name="character_sprite_clear">削除</string>
