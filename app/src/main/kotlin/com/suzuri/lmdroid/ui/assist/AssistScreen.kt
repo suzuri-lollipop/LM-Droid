@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -133,6 +132,10 @@ fun AssistScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
                 voiceInputState.stop()
+                // Invisible = the user left: silence any reply still being spoken and abandon
+                // the turn (a dismissed overlay must not keep talking — see
+                // AssistViewModel.onHidden).
+                viewModel.onHidden()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -434,66 +437,64 @@ private fun AssistStage(
 
             NamePlate(name = uiState.modelProfileName ?: stringResource(R.string.assist_title))
 
-            // Room for the mic button straddling the window's top edge below the name plate.
-            Spacer(Modifier.height(36.dp))
+            Spacer(Modifier.height(8.dp))
 
-            // Novel-game layout: a fixed-size message window at the bottom, with the one mic
-            // control anchored to its top-right corner like a window button. Fixed size + corner
-            // anchoring keep the frame from ever resizing or shifting — it used to grow with the
-            // reply and jump when the mic/button below appeared, which read as the frame moving
-            // around like the character sprite does.
-            Box(modifier = Modifier.fillMaxWidth()) {
-                NovelMessageWindow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}),
-                ) {
-                    StageWindowContent(
-                        uiState = uiState,
-                        isListening = isListening,
-                        isPreparing = isPreparing,
-                        isFinalizing = isFinalizing,
-                        hasStartedListening = hasStartedListening,
-                        onOpenApp = onOpenApp,
+            // The mic lives in its own fixed-height row, right-aligned just above the window's
+            // top-right corner — corner-straddling kept covering the frame. The fixed row height
+            // keeps the window below from jumping when the mic is hidden during streaming.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                if (uiState.errorMessage != null) {
+                    ListeningIndicator(
+                        isListening = false,
+                        onClick = onRetryListening,
+                        contentDescription = stringResource(R.string.assist_retry_listening),
+                        onStage = true,
+                        size = 44.dp,
+                        iconSize = 22.dp,
+                    )
+                } else if (!uiState.isStreaming) {
+                    ListeningIndicator(
+                        // No pulse while the final inference is running — the mic isn't
+                        // actually listening in that phase, and a tap would be a no-op
+                        // anyway (start() refuses while a session is still active).
+                        isListening = isListening && !isFinalizing,
+                        onClick = onMicClick,
+                        contentDescription = if (uiState.hasSent) {
+                            stringResource(R.string.assist_ask_follow_up)
+                        } else {
+                            stringResource(R.string.assist_retry_listening)
+                        },
+                        onStage = true,
+                        size = 44.dp,
+                        iconSize = 22.dp,
                     )
                 }
+            }
 
-                // Compact variant of the mic button here: the full-size 64dp disc covered the
-                // frame's corner content. 44dp straddles the top edge (offset = half the size)
-                // with its bottom staying clear of the window's top padding (see
-                // NovelMessageWindow).
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(y = (-22).dp),
-                ) {
-                    if (uiState.errorMessage != null) {
-                        ListeningIndicator(
-                            isListening = false,
-                            onClick = onRetryListening,
-                            contentDescription = stringResource(R.string.assist_retry_listening),
-                            onStage = true,
-                            size = 44.dp,
-                            iconSize = 22.dp,
-                        )
-                    } else if (!uiState.isStreaming) {
-                        ListeningIndicator(
-                            // No pulse while the final inference is running — the mic isn't
-                            // actually listening in that phase, and a tap would be a no-op
-                            // anyway (start() refuses while a session is still active).
-                            isListening = isListening && !isFinalizing,
-                            onClick = onMicClick,
-                            contentDescription = if (uiState.hasSent) {
-                                stringResource(R.string.assist_ask_follow_up)
-                            } else {
-                                stringResource(R.string.assist_retry_listening)
-                            },
-                            onStage = true,
-                            size = 44.dp,
-                            iconSize = 22.dp,
-                        )
-                    }
-                }
+            Spacer(Modifier.height(6.dp))
+
+            // Novel-game layout: a fixed-size message window at the bottom, below the mic row.
+            // Fixed size keeps the frame from ever resizing or shifting — it used to grow with
+            // the reply and jump when controls below it appeared, which read as the frame
+            // moving around like the character sprite does.
+            NovelMessageWindow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}),
+            ) {
+                StageWindowContent(
+                    uiState = uiState,
+                    isListening = isListening,
+                    isPreparing = isPreparing,
+                    isFinalizing = isFinalizing,
+                    hasStartedListening = hasStartedListening,
+                    onOpenApp = onOpenApp,
+                )
             }
 
             if (uiState.hasSent && !uiState.isStreaming) {

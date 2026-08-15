@@ -92,8 +92,12 @@ class AssistViewModel(
 
     init {
         viewModelScope.launch {
-            val settings = settingsRepository.currentAssistantSettings()
-            _uiState.update { it.copy(markdownEnabled = settings.markdownEnabled, modelProfileName = settings.profileName) }
+            // Collect live rather than reading once: this ViewModel outlives any single assist
+            // session (singleInstance activity / voice-interaction session reuse), so a profile
+            // switched in Settings must reach the name plate without a process restart.
+            settingsRepository.assistantSettings.collect { settings ->
+                _uiState.update { it.copy(markdownEnabled = settings.markdownEnabled, modelProfileName = settings.profileName) }
+            }
         }
 
         viewModelScope.launch {
@@ -160,12 +164,7 @@ class AssistViewModel(
      * effects) into the new one, which read as "the previous assistant carried over".
      */
     fun onRetry() {
-        sendJob?.cancel()
-        sendJob = null
-        cancelSpeech()
-        // cancelSpeech only interrupts the pipeline jobs; a chunk already mid-playback needs the
-        // player itself stopped (same reasoning as onCleared).
-        assistSpeechPlayer.stop()
+        abandonCurrentTurn()
         conversationId.value = null
         speakingMessageId = null
         spokenUpToIndex = 0
@@ -181,6 +180,27 @@ class AssistViewModel(
                 triggerCount = it.triggerCount + 1,
             )
         }
+    }
+
+    /**
+     * The overlay went invisible (dismiss / back / home gesture — AssistScreen observes ON_STOP;
+     // both hosts drive it) or a retrigger replaced this session. Abandon the turn entirely:
+     * cancel in-flight generation, tear down the speech pipeline, and silence the player.
+     * Cancelling the playback job alone isn't enough — it races a chunk just about to start,
+     * which is exactly the "closed the overlay but it keeps talking" case — so the player itself
+     * is stopped too (same reasoning as onCleared). Cancelling [sendJob] also keeps a dismissed
+     * turn's deferred tool side effects from firing into a UI nobody is looking at.
+     */
+    private fun abandonCurrentTurn() {
+        sendJob?.cancel()
+        sendJob = null
+        cancelSpeech()
+        assistSpeechPlayer.stop()
+    }
+
+    /** See [abandonCurrentTurn] — called when the overlay leaves the foreground. */
+    fun onHidden() {
+        abandonCurrentTurn()
     }
 
     private fun send(text: String) {

@@ -102,7 +102,7 @@ fun TypewriterText(
     )
 }
 
-/** The framed, semi-transparent message window at the bottom of the stage — content is a slot so error/api-key states can put buttons inside the same frame. Extra headroom at the top keeps the first line clear of the mic button straddling the frame's top-right corner (see AssistStage). */
+/** The framed, semi-transparent message window at the bottom of the stage — content is a slot so error/api-key states can put buttons inside the same frame. */
 @Composable
 fun NovelMessageWindow(
     modifier: Modifier = Modifier,
@@ -115,13 +115,13 @@ fun NovelMessageWindow(
         tonalElevation = 6.dp,
         border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)),
     ) {
-        Box(modifier = Modifier.padding(start = 18.dp, top = 32.dp, end = 18.dp, bottom = 14.dp)) {
+        Box(modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
             content()
         }
     }
 }
 
-/** The small name tag above the window — shows who's speaking (the active model profile's name doubles as the character name). Width-capped so a long profile name can't run under the mic button anchored at the window's top-right corner. */
+/** The small name tag above the window — shows who's speaking (the active model profile's name doubles as the character name). Width-capped so a long profile name can't stretch across the whole stage. */
 @Composable
 fun NamePlate(name: String, modifier: Modifier = Modifier) {
     Box(
