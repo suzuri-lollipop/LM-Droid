@@ -68,6 +68,29 @@ class SettingsImporterTest {
     }
 
     @Test
+    fun `decodes the inner payload shape of a password-protected export, carrying plaintext keys`() {
+        // What SettingsImporter sees after PasswordSettingsCipher.decrypt — the same wire format,
+        // but keys travel in plainApiKey (re-encrypted under the local Keystore key on apply).
+        val yamlText = """
+            exportedAt: "2026-08-15T00:00:00Z"
+            apiProfiles:
+              - id: 1
+                name: "ローカルサーバー"
+                baseUrl: "http://localhost:8080/v1"
+                enabled: true
+                plainApiKey: "sk-live-秘密のキー"
+                models:
+                  - "gpt-4o-mini"
+            markdownEnabled: true
+        """.trimIndent()
+
+        val decoded = decodeSettingsExportFromYaml(yamlText)
+
+        assertEquals("sk-live-秘密のキー", decoded.apiProfiles[0].plainApiKey)
+        assertEquals(null, decoded.apiProfiles[0].apiKey)
+    }
+
+    @Test
     fun `round-trips through encode back to an equal SettingsExport`() {
         val original = SettingsExport(
             exportedAt = "2026-07-27T00:00:00Z",

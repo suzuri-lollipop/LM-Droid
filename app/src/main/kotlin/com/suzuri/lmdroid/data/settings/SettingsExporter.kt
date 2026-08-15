@@ -6,7 +6,10 @@ import com.suzuri.lmdroid.data.db.ApiModelDao
 import com.suzuri.lmdroid.data.db.ApiProfileDao
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import com.suzuri.lmdroid.data.db.SystemPromptDao
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
 import java.time.Instant
 import java.time.format.DateTimeFormatter
@@ -17,23 +20,40 @@ import java.time.format.DateTimeFormatter
  * settings) into a single YAML document — used by Settings → 設定をエクスポート for backup/inspection
  * purposes.
  *
- * API keys are never written in plaintext: each field is copied exactly as it's already stored —
- * AES-256-GCM ciphertext + IV under [ApiKeyCipher]'s Android Keystore key (non-exportable, device-
- * bound) — rather than decrypted and re-encrypted here, so the plaintext key never needs to exist
- * in memory during export. This also means decrypting the resulting YAML's keys is only possible
- * from this exact app install on this exact device; the export is a local backup/audit artifact,
- * not a file meant to carry credentials to a different device or a reinstalled app.
+ * Two modes, chosen by whether the user supplies a password:
+ *
+ * - [exportToYaml] (no password): API keys are never written in plaintext — each field is copied
+ *   exactly as it's already stored, AES-256-GCM ciphertext + IV under [ApiKeyCipher]'s Android
+ *   Keystore key (non-exportable, device-bound), so the plaintext key never needs to exist in
+ *   memory during export. This also means decrypting the resulting YAML's keys is only possible
+ *   from this exact app install on this exact device; the export is a local backup/audit artifact,
+ *   not a file meant to carry credentials to a different device or a reinstalled app.
+ * - [exportToEncryptedYaml] (password supplied): the keys ARE the point — each stored key is
+ *   decrypted via [ApiKeyCipher], carried as [ExportedApiProfile.plainApiKey] inside the document,
+ *   and the entire YAML is then encrypted under the password via [PasswordSettingsCipher]
+ *   (PBKDF2 → AES-256-GCM). The plaintext exists only transiently, inside the process, and never
+ *   touches disk. That makes the file safe to carry to another device or a reinstalled app, where
+ *   [SettingsImporter] asks for the same password.
  */
 class SettingsExporter(
     private val apiProfileDao: ApiProfileDao,
     private val apiModelDao: ApiModelDao,
     private val systemPromptDao: SystemPromptDao,
     private val settingsRepository: SettingsRepository,
+    private val apiKeyCipher: ApiKeyCipher,
+    private val passwordCipher: PasswordSettingsCipher = PasswordSettingsCipher(),
 ) {
-    suspend fun exportToYaml(): String = encodeSettingsExportToYaml(buildExport())
+    suspend fun exportToYaml(): String = encodeSettingsExportToYaml(buildExport(includePlainKeys = false))
+
+    /** Password-protected variant of [exportToYaml] — API keys included, whole document encrypted under [password] (see class doc). */
+    suspend fun exportToEncryptedYaml(password: String): String {
+        val innerYaml = encodeSettingsExportToYaml(buildExport(includePlainKeys = true))
+        // PBKDF2 key derivation is deliberately CPU-expensive — keep it off the main thread.
+        return withContext(Dispatchers.Default) { passwordCipher.encrypt(innerYaml, password) }
+    }
 
     /** Gathers the current settings into one snapshot — split out from the (pure, unit-testable) YAML encoding in [encodeSettingsExportToYaml]. */
-    private suspend fun buildExport(): SettingsExport {
+    private suspend fun buildExport(includePlainKeys: Boolean): SettingsExport {
         val profiles = apiProfileDao.observeAll().first()
         val exportedProfiles = profiles.map { profile ->
             val models = apiModelDao.observeByProfile(profile.id).first()
@@ -43,7 +63,10 @@ class SettingsExporter(
                 providerType = profile.providerType,
                 baseUrl = profile.baseUrl,
                 enabled = profile.enabled,
-                apiKey = exportedEncryptedValueOf(profile.apiKeyCiphertext, profile.apiKeyIv),
+                // Exactly one of the two is ever set: the Keystore ciphertext copy (plain export)
+                // or the decrypted key (password-protected export) — see the class doc.
+                apiKey = if (includePlainKeys) null else exportedEncryptedValueOf(profile.apiKeyCiphertext, profile.apiKeyIv),
+                plainApiKey = if (includePlainKeys) decryptedKeyOf(profile.apiKeyCiphertext, profile.apiKeyIv) else null,
                 models = models.map { it.modelId },
                 voicevoxSpeakerId = profile.voicevoxSpeakerId,
                 openaiTtsModel = profile.openaiTtsModel,
@@ -84,6 +107,17 @@ class SettingsExporter(
     private fun exportedEncryptedValueOf(ciphertext: String?, iv: String?): ExportedEncryptedValue? {
         if (ciphertext == null || iv == null) return null
         return ExportedEncryptedValue(ciphertext, iv)
+    }
+
+    /**
+     * The plaintext key for a password-protected export — null when no key is stored, or when
+     * the stored ciphertext no longer decrypts (e.g. the Keystore key was lost). The latter drops
+     * that one key rather than failing the entire export, since the ciphertext was already
+     * unusable on this device anyway.
+     */
+    private fun decryptedKeyOf(ciphertext: String?, iv: String?): String? {
+        if (ciphertext == null || iv == null) return null
+        return runCatching { apiKeyCipher.decrypt(ciphertext, iv) }.getOrNull()
     }
 }
 
@@ -145,6 +179,11 @@ data class ExportedApiProfile(
     val baseUrl: String,
     val enabled: Boolean,
     val apiKey: ExportedEncryptedValue? = null,
+    // The decrypted key — only ever populated inside the (whole-document encrypted) payload of a
+    // password-protected export, never in a plain YAML file. NEVER-encoded so plain exports stay
+    // byte-identical to the pre-password schema instead of growing a `plainApiKey: null` per profile.
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val plainApiKey: String? = null,
     val models: List<String>,
     // Only meaningful for PROVIDER_VOICEVOX_COMPATIBLE.
     val voicevoxSpeakerId: Int? = null,

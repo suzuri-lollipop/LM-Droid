@@ -71,10 +71,26 @@ class SettingsExporterTest {
         assertTrue(yamlText.contains("gpt-4o-mini"))
         assertTrue(yamlText.contains("c1phertext=="))
         assertTrue(yamlText.contains("1v=="))
-        // The only "secret" this test ever supplies is the ciphertext itself — asserting its
-        // literal absence would be circular, so this instead pins the field name that carries it,
-        // confirming the schema never introduces a separate plaintext field alongside it.
-        assertFalse(yamlText.contains("apiKeyPlaintext"))
+        // A plain (no-password) export must never carry the plaintext-key field at all — the
+        // schema only ever uses it inside the encrypted payload of a password-protected export,
+        // and @EncodeDefault(NEVER) keeps it out of this legacy shape entirely (not even as null).
+        assertFalse(yamlText.contains("plainApiKey"))
+    }
+
+    @Test
+    fun `round-trips a plaintext api key for the password-protected export payload`() {
+        val export = sampleExport().copy(
+            apiProfiles = listOf(
+                sampleExport().apiProfiles[0].copy(apiKey = null, plainApiKey = "sk-live-秘密のキー"),
+            ),
+        )
+
+        val yamlText = encodeSettingsExportToYaml(export)
+        val decoded = settingsExportYaml.decodeFromString(SettingsExport.serializer(), yamlText)
+
+        assertTrue(yamlText.contains("sk-live-秘密のキー"))
+        assertEquals("sk-live-秘密のキー", decoded.apiProfiles[0].plainApiKey)
+        assertEquals(null, decoded.apiProfiles[0].apiKey)
     }
 
     @Test

@@ -6,6 +6,9 @@ import com.suzuri.lmdroid.data.db.ApiProfileDao
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import com.suzuri.lmdroid.data.db.SystemPromptDao
 import com.suzuri.lmdroid.data.db.SystemPromptEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import javax.crypto.AEADBadTagException
 
 /**
  * Restores a YAML document produced by [SettingsExporter] — the counterpart used by Settings →
@@ -21,32 +24,56 @@ import com.suzuri.lmdroid.data.db.SystemPromptEntity
  * system/assistant selections fall back to it, and leaving it unset would strand an otherwise
  * successfully imported profile behind a chat screen that still reads as "not registered."
  *
- * API keys are restored the same way they were exported: the ciphertext + IV are copied verbatim,
- * never decrypted here. This only decrypts successfully later if the importing device holds the
- * same Android Keystore key used to encrypt it (i.e. this exact app install) — see
- * [SettingsExporter]'s doc comment for why that's an intentional, accepted limitation rather than
- * a bug.
+ * Both of [SettingsExporter]'s modes are accepted transparently (see [isEncryptedSettingsExport]):
+ *
+ * - Plain YAML: API keys are restored the same way they were exported — the ciphertext + IV are
+ *   copied verbatim, never decrypted here. This only decrypts successfully later if the importing
+ *   device holds the same Android Keystore key used to encrypt it (i.e. this exact app install) —
+ *   see [SettingsExporter]'s doc comment for why that's an intentional, accepted limitation.
+ * - Password-protected: [password] decrypts the whole document first (a wrong password fails GCM
+ *   authentication here, before anything is inserted — reported as [WrongPasswordException]), and
+ *   each profile's plaintext key is then re-encrypted under THIS install's Keystore key via
+ *   [ApiKeyCipher] before being stored, so the file's password is never persisted anywhere.
  */
 class SettingsImporter(
     private val apiProfileDao: ApiProfileDao,
     private val apiModelDao: ApiModelDao,
     private val systemPromptDao: SystemPromptDao,
     private val settingsRepository: SettingsRepository,
+    private val apiKeyCipher: ApiKeyCipher,
+    private val passwordCipher: PasswordSettingsCipher = PasswordSettingsCipher(),
 ) {
-    suspend fun importFromYaml(yamlText: String): Result<Unit> = runCatching {
-        applyImport(decodeSettingsExportFromYaml(yamlText))
+    suspend fun importFromYaml(yamlText: String, password: String? = null): Result<Unit> = runCatching {
+        applyImport(decodeImport(yamlText, password))
+    }
+
+    private suspend fun decodeImport(yamlText: String, password: String?): SettingsExport {
+        if (!isEncryptedSettingsExport(yamlText)) return decodeSettingsExportFromYaml(yamlText)
+        require(!password.isNullOrEmpty()) { "This settings export is password-protected" }
+        // PBKDF2 key derivation is deliberately CPU-expensive — keep it off the main thread.
+        val innerYaml = withContext(Dispatchers.Default) {
+            try {
+                passwordCipher.decrypt(yamlText, password)
+            } catch (e: AEADBadTagException) {
+                throw WrongPasswordException()
+            }
+        }
+        return decodeSettingsExportFromYaml(innerYaml)
     }
 
     private suspend fun applyImport(export: SettingsExport) {
         val profileIdMap = mutableMapOf<Long, Long>()
         val baseProfileTime = System.currentTimeMillis()
         export.apiProfiles.forEachIndexed { index, profile ->
+            // A plaintext key (password-protected export) is re-encrypted under THIS install's
+            // Keystore key; a Keystore ciphertext (plain export) is copied verbatim — see class doc.
+            val reencryptedKey = profile.plainApiKey?.let { apiKeyCipher.encrypt(it) }
             val newId = apiProfileDao.insert(
                 ApiProfileEntity(
                     name = profile.name,
                     providerType = profile.providerType,
-                    apiKeyCiphertext = profile.apiKey?.ciphertext,
-                    apiKeyIv = profile.apiKey?.iv,
+                    apiKeyCiphertext = reencryptedKey?.ciphertextBase64 ?: profile.apiKey?.ciphertext,
+                    apiKeyIv = reencryptedKey?.ivBase64 ?: profile.apiKey?.iv,
                     baseUrl = profile.baseUrl,
                     enabled = profile.enabled,
                     // Preserves the exported ordering (observeAll() sorts by createdAt) even if

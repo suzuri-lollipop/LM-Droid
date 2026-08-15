@@ -163,10 +163,17 @@
     <string name="settings_export_title">設定をエクスポート</string>
     <string name="settings_export_success">設定をエクスポートしました</string>
     <string name="settings_export_failure">エクスポートに失敗しました</string>
+    <string name="settings_export_password_description">パスワードを設定すると、APIキーも暗号化してエクスポートされ、別の端末や再インストール後でも復元できます。パスワードなしの場合は、APIキーを別の端末で復元することはできません。</string>
+    <string name="settings_export_password_label">パスワード</string>
+    <string name="settings_export_password_confirm_label">パスワード(確認)</string>
+    <string name="settings_export_password_mismatch">パスワードが一致しません</string>
+    <string name="settings_export_confirm_button">エクスポート</string>
 
     <string name="settings_import_title">設定をインポート</string>
     <string name="settings_import_success">設定をインポートしました</string>
     <string name="settings_import_failure">インポートに失敗しました。ファイルの形式を確認してください</string>
+    <string name="settings_import_wrong_password">パスワードが違います</string>
+    <string name="settings_import_password_label">パスワード</string>
     <string name="settings_import_confirm_title">設定をインポート</string>
     <string name="settings_import_confirm_message">APIプロファイルとシステムプロンプトは追加登録されます。モデル選択やWeb検索・位置情報などの設定は、この内容で上書きされます。続けますか？</string>
     <string name="settings_import_confirm_button">インポート</string>

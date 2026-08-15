@@ -28,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -45,10 +47,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
+import com.suzuri.lmdroid.data.settings.WrongPasswordException
+import com.suzuri.lmdroid.data.settings.isEncryptedSettingsExport
 import com.suzuri.lmdroid.ui.ViewModelFactory
 import com.suzuri.lmdroid.ui.chat.ChatScreen
 import com.suzuri.lmdroid.ui.chat.ChatViewModel
@@ -170,13 +175,22 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val exportScope = rememberCoroutineScope()
     val exportFailedMessage = stringResource(R.string.settings_export_failure)
     val exportSucceededMessage = stringResource(R.string.settings_export_success)
+    // The password dialog shown before the file picker (below) — exporting first asks for a
+    // password because it decides whether API keys travel in the file at all.
+    var showExportDialog by remember { mutableStateOf(false) }
+    // The password confirmed in that dialog — empty string means the plain, no-password backup
+    // format. Plain remember (deliberately NOT rememberSaveable) so the password never enters
+    // the saved-instance-state Bundle.
+    var pendingExportPassword by remember { mutableStateOf<String?>(null) }
     // CreateDocument hands back a content:// Uri already created at the location the user picked
     // (e.g. via the system "Save As" dialog) — writing is just a normal ContentResolver stream.
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/x-yaml")) { uri ->
+        val password = pendingExportPassword
+        pendingExportPassword = null
         if (uri == null) return@rememberLauncherForActivityResult
         exportScope.launch {
             val result = runCatching {
-                val yaml = settingsExportViewModel.exportToYaml()
+                val yaml = settingsExportViewModel.exportToYaml(password ?: "")
                 context.contentResolver.openOutputStream(uri)?.use { it.write(yaml.toByteArray(Charsets.UTF_8)) }
                     ?: error("Unable to open $uri for writing")
             }
@@ -186,13 +200,24 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
 
     val importScope = rememberCoroutineScope()
     val importFailedMessage = stringResource(R.string.settings_import_failure)
+    val importWrongPasswordMessage = stringResource(R.string.settings_import_wrong_password)
     val importSucceededMessage = stringResource(R.string.settings_import_success)
     // Importing overwrites several app-wide settings (see SettingsImporter), so the picked file is
     // held here and only actually read/applied once the user confirms the dialog below — rather
     // than acting the instant a file is picked, in case the wrong file was chosen by mistake.
     var pendingImportUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+    // Whether the picked file is a password-protected export — sniffed at pick time (via the
+    // `format` marker) so the confirmation dialog knows whether to show a password field.
+    var pendingImportRequiresPassword by rememberSaveable { mutableStateOf(false) }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) pendingImportUri = uri
+        if (uri == null) return@rememberLauncherForActivityResult
+        val requiresPassword = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                ?.let { isEncryptedSettingsExport(it) }
+                ?: false
+        }.getOrDefault(false)
+        pendingImportRequiresPassword = requiresPassword
+        pendingImportUri = uri
     }
 
     // Conversation history lives in a slide-out drawer (opened via the hamburger icon on the
@@ -468,7 +493,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                         SettingsRoute.System -> {
                             SystemSettingsScreen(
                                 viewModel = systemSettingsViewModel,
-                                onExportSettings = { exportLauncher.launch(EXPORT_FILE_NAME) },
+                                onExportSettings = { showExportDialog = true },
                                 onImportSettings = { importLauncher.launch(arrayOf("*/*")) },
                                 modifier = Modifier.padding(innerPadding),
                             )
@@ -553,24 +578,111 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
         }
     }
 
+    if (showExportDialog) {
+        var password by remember { mutableStateOf("") }
+        var passwordConfirm by remember { mutableStateOf("") }
+        val mismatched = passwordConfirm.isNotEmpty() && password != passwordConfirm
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            title = { Text(stringResource(R.string.settings_export_title)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.settings_export_password_description))
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                        label = { Text(stringResource(R.string.settings_export_password_label)) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                    )
+                    OutlinedTextField(
+                        value = passwordConfirm,
+                        onValueChange = { passwordConfirm = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        label = { Text(stringResource(R.string.settings_export_password_confirm_label)) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        isError = mismatched,
+                        supportingText = if (mismatched) {
+                            { Text(stringResource(R.string.settings_export_password_mismatch)) }
+                        } else {
+                            null
+                        },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    // A mismatched confirmation is the only invalid state — an empty password is
+                    // allowed on purpose (plain backup format without transferable API keys).
+                    enabled = !mismatched,
+                    onClick = {
+                        showExportDialog = false
+                        pendingExportPassword = password
+                        exportLauncher.launch(EXPORT_FILE_NAME)
+                    },
+                ) {
+                    Text(stringResource(R.string.settings_export_confirm_button))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExportDialog = false }) {
+                    Text(stringResource(R.string.chat_edit_cancel))
+                }
+            },
+        )
+    }
+
     pendingImportUri?.let { uri ->
+        // Local to the dialog's lifetime — resets to empty every time a new file is picked.
+        var importPassword by remember { mutableStateOf("") }
+        val requiresPassword = pendingImportRequiresPassword
         AlertDialog(
             onDismissRequest = { pendingImportUri = null },
             title = { Text(stringResource(R.string.settings_import_confirm_title)) },
-            text = { Text(stringResource(R.string.settings_import_confirm_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    pendingImportUri = null
-                    importScope.launch {
-                        val result = runCatching {
-                            val yaml = context.contentResolver.openInputStream(uri)?.use { stream ->
-                                stream.readBytes().toString(Charsets.UTF_8)
-                            } ?: error("Unable to open $uri for reading")
-                            settingsImportViewModel.importFromYaml(yaml).getOrThrow()
-                        }
-                        Toast.makeText(context, if (result.isSuccess) importSucceededMessage else importFailedMessage, Toast.LENGTH_SHORT).show()
+            text = {
+                Column {
+                    Text(stringResource(R.string.settings_import_confirm_message))
+                    if (requiresPassword) {
+                        OutlinedTextField(
+                            value = importPassword,
+                            onValueChange = { importPassword = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                            label = { Text(stringResource(R.string.settings_import_password_label)) },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                        )
                     }
-                }) {
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !requiresPassword || importPassword.isNotEmpty(),
+                    onClick = {
+                        pendingImportUri = null
+                        importScope.launch {
+                            val result = runCatching {
+                                val yaml = context.contentResolver.openInputStream(uri)?.use { stream ->
+                                    stream.readBytes().toString(Charsets.UTF_8)
+                                } ?: error("Unable to open $uri for reading")
+                                settingsImportViewModel.importFromYaml(yaml, importPassword.ifEmpty { null }).getOrThrow()
+                            }
+                            val message = when {
+                                result.isSuccess -> importSucceededMessage
+                                result.exceptionOrNull() is WrongPasswordException -> importWrongPasswordMessage
+                                else -> importFailedMessage
+                            }
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                ) {
                     Text(stringResource(R.string.settings_import_confirm_button))
                 }
             },

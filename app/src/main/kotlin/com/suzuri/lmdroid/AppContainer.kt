@@ -85,9 +85,9 @@ class AppContainer(context: Context) {
 
     val settingsRepository = SettingsRepository(appContext, apiKeyCipher, database.apiProfileDao())
 
-    val settingsExporter = SettingsExporter(database.apiProfileDao(), database.apiModelDao(), database.systemPromptDao(), settingsRepository)
+    val settingsExporter = SettingsExporter(database.apiProfileDao(), database.apiModelDao(), database.systemPromptDao(), settingsRepository, apiKeyCipher)
 
-    val settingsImporter = SettingsImporter(database.apiProfileDao(), database.apiModelDao(), database.systemPromptDao(), settingsRepository)
+    val settingsImporter = SettingsImporter(database.apiProfileDao(), database.apiModelDao(), database.systemPromptDao(), settingsRepository, apiKeyCipher)
 
     val openAiApiClient = OpenAiApiClient(okHttpClient, json)
 
