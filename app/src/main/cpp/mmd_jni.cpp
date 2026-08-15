@@ -169,10 +169,12 @@ Java_com_suzuri_lmdroid_ui_character_MmdNative_nativeResize(JNIEnv*, jclass, jlo
 JNIEXPORT void JNICALL
 Java_com_suzuri_lmdroid_ui_character_MmdNative_nativeDrawFrame(JNIEnv*, jclass, jlong handle,
                                                                jfloat dt, jint state, jfloat mouthOpen,
-                                                               jboolean lipSync) {
+                                                               jboolean lipSync, jfloat zoom, jfloat panX,
+                                                               jfloat panY) {
     MmdContext* ctx = fromHandle(handle);
     if (ctx == nullptr || !ctx->engine.hasModel() || !ctx->rendererInitialized) return;
     ctx->engine.update(dt, static_cast<mmd::CharacterState>(state), mouthOpen, lipSync == JNI_TRUE);
+    ctx->renderer.setFraming(zoom, panX, panY);
     ctx->renderer.draw(ctx->engine);
 }
 

@@ -284,6 +284,14 @@ void MmdRenderer::resize(int width, int height) {
     screenHeight_ = height;
 }
 
+void MmdRenderer::setFraming(float zoom, float panX, float panY) {
+    // Guards the distForHeight/zoom_ division below; a near-zero or negative zoom from a bad
+    // gesture value would otherwise push the camera through/behind the model.
+    zoom_ = zoom > 0.05f ? zoom : 0.05f;
+    panX_ = panX;
+    panY_ = panY;
+}
+
 void MmdRenderer::drawMaterial(const MmdEngine& engine, int materialIndex, bool edgePass) {
     const PmxModel& model = engine.model();
     const PmxMaterial& m = model.materials[materialIndex];
@@ -347,19 +355,23 @@ void MmdRenderer::draw(const MmdEngine& engine) {
     glClearColor(0.f, 0.f, 0.f, 0.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Camera: fixed framing on the model's bind-pose bounds, on the -Z side (PMX models face
-    // -Z). Distance must satisfy both the vertical extent (height) and the horizontal one
-    // (width — arms reach far past shoulder width on an unposed/T-pose bind skeleton), each
-    // against its own half-angle: a portrait screen's horizontal FOV is narrower than its
-    // vertical one (tan(fovX/2) = aspect * tan(fovY/2)), so on a tall phone the arm span is
-    // usually the tighter constraint, not the height alone.
+    // Camera: framed on the model's bind-pose bounds, on the -Z side (PMX models face -Z).
+    // Distance must satisfy both the vertical extent (height) and the horizontal one (width —
+    // arms reach far past shoulder width on an unposed/T-pose bind skeleton), each against its
+    // own half-angle: a portrait screen's horizontal FOV is narrower than its vertical one
+    // (tan(fovX/2) = aspect * tan(fovY/2)), so on a tall phone the arm span is usually the
+    // tighter constraint, not the height alone. zoom_/panX_/panY_ (see setFraming) then crop
+    // that base framing to whatever range the user picked in the GUI: zoom_ scales the distance
+    // (>1 moves in) and pan shifts the look-at point in the same world units as the bounds, both
+    // applied to eye and center alike so the camera translates in place rather than rotating.
     const float fov = 30.f * 3.14159265358979323846f / 180.f;
     const float aspect = static_cast<float>(screenWidth_) / static_cast<float>(screenHeight_);
     const float tanHalfFov = tanf(fov * 0.5f);
     const float distForHeight = engine.boundsHeight() / (2.f * tanHalfFov);
     const float distForWidth = engine.boundsWidth() / (2.f * aspect * tanHalfFov);
-    const float dist = btMax(distForHeight, distForWidth) * 1.15f; // small margin around the subject
-    btVector3 center = engine.boundsCenter();
+    const float dist = btMax(distForHeight, distForWidth) * 1.15f / zoom_; // small margin around the subject
+    btVector3 center = engine.boundsCenter() +
+                        btVector3(panX_ * engine.boundsWidth(), panY_ * engine.boundsHeight(), 0.f);
     btVector3 eye = center + btVector3(0, 0, -dist);
     float view[16], proj[16];
     makeLookAt(view, eye, center, btVector3(0, 1, 0));

@@ -22,11 +22,18 @@ fun MmdSurface(
     characterState: CharacterUiState,
     lipSyncEnabled: Boolean,
     modifier: Modifier = Modifier,
+    // The display range picked in Settings → キャラクター (see CharacterSettingsScreen's live
+    // preview): zoom > 1 crops in on the model, panX/panY shift the framing. Defaults reproduce
+    // the original fixed full-body framing.
+    zoom: Float = 1f,
+    panX: Float = 0f,
+    panY: Float = 0f,
 ) {
     val renderer = remember(pmxPath, vmdPath) { MmdNativeRenderer(pmxPath, vmdPath) }
     renderer.setState(characterState)
     renderer.lipSyncEnabled = lipSyncEnabled
     renderer.setMouthOpen(if (characterState == CharacterUiState.Speaking && lipSyncEnabled) 1f else 0f)
+    renderer.setFraming(zoom, panX, panY)
 
     DisposableEffect(renderer) {
         onDispose { renderer.release() }

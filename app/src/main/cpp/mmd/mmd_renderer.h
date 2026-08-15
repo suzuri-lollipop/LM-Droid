@@ -20,6 +20,11 @@ public:
     // Uploads one model texture. Pixels are Android Bitmap order (packed ARGB ints).
     void setTexture(int index, int width, int height, const uint32_t* argbPixels);
     void resize(int width, int height);
+    // The visible crop of the auto-framed camera: [zoom] > 1 moves the camera closer (crops
+    // in, e.g. to a bust shot), [panX]/[panY] shift the framing sideways/vertically as a
+    // fraction of the model's bind-pose bounds (0 = centered, matches the previous fixed
+    // framing). Set from the GUI in Settings → キャラクター (see MmdSurface).
+    void setFraming(float zoom, float panX, float panY);
     void draw(const MmdEngine& engine);
     void destroy();
 
@@ -46,6 +51,10 @@ private:
     int screenWidth_ = 1;
     int screenHeight_ = 1;
     bool ready_ = false;
+
+    float zoom_ = 1.f;
+    float panX_ = 0.f;
+    float panY_ = 0.f;
 };
 
 } // namespace mmd

@@ -144,6 +144,15 @@ class CharacterSettingsViewModel(
         viewModelScope.launch { settingsRepository.setCharacterLipSyncEnabled(enabled) }
     }
 
+    /** Commits the pinch/drag framing from the live preview (see CharacterSettingsScreen). */
+    fun onMmdFramingChanged(zoom: Float, panX: Float, panY: Float) {
+        viewModelScope.launch { settingsRepository.setCharacterMmdFraming(zoom, panX, panY) }
+    }
+
+    fun onResetMmdFraming() {
+        viewModelScope.launch { settingsRepository.setCharacterMmdFraming(1f, 0f, 0f) }
+    }
+
     fun onImportFailedShown() {
         _uiState.update { it.copy(importFailed = false) }
     }

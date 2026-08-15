@@ -202,6 +202,9 @@
     <string name="character_mmd_model_select_folder">フォルダごと選択...</string>
     <string name="character_mmd_motion_label">モーション (VMD)</string>
     <string name="character_mmd_motion_description">待機中にループ再生するVMDモーションファイルです。未設定の場合はデフォルトのポーズで表示されます。</string>
+    <string name="character_mmd_framing_label">表示範囲</string>
+    <string name="character_mmd_framing_description">ピンチでズーム、ドラッグで表示位置を調整できます。</string>
+    <string name="character_mmd_framing_reset">リセット</string>
     <string name="character_sprite_label">立ち絵画像</string>
     <string name="character_sprite_select">ファイルを選択...</string>
     <string name="character_sprite_clear">削除</string>

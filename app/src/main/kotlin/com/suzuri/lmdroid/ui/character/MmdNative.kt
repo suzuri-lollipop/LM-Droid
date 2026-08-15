@@ -31,5 +31,14 @@ object MmdNative {
     external fun nativeInitGl(handle: Long): Boolean
     external fun nativeSetTexture(handle: Long, index: Int, width: Int, height: Int, argbPixels: IntArray)
     external fun nativeResize(handle: Long, width: Int, height: Int)
-    external fun nativeDrawFrame(handle: Long, dt: Float, state: Int, mouthOpen: Float, lipSync: Boolean)
+    external fun nativeDrawFrame(
+        handle: Long,
+        dt: Float,
+        state: Int,
+        mouthOpen: Float,
+        lipSync: Boolean,
+        zoom: Float,
+        panX: Float,
+        panY: Float,
+    )
 }

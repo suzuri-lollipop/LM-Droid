@@ -44,6 +44,26 @@ class MmdNativeRenderer(
     @Volatile
     var lipSyncEnabled = true
 
+    // The GUI-adjustable display range (Settings → キャラクター): zoom > 1 crops in, panX/panY
+    // shift the framing. Written from the main thread by MmdSurface, read here each frame on
+    // the GL thread — plain @Volatile floats are enough since they're read once per frame with
+    // no cross-field consistency requirement (a torn read across two frames just shows one
+    // stale-by-a-frame value, same tradeoff as mouthOpen/currentState below).
+    @Volatile
+    private var zoom = 1f
+
+    @Volatile
+    private var panX = 0f
+
+    @Volatile
+    private var panY = 0f
+
+    fun setFraming(zoom: Float, panX: Float, panY: Float) {
+        this.zoom = zoom
+        this.panX = panX
+        this.panY = panY
+    }
+
     /** Non-null when the model (or its GL init) failed to load — the stage falls back to nothing. */
     @Volatile
     var loadError: String? = null
@@ -107,7 +127,7 @@ class MmdNativeRenderer(
         val now = System.nanoTime()
         val dt = if (lastFrameNs == 0L) 1f / 60f else ((now - lastFrameNs) / 1e9f).coerceAtMost(0.1f)
         lastFrameNs = now
-        MmdNative.nativeDrawFrame(handle, dt, currentState.ordinal, mouthOpen, lipSyncEnabled)
+        MmdNative.nativeDrawFrame(handle, dt, currentState.ordinal, mouthOpen, lipSyncEnabled, zoom, panX, panY)
     }
 
     override fun release() {

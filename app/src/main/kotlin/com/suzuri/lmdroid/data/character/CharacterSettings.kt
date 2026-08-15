@@ -27,4 +27,12 @@ data class CharacterSettings(
     val scale: Float = 1f,
     val typewriterEnabled: Boolean = true,
     val lipSyncEnabled: Boolean = true,
+    // MMD only: the on-screen display range, set from the live preview in Settings →
+    // キャラクター (see CharacterSettingsScreen/MmdRenderer::setFraming). mmdZoom > 1 crops the
+    // camera in on the model (e.g. a bust shot instead of full body); mmdPanX/mmdPanY shift that
+    // framing sideways/vertically as a fraction of the model's bounds. Defaults reproduce the
+    // original fixed full-body framing.
+    val mmdZoom: Float = 1f,
+    val mmdPanX: Float = 0f,
+    val mmdPanY: Float = 0f,
 )

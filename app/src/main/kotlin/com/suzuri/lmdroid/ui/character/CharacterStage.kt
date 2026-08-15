@@ -68,6 +68,9 @@ fun CharacterStage(
                         vmdPath = settings.motionPath,
                         characterState = characterState,
                         lipSyncEnabled = lipSyncEnabled,
+                        zoom = settings.mmdZoom,
+                        panX = settings.mmdPanX,
+                        panY = settings.mmdPanY,
                     )
                 }
             }

@@ -3,7 +3,9 @@ package com.suzuri.lmdroid.ui.settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -31,12 +34,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.character.CharacterModelType
+import com.suzuri.lmdroid.data.character.CharacterSettings
+import com.suzuri.lmdroid.ui.character.CharacterUiState
+import com.suzuri.lmdroid.ui.character.MmdNative
+import com.suzuri.lmdroid.ui.character.MmdSurface
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
 
 /**
  * Settings → キャラクター: configures the character shown on the assistant overlay's
@@ -174,6 +186,10 @@ fun CharacterSettingsScreen(viewModel: CharacterSettingsViewModel, modifier: Mod
                 },
             )
             HorizontalDivider()
+            if (uiState.settings.modelPath != null && MmdNative.isAvailable) {
+                MmdFramingEditor(settings = uiState.settings, viewModel = viewModel)
+                HorizontalDivider()
+            }
         }
 
         ListItem(
@@ -260,6 +276,83 @@ fun CharacterSettingsScreen(viewModel: CharacterSettingsViewModel, modifier: Mod
         )
         HorizontalDivider()
     }
+}
+
+/**
+ * The MMD "display range" GUI: a live preview of the model, pinch-to-zoom and drag-to-pan
+ * directly on it. Mirrors what [CharacterStage] renders on the assistant overlay, so what the
+ * user frames here is exactly what shows up there (see MmdSurface's zoom/panX/panY and
+ * MmdRenderer::setFraming on the native side).
+ */
+@Composable
+private fun MmdFramingEditor(settings: CharacterSettings, viewModel: CharacterSettingsViewModel) {
+    var zoomDraft by remember { mutableFloatStateOf(settings.mmdZoom) }
+    var panXDraft by remember { mutableFloatStateOf(settings.mmdPanX) }
+    var panYDraft by remember { mutableFloatStateOf(settings.mmdPanY) }
+    LaunchedEffect(settings.mmdZoom, settings.mmdPanX, settings.mmdPanY) {
+        zoomDraft = settings.mmdZoom
+        panXDraft = settings.mmdPanX
+        panYDraft = settings.mmdPanY
+    }
+    // Commits to DataStore once the gesture pauses rather than on every touch-move frame (same
+    // reasoning as the scale slider's onValueChangeFinished above) — detectTransformGestures has
+    // no drag-end callback of its own, so a debounce stands in for it.
+    LaunchedEffect(Unit) {
+        snapshotFlow { Triple(zoomDraft, panXDraft, panYDraft) }
+            .drop(1)
+            .debounce(300)
+            .collect { (zoom, panX, panY) -> viewModel.onMmdFramingChanged(zoom, panX, panY) }
+    }
+
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.character_mmd_framing_label)) },
+        supportingContent = {
+            Column {
+                Text(stringResource(R.string.character_mmd_framing_description))
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, gestureZoom, _ ->
+                                zoomDraft = (zoomDraft * gestureZoom).coerceIn(0.3f, 4f)
+                                // World X/right and touch X/right share sign, but world Y is
+                                // up-positive while the touch delta is down-positive — see the
+                                // derivation in the MMD GUI change notes; this is what makes the
+                                // model track the finger in both axes rather than move opposite
+                                // it on one of them.
+                                panXDraft = (panXDraft - pan.x / size.width).coerceIn(-1f, 1f)
+                                panYDraft = (panYDraft + pan.y / size.height).coerceIn(-1f, 1f)
+                            }
+                        },
+                ) {
+                    MmdSurface(
+                        pmxPath = settings.modelPath!!,
+                        vmdPath = settings.motionPath,
+                        characterState = CharacterUiState.Idle,
+                        lipSyncEnabled = false,
+                        zoom = zoomDraft,
+                        panX = panXDraft,
+                        panY = panYDraft,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                }
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    TextButton(onClick = {
+                        zoomDraft = 1f
+                        panXDraft = 0f
+                        panYDraft = 0f
+                        viewModel.onResetMmdFraming()
+                    }) {
+                        Text(stringResource(R.string.character_mmd_framing_reset))
+                    }
+                }
+            }
+        },
+    )
 }
 
 @Composable
