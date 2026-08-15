@@ -35,7 +35,6 @@ private:
     GLuint edgeScaleVbo_ = 0; // static
     GLuint ibo_ = 0;
     std::vector<GLuint> textures_;
-    std::vector<bool> textureHasAlpha_;
     // Sphere/toon lookups are normalized to [0,1] and sampled right up to both edges, where
     // GL_REPEAT would blend in the opposite edge's texel; those slots clamp instead.
     std::vector<bool> textureClamp_;

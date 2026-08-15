@@ -53,16 +53,27 @@ void main() {
     float ln = dot(N, -uLightDir);
     float toonT = clamp(ln * 0.5 + 0.5, 0.0, 1.0);
     // PMX toon ramps are authored lit-at-top (v=0 fully lit, v=1 fully shadowed) and carry a
-    // tint, not just a level — sample the full RGB at 1-toonT and multiply it in. Without a
-    // ramp texture the cel-style step keeps shade in [0.55, 1.0] so the diffuse color stays
-    // readable instead of blowing out (an earlier ambient+toon product exceeded 1.0).
+    // tint, not just a level — sample the full RGB at 1-toonT and multiply it in. Materials with
+    // no ramp assigned (this model's face/eyes/mouth) fall back to a soft full-range gradient
+    // instead of a narrow-band step: a hard step reads as a harsh, differently-styled cel edge
+    // next to neighboring toon-textured skin/cloth, which is smoothly graded by comparison.
+    // Kept in [0.55, 1.0] so the diffuse color stays readable instead of blowing out (an earlier
+    // ambient+toon product exceeded 1.0).
     vec3 toon = uUseDefaultToon == 1
-        ? vec3(mix(0.55, 1.0, smoothstep(0.42, 0.58, toonT)))
+        ? vec3(mix(0.55, 1.0, smoothstep(0.0, 1.0, toonT)))
         : clamp(texture(uToon, vec2(0.5, 1.0 - toonT)).rgb, 0.0, 1.0);
     vec4 color = uDiffuse;
     if (uHasTex == 1) {
         color *= texture(uTex, vUv);
     }
+    // Alpha-test, not blend: PMX face/hair decals (iris, eyelashes, the dozens of stacked
+    // expression-eye overlays sharing one atlas) are layered by depth, each cut to its shape by
+    // an otherwise-opaque texture's alpha channel — not softly translucent. Blending them instead
+    // requires exact back-to-front draw order and skips the depth write, so unrelated coincident
+    // layers (e.g. every alternate eye expression) all show through at once instead of only the
+    // frontmost. A hair tip's soft alpha edge loses its blend gradient to this, but a correctly
+    // hidden expression layer matters more than an anti-aliased hair edge.
+    if (color.a < 0.5) discard;
     if (uSphereMode != 0) {
         vec2 suv = vec2(N.x * 0.5 + 0.5, 0.5 - N.y * 0.5);
         vec3 sphere = texture(uSphere, suv).rgb;
@@ -212,7 +223,6 @@ bool MmdRenderer::init(const PmxModel& model) {
     glBindVertexArray(0);
 
     textures_.assign(model.textures.size(), 0);
-    textureHasAlpha_.assign(model.textures.size(), false);
 
     const int textureCount = static_cast<int>(model.textures.size());
     textureClamp_.assign(model.textures.size(), false);
@@ -251,14 +261,12 @@ void MmdRenderer::setTexture(int index, int width, int height, const uint32_t* a
 
     const size_t pixelCount = static_cast<size_t>(width) * height;
     std::vector<uint8_t> rgba(pixelCount * 4);
-    bool hasAlpha = false;
     for (size_t i = 0; i < pixelCount; i++) {
         uint32_t c = argbPixels[i];
         rgba[i * 4 + 0] = static_cast<uint8_t>((c >> 16) & 0xFF);
         rgba[i * 4 + 1] = static_cast<uint8_t>((c >> 8) & 0xFF);
         rgba[i * 4 + 2] = static_cast<uint8_t>(c & 0xFF);
         rgba[i * 4 + 3] = static_cast<uint8_t>((c >> 24) & 0xFF);
-        if (rgba[i * 4 + 3] < 255) hasAlpha = true;
     }
 
     if (textures_[index] == 0) glGenTextures(1, &textures_[index]);
@@ -269,7 +277,6 @@ void MmdRenderer::setTexture(int index, int width, int height, const uint32_t* a
     const GLint wrap = textureClamp_[index] ? GL_CLAMP_TO_EDGE : GL_REPEAT;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap);
-    textureHasAlpha_[index] = hasAlpha;
 }
 
 void MmdRenderer::resize(int width, int height) {
@@ -398,38 +405,21 @@ void MmdRenderer::draw(const MmdEngine& engine) {
         }
     }
 
-    // 2) Opaque pass. The edge-scale attribute (location 3) is only consumed by the edge
-    // program; leaving it enabled for toon draws trips some host drivers (blank frame), so it
-    // is toggled per pass.
+    // 2) Body pass: every material, single pass, depth write always on. The shader's alpha
+    // test (discard) handles cutouts (hair, eyelashes, stacked expression-eye decals) directly,
+    // so unlike a separate blended pass this keeps normal depth occlusion between materials —
+    // required for decal layers (e.g. iris in front of sclera) to hide each other correctly.
+    // The edge-scale attribute (location 3) is only consumed by the edge program; leaving it
+    // enabled for toon draws trips some host drivers (blank frame), so it is toggled per pass.
     glDisableVertexAttribArray(3);
     glCullFace(GL_BACK);
     setMatrices(toonProgram_);
     for (size_t i = 0; i < model.materials.size(); i++) {
         const PmxMaterial& m = model.materials[i];
-        bool transparent = m.diffuse[3] < 0.999f ||
-                           (m.textureIndex >= 0 && m.textureIndex < static_cast<int>(textureHasAlpha_.size()) &&
-                            textureHasAlpha_[m.textureIndex]);
-        if (transparent) continue;
         if (m.flags & PmxMaterial::FLAG_DOUBLE_SIDED) glDisable(GL_CULL_FACE); else glEnable(GL_CULL_FACE);
         drawMaterial(engine, static_cast<int>(i), false);
     }
     glEnableVertexAttribArray(3);
-
-    // 3) Transparent pass: blended, no depth write.
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDepthMask(GL_FALSE);
-    for (size_t i = 0; i < model.materials.size(); i++) {
-        const PmxMaterial& m = model.materials[i];
-        bool transparent = m.diffuse[3] < 0.999f ||
-                           (m.textureIndex >= 0 && m.textureIndex < static_cast<int>(textureHasAlpha_.size()) &&
-                            textureHasAlpha_[m.textureIndex]);
-        if (!transparent) continue;
-        if (m.flags & PmxMaterial::FLAG_DOUBLE_SIDED) glDisable(GL_CULL_FACE); else glEnable(GL_CULL_FACE);
-        drawMaterial(engine, static_cast<int>(i), false);
-    }
-    glDepthMask(GL_TRUE);
-    glDisable(GL_BLEND);
     glDisable(GL_CULL_FACE);
     glBindVertexArray(0);
 }
@@ -443,7 +433,6 @@ void MmdRenderer::destroy() {
         if (tex != 0) glDeleteTextures(1, &tex);
     }
     textures_.clear();
-    textureHasAlpha_.clear();
     textureClamp_.clear();
     if (dummyTexture_ != 0) { glDeleteTextures(1, &dummyTexture_); dummyTexture_ = 0; }
     if (toonProgram_ != 0) { glDeleteProgram(toonProgram_); toonProgram_ = 0; }

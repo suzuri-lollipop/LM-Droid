@@ -11,6 +11,9 @@
 #include <BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h>
 #include <BulletDynamics/Dynamics/btRigidBody.h>
 #include <android/log.h>
+#include <algorithm>
+#include <set>
+#include <utility>
 
 #define PHYS_LOG(...) __android_log_print(ANDROID_LOG_INFO, "MmdPhysics", __VA_ARGS__)
 
@@ -100,9 +103,17 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
         bodies_.push_back(std::move(body));
     }
 
+    // Some exported rigs (e.g. cord/tassel chains) carry a second joint between the same body
+    // pair with bodyA/bodyB swapped — a mirrored "return" constraint some engines tolerate.
+    // Bullet's solver doesn't: two 6DOF springs pulling the same pair toward independently
+    // computed target frames fight every step, showing up as velocity that never decays
+    // (persistent jitter). Keep only the first joint seen for each pair.
+    std::set<std::pair<int, int>> jointedPairs;
     for (const auto& joint : model.joints) {
         if (joint.bodyA < 0 || joint.bodyA >= static_cast<int>(bodyCount)) continue;
         if (joint.bodyB < 0 || joint.bodyB >= static_cast<int>(bodyCount)) continue;
+        auto pairKey = std::minmax(joint.bodyA, joint.bodyB);
+        if (!jointedPairs.insert(pairKey).second) continue;
         btRigidBody* a = bodies_[joint.bodyA].get();
         btRigidBody* b = bodies_[joint.bodyB].get();
 
@@ -115,14 +126,31 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
         constraint->setLinearUpperLimit(joint.linearUpper);
         constraint->setAngularLowerLimit(joint.angularLower);
         constraint->setAngularUpperLimit(joint.angularUpper);
+        // Bullet's default limit stop is nearly rigid (low CFM). Under a constant load (gravity,
+        // every step, forever) a rigid stop chatters — traced this rig's persistent non-decaying
+        // velocity here by disabling the springs outright and finding the jitter unchanged, so it
+        // was never the springs' damping; it was the limit stops themselves vibrating against
+        // gravity. Softening every axis (even ones without a limit configured — harmless, they
+        // have nothing to stop against) gives the stop a little give instead of a hard wall.
+        for (int axis = 0; axis < 6; axis++) {
+            constraint->setParam(BT_CONSTRAINT_STOP_CFM, 0.3f, axis);
+            constraint->setParam(BT_CONSTRAINT_STOP_ERP, 0.6f, axis);
+        }
+        // btGeneric6DofSpringConstraint's damping scale is inverted from what its name suggests
+        // (1 == no damping, per its own header) and defaults to 1 — PMX carries no separate
+        // spring-damping field, so every enabled spring here was running fully undamped until
+        // explicitly set.
+        constexpr float kSpringDamping = 0.3f;
         for (int axis = 0; axis < 3; axis++) {
             if (joint.linearSpring[axis] > 0.f) {
                 constraint->enableSpring(axis, true);
                 constraint->setStiffness(axis, joint.linearSpring[axis]);
+                constraint->setDamping(axis, kSpringDamping);
             }
             if (joint.angularSpring[axis] > 0.f) {
                 constraint->enableSpring(axis + 3, true);
                 constraint->setStiffness(axis + 3, joint.angularSpring[axis]);
+                constraint->setDamping(axis + 3, kSpringDamping);
             }
         }
         world_->addConstraint(constraint.get(), true);
@@ -142,16 +170,38 @@ void MmdPhysics::syncKinematic(const PmxModel& model, const std::vector<btTransf
         if (modes_[i] == PmxRigidBody::MODE_KINEMATIC) {
             bodies_[i]->setWorldTransform(target);
         } else if (modes_[i] == PmxRigidBody::MODE_DYNAMIC_FOLLOW) {
-            // Follows the bone's position but keeps its simulated rotation.
+            // Follows the bone's position but keeps its simulated rotation. setWorldTransform
+            // only moves the body — it doesn't touch velocity, so gravity/spring forces kept
+            // accelerating it toward a displacement this override discards every frame, without
+            // that linear velocity ever being spent (or damped by actually moving). It built up
+            // to a sustained, non-decaying speed — visible as persistent jitter — instead of
+            // settling. The joint's own zero linear-limit range already locks this body to its
+            // anchor, so the swing this chain shows comes entirely from rotation; zeroing linear
+            // velocity here doesn't remove any of it.
             btTransform current = bodies_[i]->getWorldTransform();
             current.setOrigin(target.getOrigin());
             bodies_[i]->setWorldTransform(current);
+            bodies_[i]->setLinearVelocity(btVector3(0, 0, 0));
         }
     }
 }
 
 void MmdPhysics::step(float dt) {
     world_->stepSimulation(dt, 5, 1.f / 60.f);
+
+    // Extra velocity decay on top of each body's own PMX damping and the joint springs' own
+    // damping: under gravity, every step, forever, a rigid limit stop chatters (confirmed by
+    // disabling the springs outright and finding the residual jitter unchanged — softening the
+    // stops via BT_CONSTRAINT_STOP_CFM/ERP above helped but didn't fully settle it). This is a
+    // blanket safety net on top of that: applied uniformly post-step so it damps the whole system
+    // the same way regardless of which joint is still chattering, rather than retuning each one.
+    constexpr float kExtraDampingPerSecond = 10.f;
+    const float decay = expf(-kExtraDampingPerSecond * dt);
+    for (size_t i = 0; i < bodies_.size(); i++) {
+        if (modes_[i] == PmxRigidBody::MODE_KINEMATIC) continue;
+        bodies_[i]->setLinearVelocity(bodies_[i]->getLinearVelocity() * decay);
+        bodies_[i]->setAngularVelocity(bodies_[i]->getAngularVelocity() * decay);
+    }
 }
 
 std::vector<int> MmdPhysics::writeBack(const PmxModel& model, std::vector<btTransform>& boneWorld) {
