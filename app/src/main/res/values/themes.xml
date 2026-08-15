@@ -11,4 +11,17 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:backgroundDimEnabled">false</item>
     </style>
+
+    <!-- Character-mode variant of the assist theme: same look, but NOT translucent. A
+         translucent window drops SurfaceView child surfaces entirely, which kills the MMD
+         stage's GLSurfaceView; with a character the stage covers the full screen with its own
+         (GL-drawn) background anyway. The window background stays transparent so the GL
+         surface behind the window still shows through the unpainted pixels. -->
+    <style name="Theme.LmDroid.Assist.Stage" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>

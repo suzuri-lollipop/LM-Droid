@@ -8,11 +8,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 
 /**
- * Compose host for the MMD renderer: a transparent GLSurfaceView layered over the stage's
- * background/character layout. The surface is a media overlay with an alpha EGL config so the
- * GL clear color (0,0,0,0) lets the Compose layers behind it show through. The renderer is
- * keyed on the model/motion paths — swapping models rebuilds it, and leaving the stage
- * releases the native engine.
+ * Compose host for the MMD renderer: a transparent GLSurfaceView layered in the stage between
+ * the background and the UI column. The GL clear color is (0,0,0,0) so the Compose layers
+ * behind it show through. This only composites while the assist window is in opaque format
+ * (AssistActivity switches it for character mode) — translucent windows drop SurfaceView child
+ * surfaces. The renderer is keyed on the model/motion paths: swapping models rebuilds it, and
+ * leaving the stage releases the native engine.
  */
 @Composable
 fun MmdSurface(
@@ -36,7 +37,6 @@ fun MmdSurface(
             GLSurfaceView(context).apply {
                 setEGLContextClientVersion(3)
                 setEGLConfigChooser(8, 8, 8, 8, 16, 0)
-                setZOrderMediaOverlay(true)
                 setRenderer(renderer)
                 renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
             }

@@ -36,6 +36,13 @@ private:
     GLuint ibo_ = 0;
     std::vector<GLuint> textures_;
     std::vector<bool> textureHasAlpha_;
+    // Sphere/toon lookups are normalized to [0,1] and sampled right up to both edges, where
+    // GL_REPEAT would blend in the opposite edge's texel; those slots clamp instead.
+    std::vector<bool> textureClamp_;
+    // 1x1 white fallback so uTex/uSphere/uToon (statically referenced by the fragment shader in
+    // every branch) always have a complete texture bound, even for materials with none — an
+    // unbound sampler is undefined behavior and corrupts the whole frame on some GL drivers.
+    GLuint dummyTexture_ = 0;
 
     int screenWidth_ = 1;
     int screenHeight_ = 1;

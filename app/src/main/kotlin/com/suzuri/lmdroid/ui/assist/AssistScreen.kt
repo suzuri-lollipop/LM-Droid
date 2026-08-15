@@ -388,7 +388,12 @@ private fun AssistStage(
             .fillMaxSize()
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
     ) {
-        StageBackground(backgroundPath = uiState.characterSettings.backgroundPath)
+        // With MMD the GL layer is opaque and IS the stage background (and anything drawn here
+        // would cover the character, since a SurfaceView's surface sits behind the whole window),
+        // so the Compose background layer only applies to the static-sprite stage.
+        if (uiState.characterSettings.modelType != CharacterModelType.MMD) {
+            StageBackground(backgroundPath = uiState.characterSettings.backgroundPath)
+        }
 
         CharacterStage(
             settings = uiState.characterSettings,

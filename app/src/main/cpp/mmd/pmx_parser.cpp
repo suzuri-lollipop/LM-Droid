@@ -10,26 +10,42 @@ namespace mmd {
 
 namespace {
 
+// Upper bounds used to reject structurally broken files early instead of allocating gigabytes
+// from garbage counts. Generous enough for the largest models in common circulation.
+constexpr int kMaxVertices = 5'000'000;
+constexpr int kMaxIndices = 30'000'000;
+constexpr int kMaxElements = 1'000'000;
+
+// Every read is bounds-checked: a malformed/truncated PMX must surface as a load error, never
+// as an out-of-bounds read (that crashed the GL thread — see the LoadPmx SIGSEGV fix).
 struct Reader {
     const uint8_t* data;
     size_t size;
     size_t pos = 0;
+    bool overflow = false;
 
     bool ok(size_t need) const { return pos + need <= size; }
 
-    uint8_t u8() { return ok(1) ? data[pos++] : 0; }
-    uint16_t u16() { uint16_t v; memcpy(&v, data + pos, 2); pos += 2; return v; }
-    int32_t i32() { int32_t v; memcpy(&v, data + pos, 4); pos += 4; return v; }
-    uint32_t u32() { uint32_t v; memcpy(&v, data + pos, 4); pos += 4; return v; }
-    float f32() { float v; memcpy(&v, data + pos, 4); pos += 4; return v; }
+    uint8_t u8() {
+        if (!ok(1)) { overflow = true; return 0; }
+        return data[pos++];
+    }
+    uint16_t u16() {
+        if (!ok(2)) { overflow = true; return 0; }
+        uint16_t v; memcpy(&v, data + pos, 2); pos += 2; return v;
+    }
+    int32_t i32() {
+        if (!ok(4)) { overflow = true; return 0; }
+        int32_t v; memcpy(&v, data + pos, 4); pos += 4; return v;
+    }
+    float f32() {
+        if (!ok(4)) { overflow = true; return 0.f; }
+        float v; memcpy(&v, data + pos, 4); pos += 4; return v;
+    }
 
     btVector3 vec3() {
         float x = f32(), y = f32(), z = f32();
         return btVector3(x, y, z);
-    }
-    btVector4 vec4() {
-        float x = f32(), y = f32(), z = f32(), w = f32();
-        return btVector4(x, y, z, w);
     }
 
     // Index with 1/2/4-byte storage; -1 (all bits set in the storage width) stays -1.
@@ -37,17 +53,20 @@ struct Reader {
         switch (byteSize) {
             case 1: { uint8_t v = u8(); return v == 0xFF ? -1 : v; }
             case 2: { uint16_t v = u16(); return v == 0xFFFF ? -1 : v; }
-            default: { int32_t v = i32(); return v; }
+            default: return i32();
         }
     }
 
-    void skip(size_t n) { pos = (pos + n <= size) ? pos + n : size; }
+    void skip(size_t n) {
+        if (!ok(n)) { overflow = true; pos = size; return; }
+        pos += n;
+    }
 };
 
 std::string readText(Reader& r, bool utf8) {
     int32_t len = r.i32();
-    if (len <= 0 || !r.ok(static_cast<size_t>(len))) {
-        if (len > 0) r.skip(static_cast<size_t>(len));
+    if (len < 0 || !r.ok(static_cast<size_t>(len))) {
+        r.overflow = true;
         return {};
     }
     if (utf8) {
@@ -72,6 +91,10 @@ std::string readText(Reader& r, bool utf8) {
     }
     r.pos += static_cast<size_t>(len);
     return out;
+}
+
+bool saneCount(int count, int ceiling) {
+    return count >= 0 && count <= ceiling;
 }
 
 } // namespace
@@ -134,8 +157,12 @@ bool LoadPmx(const std::string& path, PmxModel* out, std::string* error) {
 
     // ---- vertices
     int vertexCount = r.i32();
+    if (!saneCount(vertexCount, kMaxVertices)) {
+        *error = "invalid vertex count";
+        return false;
+    }
     out->vertices.resize(static_cast<size_t>(vertexCount));
-    for (int i = 0; i < vertexCount; i++) {
+    for (int i = 0; i < vertexCount && !r.overflow; i++) {
         PmxVertex& v = out->vertices[i];
         v.position = r.vec3();
         v.normal = r.vec3();
@@ -160,9 +187,9 @@ bool LoadPmx(const std::string& path, PmxModel* out, std::string* error) {
             case DeformType::BDEF4:
             case DeformType::QDEF: {
                 for (int b = 0; b < 4; b++) v.boneIndex[b] = r.index(boneIndexSize);
-                btVector4 w = r.vec4();
-                v.boneWeight[0] = w.x(); v.boneWeight[1] = w.y();
-                v.boneWeight[2] = w.z(); v.boneWeight[3] = w.w();
+                float wx = r.f32(), wy = r.f32(), wz = r.f32(), ww = r.f32();
+                v.boneWeight[0] = wx; v.boneWeight[1] = wy;
+                v.boneWeight[2] = wz; v.boneWeight[3] = ww;
                 break;
             }
             case DeformType::SDEF: {
@@ -182,15 +209,30 @@ bool LoadPmx(const std::string& path, PmxModel* out, std::string* error) {
 
     // ---- faces
     int faceIndexCount = r.i32();
+    if (!saneCount(faceIndexCount, kMaxIndices) || faceIndexCount % 3 != 0) {
+        *error = "invalid face index count";
+        return false;
+    }
     out->indices.resize(static_cast<size_t>(faceIndexCount));
-    for (int i = 0; i < faceIndexCount; i++) {
-        out->indices[i] = static_cast<uint32_t>(r.index(vertexIndexSize));
+    bool badIndex = false;
+    for (int i = 0; i < faceIndexCount && !r.overflow; i++) {
+        int idx = r.index(vertexIndexSize);
+        if (idx < 0 || idx >= vertexCount) badIndex = true;
+        out->indices[i] = static_cast<uint32_t>(idx < 0 ? 0 : idx);
+    }
+    if (badIndex) {
+        *error = "face index references out-of-range vertex";
+        return false;
     }
 
     // ---- textures
     int textureCount = r.i32();
+    if (!saneCount(textureCount, kMaxElements)) {
+        *error = "invalid texture count";
+        return false;
+    }
     out->textures.resize(static_cast<size_t>(textureCount));
-    for (int i = 0; i < textureCount; i++) {
+    for (int i = 0; i < textureCount && !r.overflow; i++) {
         std::string texPath = readText(r, utf8);
         for (char& c : texPath) {
             if (c == '\\') c = '/';
@@ -200,24 +242,24 @@ bool LoadPmx(const std::string& path, PmxModel* out, std::string* error) {
 
     // ---- materials
     int materialCount = r.i32();
+    if (!saneCount(materialCount, kMaxElements)) {
+        *error = "invalid material count";
+        return false;
+    }
     out->materials.resize(static_cast<size_t>(materialCount));
     int runningIndexOffset = 0;
-    for (int i = 0; i < materialCount; i++) {
+    for (int i = 0; i < materialCount && !r.overflow; i++) {
         PmxMaterial& m = out->materials[i];
         m.name = readText(r, utf8);
         readText(r, utf8);
-        btVector4 diffuse = r.vec4();
-        m.diffuse[0] = diffuse.x(); m.diffuse[1] = diffuse.y();
-        m.diffuse[2] = diffuse.z(); m.diffuse[3] = diffuse.w();
-        btVector3 specular = r.vec3();
-        m.specular[0] = specular.x(); m.specular[1] = specular.y(); m.specular[2] = specular.z();
+        m.diffuse[0] = r.f32(); m.diffuse[1] = r.f32();
+        m.diffuse[2] = r.f32(); m.diffuse[3] = r.f32();
+        m.specular[0] = r.f32(); m.specular[1] = r.f32(); m.specular[2] = r.f32();
         m.shininess = r.f32();
-        btVector3 ambient = r.vec3();
-        m.ambient[0] = ambient.x(); m.ambient[1] = ambient.y(); m.ambient[2] = ambient.z();
+        m.ambient[0] = r.f32(); m.ambient[1] = r.f32(); m.ambient[2] = r.f32();
         m.flags = r.u8();
-        btVector4 edgeColor = r.vec4();
-        m.edgeColor[0] = edgeColor.x(); m.edgeColor[1] = edgeColor.y();
-        m.edgeColor[2] = edgeColor.z(); m.edgeColor[3] = edgeColor.w();
+        m.edgeColor[0] = r.f32(); m.edgeColor[1] = r.f32();
+        m.edgeColor[2] = r.f32(); m.edgeColor[3] = r.f32();
         m.edgeSize = r.f32();
         m.textureIndex = r.index(textureIndexSize);
         m.sphereIndex = r.index(textureIndexSize);
@@ -231,13 +273,21 @@ bool LoadPmx(const std::string& path, PmxModel* out, std::string* error) {
         readText(r, utf8); // comment
         m.indexCount = r.i32();
         m.indexOffset = runningIndexOffset;
+        if (m.indexCount < 0 || runningIndexOffset + m.indexCount > faceIndexCount) {
+            *error = "material face range exceeds index buffer";
+            return false;
+        }
         runningIndexOffset += m.indexCount;
     }
 
     // ---- bones
     int boneCount = r.i32();
+    if (!saneCount(boneCount, kMaxElements)) {
+        *error = "invalid bone count";
+        return false;
+    }
     out->bones.resize(static_cast<size_t>(boneCount));
-    for (int i = 0; i < boneCount; i++) {
+    for (int i = 0; i < boneCount && !r.overflow; i++) {
         PmxBone& b = out->bones[i];
         b.name = readText(r, utf8);
         readText(r, utf8);
@@ -263,10 +313,10 @@ bool LoadPmx(const std::string& path, PmxModel* out, std::string* error) {
         if (b.flags & PmxBone::FLAG_FIXED_AXIS) {
             b.fixedAxis = r.vec3();
         }
-        if (b.flags & 0x0800) { // local axes
-            r.skip(24);
+        if (b.flags & PmxBone::FLAG_LOCAL_AXES) {
+            r.skip(24); // local X axis + Z axis, 2 x vec3 (Y is derived via cross product)
         }
-        if (b.flags & 0x2000) { // external parent
+        if (b.flags & PmxBone::FLAG_EXTERNAL_PARENT) {
             r.skip(4);
         }
         if (b.flags & PmxBone::FLAG_IK) {
@@ -274,8 +324,12 @@ bool LoadPmx(const std::string& path, PmxModel* out, std::string* error) {
             b.ikIterations = r.i32();
             b.ikLimitAngle = r.f32();
             int linkCount = r.i32();
+            if (!saneCount(linkCount, kMaxElements)) {
+                *error = "invalid IK link count";
+                return false;
+            }
             b.ikLinks.resize(static_cast<size_t>(linkCount));
-            for (int l = 0; l < linkCount; l++) {
+            for (int l = 0; l < linkCount && !r.overflow; l++) {
                 PmxBone::IkLink& link = b.ikLinks[l];
                 link.index = r.index(boneIndexSize);
                 link.hasLimit = r.u8() != 0;
@@ -291,49 +345,62 @@ bool LoadPmx(const std::string& path, PmxModel* out, std::string* error) {
 
     // ---- morphs
     int morphCount = r.i32();
+    if (!saneCount(morphCount, kMaxElements)) {
+        *error = "invalid morph count";
+        return false;
+    }
     out->morphs.resize(static_cast<size_t>(morphCount));
-    for (int i = 0; i < morphCount; i++) {
+    for (int i = 0; i < morphCount && !r.overflow; i++) {
         PmxMorph& m = out->morphs[i];
         m.name = readText(r, utf8);
         readText(r, utf8);
         m.panel = r.u8();
         m.type = static_cast<MorphType>(r.u8());
         int offsetCount = r.i32();
+        if (!saneCount(offsetCount, kMaxVertices)) {
+            *error = "invalid morph offset count";
+            return false;
+        }
         switch (m.type) {
             case MorphType::Vertex:
                 m.vertexOffsets.resize(static_cast<size_t>(offsetCount));
-                for (int o = 0; o < offsetCount; o++) {
-                    m.vertexOffsets[o].vertex = r.index(vertexIndexSize);
+                for (int o = 0; o < offsetCount && !r.overflow; o++) {
+                    int vertex = r.index(vertexIndexSize);
+                    m.vertexOffsets[o].vertex = vertex;
                     m.vertexOffsets[o].offset = r.vec3();
+                    if (vertex < 0 || vertex >= vertexCount) {
+                        *error = "vertex morph references out-of-range vertex";
+                        return false;
+                    }
                 }
                 break;
             case MorphType::Group:
             case MorphType::Flip:
                 m.groupOffsets.resize(static_cast<size_t>(offsetCount));
-                for (int o = 0; o < offsetCount; o++) {
+                for (int o = 0; o < offsetCount && !r.overflow; o++) {
                     m.groupOffsets[o].morph = r.index(morphIndexSize);
                     m.groupOffsets[o].ratio = r.f32();
                 }
                 break;
             case MorphType::Bone:
-                r.skip(static_cast<size_t>(offsetCount) * (boneIndexSize + 28));
+                r.skip(static_cast<size_t>(offsetCount) * (static_cast<size_t>(boneIndexSize) + 28));
                 break;
             case MorphType::Uv:
             case MorphType::ExtraUv1:
             case MorphType::ExtraUv2:
             case MorphType::ExtraUv3:
             case MorphType::ExtraUv4:
-            case MorphType::ExtraUv5:
-                r.skip(static_cast<size_t>(offsetCount) * (vertexIndexSize + 16));
+                r.skip(static_cast<size_t>(offsetCount) * (static_cast<size_t>(vertexIndexSize) + 16));
                 break;
             case MorphType::Material:
-                r.skip(static_cast<size_t>(offsetCount) * (materialIndexSize + 1 + 28 + 16 + 16 + 16));
+                // materialIndex + op(1) + diffuse(16) + specular(12) + shininess(4) +
+                // ambient(12) + edgeColor(16) + edgeSize(4) + texture(16) + sphere(16) + toon(16)
+                r.skip(static_cast<size_t>(offsetCount) * (static_cast<size_t>(materialIndexSize) + 113));
                 break;
             case MorphType::Impulse:
-                for (int o = 0; o < offsetCount; o++) {
+                for (int o = 0; o < offsetCount && !r.overflow; o++) {
                     r.index(rigidBodyIndexSize);
-                    uint8_t local = r.u8();
-                    (void)local;
+                    r.u8(); // local flag
                     r.skip(24);
                 }
                 break;
@@ -342,12 +409,20 @@ bool LoadPmx(const std::string& path, PmxModel* out, std::string* error) {
 
     // ---- display frames (parse + discard)
     int frameCount = r.i32();
-    for (int i = 0; i < frameCount; i++) {
+    if (!saneCount(frameCount, kMaxElements)) {
+        *error = "invalid display frame count";
+        return false;
+    }
+    for (int i = 0; i < frameCount && !r.overflow; i++) {
         readText(r, utf8);
         readText(r, utf8);
         r.u8(); // special flag
         int elementCount = r.i32();
-        for (int e = 0; e < elementCount; e++) {
+        if (!saneCount(elementCount, kMaxElements)) {
+            *error = "invalid display frame element count";
+            return false;
+        }
+        for (int e = 0; e < elementCount && !r.overflow; e++) {
             uint8_t elementType = r.u8();
             if (elementType == 0) r.skip(boneIndexSize);
             else r.skip(morphIndexSize);
@@ -356,8 +431,12 @@ bool LoadPmx(const std::string& path, PmxModel* out, std::string* error) {
 
     // ---- rigid bodies
     int bodyCount = r.i32();
+    if (!saneCount(bodyCount, kMaxElements)) {
+        *error = "invalid rigid body count";
+        return false;
+    }
     out->rigidBodies.resize(static_cast<size_t>(bodyCount));
-    for (int i = 0; i < bodyCount; i++) {
+    for (int i = 0; i < bodyCount && !r.overflow; i++) {
         PmxRigidBody& rb = out->rigidBodies[i];
         rb.name = readText(r, utf8);
         readText(r, utf8);
@@ -378,8 +457,12 @@ bool LoadPmx(const std::string& path, PmxModel* out, std::string* error) {
 
     // ---- joints
     int jointCount = r.i32();
+    if (!saneCount(jointCount, kMaxElements)) {
+        *error = "invalid joint count";
+        return false;
+    }
     out->joints.resize(static_cast<size_t>(jointCount));
-    for (int i = 0; i < jointCount; i++) {
+    for (int i = 0; i < jointCount && !r.overflow; i++) {
         PmxJoint& j = out->joints[i];
         j.name = readText(r, utf8);
         readText(r, utf8);
@@ -394,6 +477,11 @@ bool LoadPmx(const std::string& path, PmxModel* out, std::string* error) {
         j.angularUpper = r.vec3();
         j.linearSpring = r.vec3();
         j.angularSpring = r.vec3();
+    }
+
+    if (r.overflow) {
+        *error = "unexpected end of file (truncated or malformed PMX)";
+        return false;
     }
 
     PMX_LOG("loaded '%s': %zu vertices, %zu indices, %zu materials, %zu bones, %zu morphs, %zu bodies, %zu joints, %zu textures",

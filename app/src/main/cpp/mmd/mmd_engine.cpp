@@ -127,6 +127,7 @@ bool MmdEngine::loadModel(const std::string& pmxPath, std::string* error) {
     }
     boundsCenter_ = (minB + maxB) * 0.5f;
     boundsHeight_ = btMax(maxB.y() - minB.y(), 1.f);
+    boundsWidth_ = btMax(maxB.x() - minB.x(), 1.f);
 
     mouthMorph_ = resolveMorphByName({"あ", "ア", "a", "A"});
     if (mouthMorph_ < 0) {
@@ -150,7 +151,7 @@ bool MmdEngine::loadModel(const std::string& pmxPath, std::string* error) {
 
     if (!model_.rigidBodies.empty()) {
         physics_ = std::make_unique<MmdPhysics>();
-        physics_->init(model_);
+        physics_->init(model_, bindWorld_);
     }
 
     loaded_ = true;

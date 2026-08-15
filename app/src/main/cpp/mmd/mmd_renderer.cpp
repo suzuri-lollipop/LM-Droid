@@ -46,12 +46,19 @@ uniform sampler2D uToon;
 uniform int uUseDefaultToon;
 out vec4 fragColor;
 void main() {
+    // Back faces of double-sided materials interpolate the front-face normal, which would flip
+    // both the toon-ramp lookup and the sphere-map UV on the inside of cloth/hair sheets.
     vec3 N = normalize(vNormal);
+    if (!gl_FrontFacing) N = -N;
     float ln = dot(N, -uLightDir);
     float toonT = clamp(ln * 0.5 + 0.5, 0.0, 1.0);
+    // PMX toon ramps are authored lit-at-top (v=0 fully lit, v=1 fully shadowed) and carry a
+    // tint, not just a level — sample the full RGB at 1-toonT and multiply it in. Without a
+    // ramp texture the cel-style step keeps shade in [0.55, 1.0] so the diffuse color stays
+    // readable instead of blowing out (an earlier ambient+toon product exceeded 1.0).
     vec3 toon = uUseDefaultToon == 1
         ? vec3(mix(0.55, 1.0, smoothstep(0.42, 0.58, toonT)))
-        : texture(uToon, vec2(0.5, toonT)).rgb;
+        : clamp(texture(uToon, vec2(0.5, 1.0 - toonT)).rgb, 0.0, 1.0);
     vec4 color = uDiffuse;
     if (uHasTex == 1) {
         color *= texture(uTex, vUv);
@@ -61,7 +68,7 @@ void main() {
         vec3 sphere = texture(uSphere, suv).rgb;
         if (uSphereMode == 1) color.rgb *= sphere; else color.rgb += sphere;
     }
-    vec3 lit = color.rgb * (uAmbient + toon);
+    vec3 lit = color.rgb * (uAmbient + toon * (1.0 - uAmbient));
     vec3 V = normalize(-vViewPos);
     vec3 H = normalize(V - uLightDir);
     float sp = pow(max(dot(N, H), 0.0), max(uShininess, 1.0));
@@ -207,9 +214,35 @@ bool MmdRenderer::init(const PmxModel& model) {
     textures_.assign(model.textures.size(), 0);
     textureHasAlpha_.assign(model.textures.size(), false);
 
+    const int textureCount = static_cast<int>(model.textures.size());
+    textureClamp_.assign(model.textures.size(), false);
+    for (const PmxMaterial& m : model.materials) {
+        if (m.sphereMode != 0 && m.sphereIndex >= 0 && m.sphereIndex < textureCount) {
+            textureClamp_[m.sphereIndex] = true;
+        }
+        if (m.toonFlag == 0 && m.toonIndex >= 0 && m.toonIndex < textureCount) {
+            textureClamp_[m.toonIndex] = true;
+        }
+    }
+    // A slot that is also a material texture keeps GL_REPEAT: those UVs may legitimately tile.
+    for (const PmxMaterial& m : model.materials) {
+        if (m.textureIndex >= 0 && m.textureIndex < textureCount) textureClamp_[m.textureIndex] = false;
+    }
+
+    if (dummyTexture_ == 0) {
+        const uint8_t white[4] = {255, 255, 255, 255};
+        glGenTextures(1, &dummyTexture_);
+        glBindTexture(GL_TEXTURE_2D, dummyTexture_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    }
+
     glEnable(GL_DEPTH_TEST);
     ready_ = true;
-    RENDER_LOG("renderer ready: %zu vertices, %zu indices", vertexCount, model.indices.size());
+    RENDER_LOG("renderer ready: %zu vertices, %zu indices, GL: %s",
+               vertexCount, model.indices.size(),
+               reinterpret_cast<const char*>(glGetString(GL_VERSION)));
     return true;
 }
 
@@ -233,8 +266,9 @@ void MmdRenderer::setTexture(int index, int width, int height, const uint32_t* a
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    const GLint wrap = textureClamp_[index] ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap);
     textureHasAlpha_[index] = hasAlpha;
 }
 
@@ -263,37 +297,37 @@ void MmdRenderer::drawMaterial(const MmdEngine& engine, int materialIndex, bool 
     glUniform1f(glGetUniformLocation(toonProgram_, "uShininess"), m.shininess);
     glUniform3f(glGetUniformLocation(toonProgram_, "uAmbient"), m.ambient[0], m.ambient[1], m.ambient[2]);
 
+    // uTex/uSphere/uToon are statically referenced by every branch of the fragment shader, so
+    // each needs a complete texture bound even when unused this draw (an unbound/incomplete
+    // sampler is undefined behavior — on this host GL driver it corrupted the entire frame, not
+    // just the model, see the mmd rendering fix notes). The dummy 1x1 white texture is the
+    // fallback; the uHasTex/uSphereMode/uUseDefaultToon uniforms still gate what the shader does
+    // with it.
     int texUnit = 0;
     bool hasTex = m.textureIndex >= 0 && m.textureIndex < static_cast<int>(textures_.size()) && textures_[m.textureIndex] != 0;
     glUniform1i(glGetUniformLocation(toonProgram_, "uHasTex"), hasTex ? 1 : 0);
-    if (hasTex) {
-        glActiveTexture(GL_TEXTURE0 + texUnit);
-        glBindTexture(GL_TEXTURE_2D, textures_[m.textureIndex]);
-        glUniform1i(glGetUniformLocation(toonProgram_, "uTex"), texUnit);
-        texUnit++;
-    }
+    glActiveTexture(GL_TEXTURE0 + texUnit);
+    glBindTexture(GL_TEXTURE_2D, hasTex ? textures_[m.textureIndex] : dummyTexture_);
+    glUniform1i(glGetUniformLocation(toonProgram_, "uTex"), texUnit);
+    texUnit++;
 
     bool hasSphere = m.sphereMode != 0 && m.sphereIndex >= 0 && m.sphereIndex < static_cast<int>(textures_.size()) &&
                      textures_[m.sphereIndex] != 0;
     glUniform1i(glGetUniformLocation(toonProgram_, "uSphereMode"), hasSphere ? m.sphereMode : 0);
-    if (hasSphere) {
-        glActiveTexture(GL_TEXTURE0 + texUnit);
-        glBindTexture(GL_TEXTURE_2D, textures_[m.sphereIndex]);
-        glUniform1i(glGetUniformLocation(toonProgram_, "uSphere"), texUnit);
-        texUnit++;
-    }
+    glActiveTexture(GL_TEXTURE0 + texUnit);
+    glBindTexture(GL_TEXTURE_2D, hasSphere ? textures_[m.sphereIndex] : dummyTexture_);
+    glUniform1i(glGetUniformLocation(toonProgram_, "uSphere"), texUnit);
+    texUnit++;
 
     // File-referenced toon ramps use the texture; shared toons fall back to the procedural
     // cel step inside the shader (close enough to MMD's toon01..toon10 set).
     bool hasToonTex = m.toonFlag == 0 && m.toonIndex >= 0 && m.toonIndex < static_cast<int>(textures_.size()) &&
                       textures_[m.toonIndex] != 0;
     glUniform1i(glGetUniformLocation(toonProgram_, "uUseDefaultToon"), hasToonTex ? 0 : 1);
-    if (hasToonTex) {
-        glActiveTexture(GL_TEXTURE0 + texUnit);
-        glBindTexture(GL_TEXTURE_2D, textures_[m.toonIndex]);
-        glUniform1i(glGetUniformLocation(toonProgram_, "uToon"), texUnit);
-        texUnit++;
-    }
+    glActiveTexture(GL_TEXTURE0 + texUnit);
+    glBindTexture(GL_TEXTURE_2D, hasToonTex ? textures_[m.toonIndex] : dummyTexture_);
+    glUniform1i(glGetUniformLocation(toonProgram_, "uToon"), texUnit);
+    texUnit++;
 
     glDrawElements(GL_TRIANGLES, m.indexCount, GL_UNSIGNED_INT,
                    reinterpret_cast<void*>(static_cast<uintptr_t>(m.indexOffset) * sizeof(uint32_t)));
@@ -306,10 +340,18 @@ void MmdRenderer::draw(const MmdEngine& engine) {
     glClearColor(0.f, 0.f, 0.f, 0.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Camera: fixed framing on the model's bounds, on the -Z side (PMX models face -Z).
+    // Camera: fixed framing on the model's bind-pose bounds, on the -Z side (PMX models face
+    // -Z). Distance must satisfy both the vertical extent (height) and the horizontal one
+    // (width — arms reach far past shoulder width on an unposed/T-pose bind skeleton), each
+    // against its own half-angle: a portrait screen's horizontal FOV is narrower than its
+    // vertical one (tan(fovX/2) = aspect * tan(fovY/2)), so on a tall phone the arm span is
+    // usually the tighter constraint, not the height alone.
     const float fov = 30.f * 3.14159265358979323846f / 180.f;
     const float aspect = static_cast<float>(screenWidth_) / static_cast<float>(screenHeight_);
-    const float dist = engine.boundsHeight() * 2.2f;
+    const float tanHalfFov = tanf(fov * 0.5f);
+    const float distForHeight = engine.boundsHeight() / (2.f * tanHalfFov);
+    const float distForWidth = engine.boundsWidth() / (2.f * aspect * tanHalfFov);
+    const float dist = btMax(distForHeight, distForWidth) * 1.15f; // small margin around the subject
     btVector3 center = engine.boundsCenter();
     btVector3 eye = center + btVector3(0, 0, -dist);
     float view[16], proj[16];
@@ -319,9 +361,13 @@ void MmdRenderer::draw(const MmdEngine& engine) {
     // Upload this frame's skinned vertices.
     glBindVertexArray(vao_);
     glBindBuffer(GL_ARRAY_BUFFER, dynamicVbo_);
-    glBufferSubData(GL_ARRAY_BUFFER, 0,
-                    static_cast<GLsizeiptr>(engine.vertexCount() * 8 * sizeof(float)),
-                    engine.skinnedVertices());
+    // Orphan (glBufferData, not glBufferSubData): this buffer is rewritten every frame while the
+    // GPU may still be reading last frame's contents for its draw calls. glBufferSubData writes
+    // into the live buffer and relies on the driver to stall/sync correctly; glBufferData with a
+    // fresh allocation lets the driver detach a new buffer instead, avoiding that read/write race
+    // (traced whole-frame corruption on one host GL driver to this hazard).
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(engine.vertexCount() * 8 * sizeof(float)),
+                 engine.skinnedVertices(), GL_DYNAMIC_DRAW);
 
     btVector3 lightWorld = btVector3(-0.5f, -1.f, 0.5f).normalized();
     btVector3 lightView = btVector3(
@@ -352,7 +398,10 @@ void MmdRenderer::draw(const MmdEngine& engine) {
         }
     }
 
-    // 2) Opaque pass.
+    // 2) Opaque pass. The edge-scale attribute (location 3) is only consumed by the edge
+    // program; leaving it enabled for toon draws trips some host drivers (blank frame), so it
+    // is toggled per pass.
+    glDisableVertexAttribArray(3);
     glCullFace(GL_BACK);
     setMatrices(toonProgram_);
     for (size_t i = 0; i < model.materials.size(); i++) {
@@ -364,6 +413,7 @@ void MmdRenderer::draw(const MmdEngine& engine) {
         if (m.flags & PmxMaterial::FLAG_DOUBLE_SIDED) glDisable(GL_CULL_FACE); else glEnable(GL_CULL_FACE);
         drawMaterial(engine, static_cast<int>(i), false);
     }
+    glEnableVertexAttribArray(3);
 
     // 3) Transparent pass: blended, no depth write.
     glEnable(GL_BLEND);
@@ -394,6 +444,8 @@ void MmdRenderer::destroy() {
     }
     textures_.clear();
     textureHasAlpha_.clear();
+    textureClamp_.clear();
+    if (dummyTexture_ != 0) { glDeleteTextures(1, &dummyTexture_); dummyTexture_ = 0; }
     if (toonProgram_ != 0) { glDeleteProgram(toonProgram_); toonProgram_ = 0; }
     if (edgeProgram_ != 0) { glDeleteProgram(edgeProgram_); edgeProgram_ = 0; }
     ready_ = false;

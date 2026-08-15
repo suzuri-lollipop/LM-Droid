@@ -3,6 +3,7 @@ package com.suzuri.lmdroid.ui.character
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.opengl.GLSurfaceView
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,10 +16,13 @@ import javax.microedition.khronos.opengles.GL10
 
 /**
  * The Phase-4 [CharacterRenderer]: hosts the C++ MMD engine/renderer (see mmd_jni.cpp) inside a
- * GLSurfaceView. Implements GLSurfaceView.Renderer directly — model parsing happens once on the
- * GL thread at surface creation (a one-off stall is acceptable there), texture decoding runs on
- * IO threads and uploads queue up for the next draw frame, and every frame advances animation,
- * physics and skinning natively before drawing.
+ * GLSurfaceView. Model parsing happens once on the GL thread at surface creation, texture
+ * decoding runs on IO threads and uploads queue for the next frame, and every frame advances
+ * animation/physics/skinning natively before drawing.
+ *
+ * The GLSurfaceView only composites inside the translucent assist activity once the window is
+ * switched to an opaque format (see AssistActivity) — a translucent window drops SurfaceView
+ * child surfaces entirely.
  */
 class MmdNativeRenderer(
     private val pmxPath: String,
@@ -45,7 +49,14 @@ class MmdNativeRenderer(
     var loadError: String? = null
         private set
 
-    private var lastFrameNs = 0L
+    // Destruction is deferred to the GL thread: release() only sets the flag, and the next
+    // onDrawFrame performs nativeDestroy. Destroying from the Compose dispose path instead would
+    // race a frame still in flight on the GL thread (use-after-free on the native handle).
+    @Volatile
+    private var releaseRequested = false
+
+    @Volatile
+    private var released = false
 
     override fun setState(state: CharacterUiState) {
         currentState = state
@@ -56,45 +67,38 @@ class MmdNativeRenderer(
     }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+        if (releaseRequested) return
         if (!MmdNative.nativeLoadModel(handle, pmxPath)) {
-            loadError = MmdNative.nativeLastError(handle)
+            val message = MmdNative.nativeLastError(handle)
+            loadError = message
+            Log.w(TAG, "loadModel failed: $message")
             return
         }
         vmdPath?.takeIf { File(it).exists() }?.let { path ->
-            if (!MmdNative.nativeLoadMotion(handle, path)) {
-                // A broken motion shouldn't kill the model — it still draws in its default pose
-                // with procedural blink/lip sync.
-                loadError = null
-            }
+            // A broken motion must not kill the model — it still draws in its default pose
+            // with procedural blink/lip sync.
+            MmdNative.nativeLoadMotion(handle, path)
         }
         decodeTexturesAsync()
         if (!MmdNative.nativeInitGl(handle)) {
             loadError = "GL init failed"
-        }
-    }
-
-    private fun decodeTexturesAsync() {
-        val count = MmdNative.nativeTextureCount(handle)
-        for (index in 0 until count) {
-            val path = MmdNative.nativeTexturePath(handle, index)
-            if (path.isBlank()) continue
-            scope.launch {
-                val bitmap = decodeTextureBitmap(path) ?: return@launch
-                val width = bitmap.width
-                val height = bitmap.height
-                val pixels = IntArray(width * height)
-                bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-                bitmap.recycle()
-                pendingTextures.add(TextureUpload(index, width, height, pixels))
-            }
+            Log.w(TAG, "GL init failed")
+            return
         }
     }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+        if (releaseRequested) return
         MmdNative.nativeResize(handle, width, height)
     }
 
     override fun onDrawFrame(gl: GL10?) {
+        if (releaseRequested && !released) {
+            MmdNative.nativeDestroy(handle)
+            released = true
+            return
+        }
+        if (released) return
         while (true) {
             val upload = pendingTextures.poll() ?: break
             MmdNative.nativeSetTexture(handle, upload.index, upload.width, upload.height, upload.pixels)
@@ -108,10 +112,38 @@ class MmdNativeRenderer(
 
     override fun release() {
         scope.cancel()
-        MmdNative.nativeDestroy(handle)
+        releaseRequested = true
+    }
+
+    private var lastFrameNs = 0L
+
+    // One coroutine for all textures, not one each: a model can declare a dozen 2K sheets, and
+    // decoding them in parallel would hold every bitmap plus its 4 MB pixel copy live at once.
+    // An OOM here escapes the launch and takes down the process, so the peak is kept to one.
+    private fun decodeTexturesAsync() {
+        val count = MmdNative.nativeTextureCount(handle)
+        val paths = (0 until count).map { MmdNative.nativeTexturePath(handle, it) }
+        scope.launch {
+            paths.forEachIndexed { index, path ->
+                if (path.isBlank()) return@forEachIndexed
+                val bitmap = decodeTextureBitmap(path)
+                if (bitmap == null) {
+                    // The material falls back to its flat diffuse color (uHasTex stays 0).
+                    Log.w(TAG, "texture decode failed: $path")
+                    return@forEachIndexed
+                }
+                val width = bitmap.width
+                val height = bitmap.height
+                val pixels = IntArray(width * height)
+                bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+                bitmap.recycle()
+                pendingTextures.add(TextureUpload(index, width, height, pixels))
+            }
+        }
     }
 
     private companion object {
+        const val TAG = "MmdNativeRenderer"
         const val MAX_TEXTURE_DIMENSION = 1024
 
         /** Decodes a texture file down to [MAX_TEXTURE_DIMENSION] so 4K source art can't exhaust GL memory. */
@@ -127,7 +159,14 @@ class MmdNativeRenderer(
                 ) {
                     sampleSize *= 2
                 }
-                BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sampleSize })
+                BitmapFactory.decodeFile(
+                    path,
+                    // getPixels() always hands back straight (un-premultiplied) ARGB, which is
+                    // what the native GL blend wants; decoding un-premultiplied too skips the
+                    // premultiply/un-premultiply round trip, which quantizes RGB in soft-alpha
+                    // regions (hair tips sit near alpha 0.4 and lose over a bit of precision).
+                    BitmapFactory.Options().apply { inSampleSize = sampleSize; inPremultiplied = false },
+                )
             }.getOrNull()
         }
     }

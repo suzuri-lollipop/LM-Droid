@@ -24,7 +24,11 @@ public:
     MmdPhysics();
     ~MmdPhysics();
 
-    void init(const PmxModel& model);
+    // [boneBindWorld] is each bone's bind-pose world transform (MmdEngine's bindWorld_, valid
+    // after computeBindPose()) — needed to convert each rigid body's PMX-absolute bind position
+    // into an offset relative to its bone, since syncKinematic recomposes bone * offset every
+    // frame as the bone moves.
+    void init(const PmxModel& model, const std::vector<btTransform>& boneBindWorld);
     void syncKinematic(const PmxModel& model, const std::vector<btTransform>& boneWorld);
     void step(float dt);
     // Overrides dynamic bodies' bones in [boneWorld] and returns which bones changed,

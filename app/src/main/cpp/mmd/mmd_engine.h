@@ -33,6 +33,7 @@ public:
     // Bounding info computed at load, for camera framing.
     btVector3 boundsCenter() const { return boundsCenter_; }
     float boundsHeight() const { return boundsHeight_; }
+    float boundsWidth() const { return boundsWidth_; }
 
 private:
     void computeBindPose();
@@ -68,6 +69,7 @@ private:
 
     btVector3 boundsCenter_{0, 10, 0};
     float boundsHeight_ = 20.f;
+    float boundsWidth_ = 20.f;
 
     std::unique_ptr<MmdPhysics> physics_;
 };

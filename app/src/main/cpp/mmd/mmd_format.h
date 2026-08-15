@@ -70,19 +70,23 @@ struct PmxBone {
     };
     std::vector<IkLink> ikLinks;
 
+    // PMX 2.0 bone flag bits, per spec.
     static constexpr uint16_t FLAG_TAIL_IS_INDEX = 0x0001;
     static constexpr uint16_t FLAG_ROTATABLE = 0x0002;
     static constexpr uint16_t FLAG_MOVABLE = 0x0004;
+    static constexpr uint16_t FLAG_IK = 0x0020;
     static constexpr uint16_t FLAG_GRANT_ROTATION = 0x0100;
     static constexpr uint16_t FLAG_GRANT_TRANSLATION = 0x0200;
     static constexpr uint16_t FLAG_FIXED_AXIS = 0x0400;
-    static constexpr uint16_t FLAG_IK = 0x0020;
+    static constexpr uint16_t FLAG_LOCAL_AXES = 0x0800;
+    static constexpr uint16_t FLAG_EXTERNAL_PARENT = 0x2000;
 };
 
+// PMX spec: only 4 additional UV channels (matching additionalVec4's 0-4 range), not 5.
 enum class MorphType : uint8_t {
     Group = 0, Vertex = 1, Bone = 2, Uv = 3,
-    ExtraUv1 = 4, ExtraUv2 = 5, ExtraUv3 = 6, ExtraUv4 = 7, ExtraUv5 = 8,
-    Material = 9, Flip = 10, Impulse = 11
+    ExtraUv1 = 4, ExtraUv2 = 5, ExtraUv3 = 6, ExtraUv4 = 7,
+    Material = 8, Flip = 9, Impulse = 10
 };
 
 struct PmxMorph {

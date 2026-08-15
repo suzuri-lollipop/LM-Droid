@@ -6,11 +6,13 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModelProvider
+import com.suzuri.lmdroid.data.character.CharacterModelType
 import com.suzuri.lmdroid.service.WakeWordService
 import com.suzuri.lmdroid.ui.ViewModelFactory
 import com.suzuri.lmdroid.ui.assist.AssistScreen
 import com.suzuri.lmdroid.ui.assist.AssistViewModel
 import com.suzuri.lmdroid.ui.theme.LmDroidTheme
+import kotlinx.coroutines.runBlocking
 
 /**
  * Entry point for the system assist gesture (see AndroidManifest's ACTION_ASSIST filter, and
@@ -23,12 +25,23 @@ class AssistActivity : ComponentActivity() {
     private lateinit var viewModel: AssistViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // The novel-game stage hosts a GLSurfaceView, whose child surface is dropped entirely
+        // while this window is translucent (the manifest theme, needed for the bottom-sheet
+        // fallback). With a character configured the stage covers the full screen with its own
+        // (GL-drawn) background anyway, so switch to the non-translucent variant theme before
+        // super.onCreate applies the manifest theme. The DataStore read is a tiny file; blocking
+        // onCreate on it beats a one-frame flicker.
+        val container = (application as LmDroidApplication).container
+        val characterSettings = runBlocking { container.settingsRepository.currentCharacterSettings() }
+        if (characterSettings.modelType != CharacterModelType.NONE) {
+            setTheme(R.style.Theme_LmDroid_Assist_Stage)
+        }
+
         super.onCreate(savedInstanceState)
         Log.d("AssistActivity", "onCreate: intent=$intent")
         Log.d("AssistActivity", "onCreate: Pausing wake word")
         sendBroadcast(Intent(WakeWordService.ACTION_PAUSE))
 
-        val container = (application as LmDroidApplication).container
         val viewModelFactory = ViewModelFactory(container)
         viewModel = ViewModelProvider(this, viewModelFactory)[AssistViewModel::class.java]
 

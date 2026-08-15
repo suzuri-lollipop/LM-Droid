@@ -34,7 +34,7 @@ MmdPhysics::~MmdPhysics() {
     shapes_.clear();
 }
 
-void MmdPhysics::init(const PmxModel& model) {
+void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& boneBindWorld) {
     collisionConfig_ = std::make_unique<btDefaultCollisionConfiguration>();
     dispatcher_ = std::make_unique<btCollisionDispatcher>(collisionConfig_.get());
     broadphase_ = std::make_unique<btDbvtBroadphase>();
@@ -68,7 +68,12 @@ void MmdPhysics::init(const PmxModel& model) {
         }
         shape = shapes_.back().get();
 
-        bodyOffsets_[i] = offsetTransform(rb.position, rb.rotation);
+        // rb.position/rotation are PMX-absolute (model-space bind pose), but syncKinematic
+        // recomposes boneWorld * bodyOffsets_ every frame — so what's stored here must be the
+        // offset relative to the bone's OWN bind pose, not the absolute transform itself.
+        btTransform absoluteBind = offsetTransform(rb.position, rb.rotation);
+        bool hasBone = rb.bone >= 0 && rb.bone < static_cast<int>(boneBindWorld.size());
+        bodyOffsets_[i] = hasBone ? boneBindWorld[rb.bone].inverse() * absoluteBind : absoluteBind;
         modes_[i] = rb.mode;
 
         bool kinematic = rb.mode == PmxRigidBody::MODE_KINEMATIC || rb.mass <= 0.f;
@@ -82,7 +87,7 @@ void MmdPhysics::init(const PmxModel& model) {
         body->setDamping(rb.linearDamping, rb.angularDamping);
         body->setRestitution(rb.restitution);
         body->setFriction(rb.friction);
-        body->setWorldTransform(bodyOffsets_[i]); // bind pose; syncKinematic fixes it next frame
+        body->setWorldTransform(absoluteBind); // bind pose; syncKinematic fixes it next frame
         if (kinematic) {
             body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_KINEMATIC_OBJECT);
         } else {
