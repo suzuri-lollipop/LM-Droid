@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -59,6 +60,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -191,6 +193,7 @@ fun AssistScreen(
             uiState = uiState,
             isListening = voiceInputState.isListening,
             isPreparing = voiceInputState.isPreparing,
+            isFinalizing = voiceInputState.isFinalizing,
             hasStartedListening = hasStartedListening,
             onOpenApp = onOpenApp,
             onDismiss = onDismiss,
@@ -203,6 +206,7 @@ fun AssistScreen(
             uiState = uiState,
             isListening = voiceInputState.isListening,
             isPreparing = voiceInputState.isPreparing,
+            isFinalizing = voiceInputState.isFinalizing,
             hasStartedListening = hasStartedListening,
             onOpenApp = onOpenApp,
             onDismiss = onDismiss,
@@ -219,6 +223,7 @@ private fun AssistBottomSheet(
     uiState: AssistUiState,
     isListening: Boolean,
     isPreparing: Boolean,
+    isFinalizing: Boolean,
     hasStartedListening: Boolean,
     onOpenApp: () -> Unit,
     onDismiss: () -> Unit,
@@ -320,6 +325,7 @@ private fun AssistBottomSheet(
                             AssistConversationContent(
                                 isListening = isListening,
                                 isPreparing = isPreparing,
+                                isFinalizing = isFinalizing,
                                 isStarted = hasStartedListening,
                                 isStreaming = uiState.isStreaming,
                                 transcript = uiState.transcript,
@@ -357,6 +363,7 @@ private fun AssistStage(
     uiState: AssistUiState,
     isListening: Boolean,
     isPreparing: Boolean,
+    isFinalizing: Boolean,
     hasStartedListening: Boolean,
     onOpenApp: () -> Unit,
     onDismiss: () -> Unit,
@@ -427,43 +434,65 @@ private fun AssistStage(
 
             NamePlate(name = uiState.modelProfileName ?: stringResource(R.string.assist_title))
 
-            Spacer(Modifier.height(4.dp))
+            // Room for the mic button straddling the window's top edge below the name plate.
+            Spacer(Modifier.height(36.dp))
 
-            NovelMessageWindow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}),
-            ) {
-                StageWindowContent(
-                    uiState = uiState,
-                    isListening = isListening,
-                    isPreparing = isPreparing,
-                    hasStartedListening = hasStartedListening,
-                    onOpenApp = onOpenApp,
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                if (uiState.errorMessage != null) {
-                    ListeningIndicator(
-                        isListening = false,
-                        onClick = onRetryListening,
-                        contentDescription = stringResource(R.string.assist_retry_listening),
-                        onStage = true,
-                    )
-                } else if (!uiState.isStreaming) {
-                    ListeningIndicator(
+            // Novel-game layout: a fixed-size message window at the bottom, with the one mic
+            // control anchored to its top-right corner like a window button. Fixed size + corner
+            // anchoring keep the frame from ever resizing or shifting — it used to grow with the
+            // reply and jump when the mic/button below appeared, which read as the frame moving
+            // around like the character sprite does.
+            Box(modifier = Modifier.fillMaxWidth()) {
+                NovelMessageWindow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}),
+                ) {
+                    StageWindowContent(
+                        uiState = uiState,
                         isListening = isListening,
-                        onClick = onMicClick,
-                        contentDescription = if (uiState.hasSent) {
-                            stringResource(R.string.assist_ask_follow_up)
-                        } else {
-                            stringResource(R.string.assist_retry_listening)
-                        },
-                        onStage = true,
+                        isPreparing = isPreparing,
+                        isFinalizing = isFinalizing,
+                        hasStartedListening = hasStartedListening,
+                        onOpenApp = onOpenApp,
                     )
+                }
+
+                // Compact variant of the mic button here: the full-size 64dp disc covered the
+                // frame's corner content. 44dp straddles the top edge (offset = half the size)
+                // with its bottom staying clear of the window's top padding (see
+                // NovelMessageWindow).
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(y = (-22).dp),
+                ) {
+                    if (uiState.errorMessage != null) {
+                        ListeningIndicator(
+                            isListening = false,
+                            onClick = onRetryListening,
+                            contentDescription = stringResource(R.string.assist_retry_listening),
+                            onStage = true,
+                            size = 44.dp,
+                            iconSize = 22.dp,
+                        )
+                    } else if (!uiState.isStreaming) {
+                        ListeningIndicator(
+                            // No pulse while the final inference is running — the mic isn't
+                            // actually listening in that phase, and a tap would be a no-op
+                            // anyway (start() refuses while a session is still active).
+                            isListening = isListening && !isFinalizing,
+                            onClick = onMicClick,
+                            contentDescription = if (uiState.hasSent) {
+                                stringResource(R.string.assist_ask_follow_up)
+                            } else {
+                                stringResource(R.string.assist_retry_listening)
+                            },
+                            onStage = true,
+                            size = 44.dp,
+                            iconSize = 22.dp,
+                        )
+                    }
                 }
             }
 
@@ -484,15 +513,21 @@ private fun StageWindowContent(
     uiState: AssistUiState,
     isListening: Boolean,
     isPreparing: Boolean,
+    isFinalizing: Boolean,
     hasStartedListening: Boolean,
     onOpenApp: () -> Unit,
 ) {
     val typewriterState = rememberTypewriterState()
     val scrollState = rememberScrollState()
-    // heightIn must come BEFORE verticalScroll: reversed, the scroll container grants its child
-    // an unbounded height and the cap clamps the laid-out content instead of the viewport — so a
-    // reply longer than the window neither scrolled nor showed past the frame's edge.
-    val contentScroll = Modifier.heightIn(max = STAGE_WINDOW_MAX_HEIGHT).verticalScroll(scrollState)
+    // Fixed-height content area, like a novel game's message box: the frame keeps one standard
+    // size no matter what's inside it, and long replies scroll within it. The height must come
+    // BEFORE verticalScroll — reversed, the scroll container grants its child an unbounded
+    // height and the constraint clamps the laid-out content instead of the viewport, so nothing
+    // scrolled and anything past the frame's edge was never reachable.
+    val contentScroll = Modifier
+        .fillMaxWidth()
+        .height(STAGE_WINDOW_HEIGHT)
+        .verticalScroll(scrollState)
 
     // Keep the newest revealed text in view while the typewriter runs / the reply streams.
     LaunchedEffect(typewriterState.visibleChars, uiState.assistantText) {
@@ -520,8 +555,16 @@ private fun StageWindowContent(
             )
         }
         !uiState.hasSent -> {
+            val recognizingHint = stringResource(R.string.assist_recognizing_hint)
             val hintText = when {
-                uiState.transcript.isNotBlank() -> uiState.transcript
+                // While the final inference runs, keep the last partial visible and append the
+                // processing hint — the transcript alone just sits there, which read as the
+                // recognition being stuck.
+                uiState.transcript.isNotBlank() ->
+                    if (isFinalizing) uiState.transcript + "\n" + recognizingHint else uiState.transcript
+                // End of utterance detected but nothing transcribed yet — the mic isn't
+                // listening anymore, so "speak now" would be a lie.
+                isFinalizing -> recognizingHint
                 isListening -> stringResource(R.string.assist_listening_hint)
                 // Never prompt "speak now" before the mic is actually recording — starting a
                 // session first loads the STT model, which can take seconds. Until then (and
@@ -619,6 +662,7 @@ private fun StageBackground(backgroundPath: String?) {
 private fun AssistConversationContent(
     isListening: Boolean,
     isPreparing: Boolean,
+    isFinalizing: Boolean,
     isStarted: Boolean,
     isStreaming: Boolean,
     transcript: String,
@@ -638,14 +682,17 @@ private fun AssistConversationContent(
                     .padding(vertical = 12.dp),
             ) {
                 ListeningIndicator(
-                    isListening = isListening,
+                    isListening = isListening && !isFinalizing,
                     onClick = onMicClick,
                     contentDescription = stringResource(R.string.assist_retry_listening),
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
                     text = when {
-                        transcript.isNotBlank() -> transcript
+                        // Same finalizing treatment as the stage (see StageWindowContent).
+                        transcript.isNotBlank() ->
+                            if (isFinalizing) transcript + "\n" + stringResource(R.string.assist_recognizing_hint) else transcript
+                        isFinalizing -> stringResource(R.string.assist_recognizing_hint)
                         isListening -> stringResource(R.string.assist_listening_hint)
                         // Same rule as the stage: no "speak now" until the mic actually records
                         // (see StageWindowContent), so model loading shows the preparing hint.
@@ -728,6 +775,8 @@ private fun ListeningIndicator(
     contentDescription: String,
     modifier: Modifier = Modifier,
     onStage: Boolean = false,
+    size: Dp = 64.dp,
+    iconSize: Dp = 28.dp,
 ) {
     val transition = rememberInfiniteTransition(label = "assist-listening")
     val scale by transition.animateFloat(
@@ -738,7 +787,7 @@ private fun ListeningIndicator(
     )
     Box(
         modifier = modifier
-            .size(64.dp)
+            .size(size)
             .scale(if (isListening) scale else 1f)
             .clip(CircleShape)
             .background(if (onStage) Color.Black.copy(alpha = 0.45f) else MaterialTheme.colorScheme.primaryContainer)
@@ -752,9 +801,11 @@ private fun ListeningIndicator(
             imageVector = Icons.Filled.Mic,
             contentDescription = contentDescription,
             tint = if (onStage) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
-            modifier = Modifier.size(28.dp),
+            modifier = Modifier.size(iconSize),
         )
     }
 }
 
-private val STAGE_WINDOW_MAX_HEIGHT = 240.dp
+// One standard novel-game message window: a few lines of text, fixed no matter how long the
+// reply is (long replies scroll inside — see StageWindowContent's contentScroll).
+private val STAGE_WINDOW_HEIGHT = 160.dp

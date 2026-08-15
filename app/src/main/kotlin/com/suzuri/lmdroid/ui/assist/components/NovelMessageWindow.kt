@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -23,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -100,7 +102,7 @@ fun TypewriterText(
     )
 }
 
-/** The framed, semi-transparent message window at the bottom of the stage — content is a slot so error/api-key states can put buttons inside the same frame. */
+/** The framed, semi-transparent message window at the bottom of the stage — content is a slot so error/api-key states can put buttons inside the same frame. Extra headroom at the top keeps the first line clear of the mic button straddling the frame's top-right corner (see AssistStage). */
 @Composable
 fun NovelMessageWindow(
     modifier: Modifier = Modifier,
@@ -113,13 +115,13 @@ fun NovelMessageWindow(
         tonalElevation = 6.dp,
         border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)),
     ) {
-        Box(modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
+        Box(modifier = Modifier.padding(start = 18.dp, top = 32.dp, end = 18.dp, bottom = 14.dp)) {
             content()
         }
     }
 }
 
-/** The small name tag overlapping the window's top edge — shows who's speaking (the active model profile's name doubles as the character name). */
+/** The small name tag above the window — shows who's speaking (the active model profile's name doubles as the character name). Width-capped so a long profile name can't run under the mic button anchored at the window's top-right corner. */
 @Composable
 fun NamePlate(name: String, modifier: Modifier = Modifier) {
     Box(
@@ -132,6 +134,8 @@ fun NamePlate(name: String, modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onPrimaryContainer,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 240.dp),
         )
     }
 }

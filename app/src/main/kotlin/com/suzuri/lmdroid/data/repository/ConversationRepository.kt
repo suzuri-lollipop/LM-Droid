@@ -837,10 +837,17 @@ class ConversationRepository(
             tools += ToolDefinitionDto(
                 function = FunctionSchemaDto(
                     name = GET_LOCATION_TOOL_NAME,
+                    // Strong "must call" wording: without it the model would sometimes answer a
+                    // weather question with "I don't know where you are" instead of just calling
+                    // this tool first.
                     description = "Get the user's current device location — approximate latitude/" +
-                        "longitude and, when available, a human-readable address. Call this when the " +
-                        "user's question depends on where they currently are (e.g. local weather, " +
-                        "nearby places, time zone) and they haven't already told you a location.",
+                        "longitude and, when available, a human-readable address. You have no other " +
+                        "way to know where the user is, so whenever their question depends on their " +
+                        "location (weather, nearby places, local time/time zone, anything about " +
+                        "\"here\") and they haven't explicitly named a location themselves, you MUST " +
+                        "call this tool first and answer from its result — never reply that you " +
+                        "don't know their location without calling it. For live conditions such as " +
+                        "the current weather, follow up with web_search using the obtained location.",
                     parameters = noArgumentsToolParameters,
                 ),
             )

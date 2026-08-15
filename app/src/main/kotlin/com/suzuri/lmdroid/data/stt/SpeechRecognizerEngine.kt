@@ -7,6 +7,14 @@ interface SpeechRecognizerEngine {
     val isReady: Boolean
 
     /**
+     * True while the engine has detected the end of the utterance and is running its final
+     * inference — no more audio is being accepted, but the result isn't ready yet. Lets the UI
+     * swap "speak now" for "recognizing…" instead of looking stuck (Whisper's final pass takes
+     * seconds on-device). Engines without a separate finalization phase stay false.
+     */
+    val isFinalizing: Boolean get() = false
+
+    /**
      * Feeds raw PCM audio data (16kHz, mono, 16-bit) to the engine.
      * @return true if a final result was produced.
      */

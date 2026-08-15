@@ -81,9 +81,18 @@ class SystemPromptDaoTest {
             systemPromptDao.update(systemPromptDao.getById(id)!!.copy(name = "改名後"))
             assertEquals("改名後", awaitItem()?.name)
 
-            // A change to a different prompt must not emit here.
+            // A change to a different prompt must not change the value observed here. Room's
+            // invalidation tracking is table-scoped, though, so the flow may still re-emit our
+            // own unchanged row when the other one is updated — expectNoEvents() raced that
+            // delivery and flaked. Instead, trigger one more of our own updates and skip any
+            // stale duplicates on the way to it.
             systemPromptDao.update(systemPromptDao.getById(otherId)!!.copy(name = "unrelated"))
-            expectNoEvents()
+            systemPromptDao.update(systemPromptDao.getById(id)!!.copy(name = "最終確認"))
+            var item = awaitItem()
+            while (item?.name == "改名後") {
+                item = awaitItem()
+            }
+            assertEquals("最終確認", item?.name)
 
             cancelAndIgnoreRemainingEvents()
         }

@@ -32,18 +32,32 @@ class WhisperEngine(
     private var silenceChunks = 0
     private var framesProcessed = 0
     private var samplesSinceLastInference = 0
-    @Volatile private var isFinalizing = false
+    @Volatile private var finalizing = false
 
     private val silenceThreshold = 6 // approx 3 seconds (0.5s per chunk * 6)
     private val minAudioForInference = 16000 * 1 // at least 1 second of audio
     private val energyThreshold = 0.005f // Lowered RMS threshold for better sensitivity
     private val noSpeechTimeoutFrames = 10 // approx 5 seconds
-    private val partialInferenceIntervalSamples = 16000 * 1.5 // 1.5 seconds
-    // Partials re-run whisper_full over the snapshot, so bound their cost to recent audio.
-    private val maxPartialInferenceSamples = 16000 * 10
+    // A partial every ~1s of new audio keeps the live transcript updating while the user is
+    // still speaking. The window must cover the whole utterance-so-far for it to *match* the
+    // final transcription: whisper decodes a trailing slice differently from the full clip
+    // (different context → genuinely different wording), so a too-short window showed live
+    // text that looked nothing like the final result. 8s covers typical assistant questions;
+    // only longer utterances fall back to the recent tail. (The encoder cost grows with the
+    // window — 10s made each pass so slow that most got skipped and the transcript only
+    // appeared in one jump at the very end — so this stays below that.)
+    private val partialInferenceIntervalSamples = 16000 * 1.0 // 1.0 seconds
+    private val maxPartialInferenceSamples = 16000 * 8
+    // Hard cap on one utterance's audio: the final inference's cost grows with buffer length,
+    // and assistant questions rarely need more than this. Doubles as the "never run forever"
+    // cutoff when ambient noise keeps the energy above the silence threshold.
+    private val maxUtteranceSamples = 16000 * 15
 
     override val isReady: Boolean
         get() = context != 0L
+
+    override val isFinalizing: Boolean
+        get() = finalizing
 
     init {
         context = try {
@@ -63,9 +77,9 @@ class WhisperEngine(
 
     override fun acceptAudio(data: ShortArray, length: Int): Boolean {
         if (context == 0L) return false
-        
+
         // If we are already finalizing, just check if the result is ready
-        if (isFinalizing) {
+        if (finalizing) {
             return if (result.isNotEmpty()) {
                 Log.d(TAG, "Final result ready, signaling completion")
                 true
@@ -99,7 +113,7 @@ class WhisperEngine(
         }
 
         // Check if we should run partial inference
-        if (isSpeaking && !isFinalizing && samplesSinceLastInference >= partialInferenceIntervalSamples) {
+        if (isSpeaking && !finalizing && samplesSinceLastInference >= partialInferenceIntervalSamples) {
             runInference(isFinal = false)
             samplesSinceLastInference = 0
         }
@@ -112,11 +126,11 @@ class WhisperEngine(
         }
 
         // Trigger final inference if we have enough silence after speaking, or buffer gets too long
-        val shouldTriggerFinal = (isSpeaking && silenceChunks >= 2) || (audioBuffer.size >= 16000 * 25)
+        val shouldTriggerFinal = (isSpeaking && silenceChunks >= 2) || (audioBuffer.size >= maxUtteranceSamples)
 
         if (shouldTriggerFinal && audioBuffer.size >= minAudioForInference) {
             Log.d(TAG, "Triggering final inference, buffer size: ${audioBuffer.size}")
-            isFinalizing = true
+            finalizing = true
             // The last partial stays on screen while the final pass runs — overwriting it with a
             // status string made the transcript flicker into junk like "Processing...".
             runInference(isFinal = true)
@@ -128,7 +142,7 @@ class WhisperEngine(
         }
 
         // If we were finalizing and the job is done, we return true
-        if (isFinalizing && result.isNotEmpty()) {
+        if (finalizing && result.isNotEmpty()) {
             return true
         }
 
@@ -203,7 +217,7 @@ class WhisperEngine(
         silenceChunks = 0
         framesProcessed = 0
         samplesSinceLastInference = 0
-        isFinalizing = false
+        finalizing = false
         partialResult = ""
         result = ""
     }

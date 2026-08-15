@@ -87,6 +87,13 @@ class LocalVoiceInputState(
     var isPreparing by mutableStateOf(false)
         private set
 
+    // True between end-of-utterance detection and the final result landing (see
+    // SpeechRecognizerEngine.isFinalizing) — the mic is effectively done, but the final
+    // inference still runs for seconds on-device; the UI shows "recognizing…" in this window
+    // instead of prompting the user to keep speaking.
+    var isFinalizing by mutableStateOf(false)
+        private set
+
     private var job: Job? = null
     // Bumped on every start() and stop(); callbacks capture the value of the session that
     // produced them and are dropped if it no longer matches. Whisper's final inference finishes
@@ -199,6 +206,7 @@ class LocalVoiceInputState(
                                     // Stop on any final result (including empty) — even one
                                     // belonging to a session that was stopped/replaced in flight.
                                     isListening = false
+                                    isFinalizing = false
                                     if (sessionGeneration != generation) return@launch
                                     // Delivered even when blank: the caller shows nothing and
                                     // drops any stale partial transcript (a blank final means
@@ -213,6 +221,9 @@ class LocalVoiceInputState(
                                     }
                                 }
                             }
+                            // Mirror the engine's finalization phase for the UI ("recognizing…").
+                            val engineFinalizing = engine.isFinalizing
+                            if (engineFinalizing != isFinalizing) isFinalizing = engineFinalizing
                         }
                     }
                 } finally {
@@ -243,6 +254,7 @@ class LocalVoiceInputState(
                 launch(Dispatchers.Main) {
                     isListening = false
                     isPreparing = false
+                    isFinalizing = false
                 }
             }
         }
@@ -253,6 +265,7 @@ class LocalVoiceInputState(
         generation++
         isListening = false
         isPreparing = false
+        isFinalizing = false
         job?.cancel()
     }
 }
