@@ -13,8 +13,9 @@ import androidx.room.TypeConverters
         ApiModelEntity::class,
         MessageAttachmentEntity::class,
         SystemPromptEntity::class,
+        SkillEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -26,6 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun apiModelDao(): ApiModelDao
     abstract fun messageAttachmentDao(): MessageAttachmentDao
     abstract fun systemPromptDao(): SystemPromptDao
+    abstract fun skillDao(): SkillDao
 
     companion object {
         const val DATABASE_NAME = "lmdroid.db"

@@ -20,6 +20,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
@@ -47,12 +49,14 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * The composer: the message text field alone on its own full-width line (so it isn't squeezed
  * between a row of icons), then — below it — a row of staged image/voice-message previews (when
- * any are attached), then a single toolbar row with every action: file-attach, system-prompt,
- * the model switcher, mic, and send/stop. The mic button is dual-purpose: a quick tap dictates
- * speech to text (see [onVoiceInput]), while pressing and holding records a voice message to
- * attach and send as audio (see [onStartVoiceRecording]/[onStopVoiceRecording]) — mirroring how
- * voice-message apps use the same gesture split. [onOpenSystemPrompt] opens a dialog (see
- * SystemPromptDialog) to edit the app-wide system prompt.
+ * any are attached) and a chip for [forcedSkillName] (when the user explicitly picked a skill to
+ * force into the next message, see SkillDialog), then a single toolbar row with every action:
+ * file-attach, system-prompt, skill, the model switcher, mic, and send/stop. The mic button is
+ * dual-purpose: a quick tap dictates speech to text (see [onVoiceInput]), while pressing and
+ * holding records a voice message to attach and send as audio (see [onStartVoiceRecording]/
+ * [onStopVoiceRecording]) — mirroring how voice-message apps use the same gesture split.
+ * [onOpenSystemPrompt] opens a dialog (see SystemPromptDialog) to edit the app-wide system
+ * prompt; [onOpenSkill] opens the analogous dialog for skills (see SkillDialog).
  */
 @Composable
 fun ChatInputBar(
@@ -67,6 +71,11 @@ fun ChatInputBar(
     pendingAttachments: List<PendingAttachmentUiModel>,
     onAttachFile: () -> Unit,
     onOpenSystemPrompt: () -> Unit,
+    onOpenSkill: () -> Unit,
+    // The skill (if any) the user explicitly picked via SkillDialog's "使う" action to force into
+    // just the next message — shown as a removable chip, distinct from pendingAttachments below.
+    forcedSkillName: String?,
+    onClearForcedSkill: () -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onPreviewAttachment: (String) -> Unit,
     isListening: Boolean,
@@ -133,6 +142,38 @@ fun ChatInputBar(
                 }
             }
 
+            if (forcedSkillName != null) {
+                Row(
+                    modifier = Modifier
+                        .padding(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.skill_forced_chip_label, forcedSkillName),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                            IconButton(onClick = onClearForcedSkill, modifier = Modifier.size(28.dp)) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = stringResource(R.string.skill_forced_chip_remove),
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // One toolbar row for every action: attach/system-prompt icons and the model switcher
             // cluster on the left, mic/send on the right, with a flexible gap between them.
             Row(
@@ -152,6 +193,13 @@ fun ChatInputBar(
                     Icon(
                         imageVector = Icons.Filled.Tune,
                         contentDescription = stringResource(R.string.chat_system_prompt_title),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onOpenSkill) {
+                    Icon(
+                        imageVector = Icons.Filled.Extension,
+                        contentDescription = stringResource(R.string.chat_skill_title),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

@@ -178,6 +178,24 @@ class SettingsRepository(
         }
     }
 
+    /** Which saved [com.suzuri.lmdroid.data.db.SkillEntity]s (zero or more) are currently active — see SkillRepository, which resolves these to the skills actually advertised to the model. */
+    val selectedSkillIds: Flow<Set<Long>> =
+        context.settingsDataStore.data.map { prefs ->
+            prefs[KEY_SELECTED_SKILL_IDS]?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet()
+        }
+
+    suspend fun currentSelectedSkillIds(): Set<Long> = selectedSkillIds.first()
+
+    suspend fun setSelectedSkillIds(ids: Set<Long>) {
+        context.settingsDataStore.edit { prefs ->
+            if (ids.isEmpty()) {
+                prefs.remove(KEY_SELECTED_SKILL_IDS)
+            } else {
+                prefs[KEY_SELECTED_SKILL_IDS] = ids.map { it.toString() }.toSet()
+            }
+        }
+    }
+
     /** Whether the "get_current_location" tool (see ConversationRepository) is offered to the model — the caller (WebSearchSettingsScreen) is expected to only turn this on once location permission is actually granted. */
     val locationEnabled: Flow<Boolean> = context.settingsDataStore.data.map { it[KEY_LOCATION_ENABLED] ?: false }
 
@@ -483,6 +501,7 @@ class SettingsRepository(
         val KEY_SELECTED_WEB_SEARCH_PROFILE_ID = longPreferencesKey("selected_web_search_profile_id")
         val KEY_WEB_SEARCH_MAX_TOOL_ROUNDS = intPreferencesKey("web_search_max_tool_rounds")
         val KEY_SELECTED_SYSTEM_PROMPT_IDS = stringSetPreferencesKey("selected_system_prompt_ids")
+        val KEY_SELECTED_SKILL_IDS = stringSetPreferencesKey("selected_skill_ids")
         val KEY_LOCATION_ENABLED = booleanPreferencesKey("location_enabled")
         val KEY_SELECTED_TTS_PROFILE_ID = longPreferencesKey("selected_tts_profile_id")
         val KEY_ASSISTANT_TOOL_LAUNCH_TIMING = stringPreferencesKey("assistant_tool_launch_timing")
