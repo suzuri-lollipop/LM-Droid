@@ -25,6 +25,8 @@ enum class SettingsRoute {
     ImageGenerationProfile,
     SystemPromptList,
     SystemPromptEdit,
+    SkillList,
+    SkillEdit,
     Assistant,
     Character,
 }
@@ -48,6 +50,8 @@ fun SettingsRoute.parent(): SettingsRoute? = when (this) {
     SettingsRoute.Music -> SettingsRoute.Root
     SettingsRoute.SystemPromptList -> SettingsRoute.Root
     SettingsRoute.SystemPromptEdit -> SettingsRoute.SystemPromptList
+    SettingsRoute.SkillList -> SettingsRoute.Root
+    SettingsRoute.SkillEdit -> SettingsRoute.SkillList
     SettingsRoute.Assistant -> SettingsRoute.Root
     SettingsRoute.Character -> SettingsRoute.Root
 }

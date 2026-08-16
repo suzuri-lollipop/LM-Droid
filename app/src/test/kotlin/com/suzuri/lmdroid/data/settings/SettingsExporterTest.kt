@@ -111,6 +111,24 @@ class SettingsExporterTest {
     }
 
     @Test
+    fun `round-trips multiple simultaneously active skills`() {
+        val export = sampleExport().copy(
+            skills = listOf(
+                ExportedSkill(id = 1, name = "翻訳", description = "英語⇔日本語の翻訳を手伝う", content = "ユーザーの依頼に応じて翻訳してください"),
+                ExportedSkill(id = 2, name = "要約", description = "長文を要約する", content = "要点を3行で要約してください"),
+            ),
+            selectedSkillIds = listOf(1, 2),
+        )
+
+        val yamlText = encodeSettingsExportToYaml(export)
+        val decoded = settingsExportYaml.decodeFromString(SettingsExport.serializer(), yamlText)
+
+        assertEquals(export, decoded)
+        assertEquals(listOf(1L, 2L), decoded.selectedSkillIds)
+        assertEquals("翻訳", decoded.skills[0].name)
+    }
+
+    @Test
     fun `round-trips multiple simultaneously active system prompts`() {
         val export = sampleExport().copy(
             systemPrompts = listOf(

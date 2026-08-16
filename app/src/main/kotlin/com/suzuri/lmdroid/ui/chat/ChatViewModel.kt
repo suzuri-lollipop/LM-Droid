@@ -12,6 +12,7 @@ import com.suzuri.lmdroid.data.db.ModelOptionRow
 import com.suzuri.lmdroid.data.db.ThinkingTimelineEntry
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
+import com.suzuri.lmdroid.data.repository.SkillRepository
 import com.suzuri.lmdroid.data.repository.SystemPromptRepository
 import com.suzuri.lmdroid.data.repository.TOOL_SIDE_EFFECT_DELAY_MS
 import com.suzuri.lmdroid.data.settings.SettingsRepository
@@ -39,6 +40,7 @@ class ChatViewModel(
     private val attachmentFileStore: AttachmentFileStore,
     private val audioRecorder: AudioRecorder,
     private val systemPromptRepository: SystemPromptRepository,
+    private val skillRepository: SkillRepository,
     private val json: Json,
 ) : ViewModel() {
 
@@ -92,6 +94,17 @@ class ChatViewModel(
                 prompts.map { SystemPromptOptionUiModel(id = it.id, name = it.name) } to selectedIds
             }.collect { (prompts, selectedIds) ->
                 _uiState.update { state -> state.copy(systemPrompts = prompts, selectedSystemPromptIds = selectedIds) }
+            }
+        }
+
+        viewModelScope.launch {
+            combine(
+                skillRepository.observeSkills(),
+                skillRepository.selectedSkillIds,
+            ) { skills, selectedIds ->
+                skills.map { SkillOptionUiModel(id = it.id, name = it.name, description = it.description) } to selectedIds
+            }.collect { (skills, selectedIds) ->
+                _uiState.update { state -> state.copy(skills = skills, selectedSkillIds = selectedIds) }
             }
         }
 
@@ -149,13 +162,15 @@ class ChatViewModel(
     private fun performSend(text: String, attachments: List<PendingAttachmentUiModel>) {
         if ((text.isEmpty() && attachments.isEmpty()) || _uiState.value.isStreaming) return
 
-        _uiState.update { it.copy(input = "", pendingAttachments = emptyList(), errorMessage = null) }
+        val forcedSkillId = _uiState.value.forcedSkillId
+        _uiState.update { it.copy(input = "", pendingAttachments = emptyList(), errorMessage = null, forcedSkillId = null) }
         launchGeneration {
             val id = ensureConversationId()
             conversationRepository.sendUserMessage(
                 id,
                 text,
                 attachments.map { SavedAttachment(filePath = it.filePath, mimeType = it.mimeType) },
+                forcedSkillId = forcedSkillId,
             )
         }
     }
@@ -275,6 +290,25 @@ class ChatViewModel(
     /** Toggles whether a saved system prompt is active, from [com.suzuri.lmdroid.ui.chat.components.SystemPromptDialog] — several may be active simultaneously. */
     fun onToggleSystemPrompt(id: Long) {
         viewModelScope.launch { systemPromptRepository.togglePrompt(id) }
+    }
+
+    /** Toggles whether a saved skill is active (advertised to the model), from [com.suzuri.lmdroid.ui.chat.components.SkillDialog] — several may be active simultaneously. */
+    fun onToggleSkill(id: Long) {
+        viewModelScope.launch { skillRepository.toggleSkill(id) }
+    }
+
+    /**
+     * Explicitly picks a skill (from [com.suzuri.lmdroid.ui.chat.components.SkillDialog]'s "使う"
+     * action) to force into just the next message sent, regardless of whether it's in the active/
+     * advertised set — the user's own counterpart to the model deciding for itself via the
+     * "use_skill" tool. Shown as a removable chip above the composer until sent or cleared.
+     */
+    fun onForceSkillForNextMessage(id: Long) {
+        _uiState.update { it.copy(forcedSkillId = id) }
+    }
+
+    fun onClearForcedSkill() {
+        _uiState.update { it.copy(forcedSkillId = null) }
     }
 
     /** Switches which enabled profile/model pair chat uses, from the switcher shown on this screen. */

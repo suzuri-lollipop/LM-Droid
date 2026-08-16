@@ -50,6 +50,7 @@ import com.suzuri.lmdroid.ui.chat.components.EmptyConversationGreeting
 import com.suzuri.lmdroid.ui.chat.components.EmptyConversationSuggestions
 import com.suzuri.lmdroid.ui.chat.components.ImagePreviewDialog
 import com.suzuri.lmdroid.ui.chat.components.MessageBubble
+import com.suzuri.lmdroid.ui.chat.components.SkillDialog
 import com.suzuri.lmdroid.ui.chat.components.SystemPromptDialog
 import com.suzuri.lmdroid.ui.chat.components.rememberVoiceInputState
 import kotlinx.coroutines.launch
@@ -64,6 +65,7 @@ fun ChatScreen(
     viewModel: ChatViewModel,
     onNavigateToSettings: () -> Unit,
     onManageSystemPrompts: () -> Unit,
+    onManageSkills: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -140,6 +142,12 @@ fun ChatScreen(
     // SettingsRepository.systemPrompt) — its persisted value lives in uiState.systemPrompt, this
     // is just whether the dialog is currently showing.
     var isSystemPromptDialogOpen by rememberSaveable { mutableStateOf(false) }
+
+    // The skill button's counterpart — opens SkillDialog (see below), where the user toggles
+    // which skills are active/advertised to the model, or explicitly forces one into the next
+    // message (see uiState.forcedSkillId).
+    var isSkillDialogOpen by rememberSaveable { mutableStateOf(false) }
+    val forcedSkillName = uiState.forcedSkillId?.let { id -> uiState.skills.find { it.id == id }?.name }
 
     // Whether to keep auto-following new content to the bottom. "Is the last message merely
     // somewhere on screen" turned out too loose to gate this on directly: a tall streaming message
@@ -246,6 +254,9 @@ fun ChatScreen(
                                     pendingAttachments = uiState.pendingAttachments,
                                     onAttachFile = onAttachFile,
                                     onOpenSystemPrompt = { isSystemPromptDialogOpen = true },
+                                    onOpenSkill = { isSkillDialogOpen = true },
+                                    forcedSkillName = forcedSkillName,
+                                    onClearForcedSkill = viewModel::onClearForcedSkill,
                                     onRemoveAttachment = viewModel::onRemovePendingAttachment,
                                     onPreviewAttachment = onPreviewAttachment,
                                     isListening = voiceInputState.isListening,
@@ -326,6 +337,9 @@ fun ChatScreen(
                                     pendingAttachments = uiState.pendingAttachments,
                                     onAttachFile = onAttachFile,
                                     onOpenSystemPrompt = { isSystemPromptDialogOpen = true },
+                                    onOpenSkill = { isSkillDialogOpen = true },
+                                    forcedSkillName = forcedSkillName,
+                                    onClearForcedSkill = viewModel::onClearForcedSkill,
                                     onRemoveAttachment = viewModel::onRemovePendingAttachment,
                                     onPreviewAttachment = onPreviewAttachment,
                                     isListening = voiceInputState.isListening,
@@ -358,6 +372,20 @@ fun ChatScreen(
                     onManageSystemPrompts()
                 },
                 onDismiss = { isSystemPromptDialogOpen = false },
+            )
+        }
+
+        if (isSkillDialogOpen) {
+            SkillDialog(
+                skills = uiState.skills,
+                selectedIds = uiState.selectedSkillIds,
+                onToggle = viewModel::onToggleSkill,
+                onUseNow = viewModel::onForceSkillForNextMessage,
+                onManage = {
+                    isSkillDialogOpen = false
+                    onManageSkills()
+                },
+                onDismiss = { isSkillDialogOpen = false },
             )
         }
     }

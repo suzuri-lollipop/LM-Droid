@@ -4,6 +4,8 @@ import com.suzuri.lmdroid.data.db.ApiModelDao
 import com.suzuri.lmdroid.data.db.ApiModelEntity
 import com.suzuri.lmdroid.data.db.ApiProfileDao
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
+import com.suzuri.lmdroid.data.db.SkillDao
+import com.suzuri.lmdroid.data.db.SkillEntity
 import com.suzuri.lmdroid.data.db.SystemPromptDao
 import com.suzuri.lmdroid.data.db.SystemPromptEntity
 import kotlinx.coroutines.Dispatchers
@@ -12,10 +14,11 @@ import javax.crypto.AEADBadTagException
 
 /**
  * Restores a YAML document produced by [SettingsExporter] — the counterpart used by Settings →
- * 設定をインポート. API profiles and system prompts are always inserted as brand-new rows, never
- * overwriting or deleting whatever's already registered locally, since the exported ids only ever
- * made sense within that one export and may collide with unrelated local rows. A fresh id mapping
- * built during import re-points the imported model/system-prompt selections at the new rows. The
+ * 設定をインポート. API profiles, system prompts, and skills are always inserted as brand-new rows,
+ * never overwriting or deleting whatever's already registered locally, since the exported ids only
+ * ever made sense within that one export and may collide with unrelated local rows. A fresh id
+ * mapping built during import re-points the imported model/system-prompt/skill selections at the
+ * new rows. The
  * remaining, singular app-wide settings (markdown, Web検索, 位置情報, model selections) are applied
  * as an outright overwrite of whatever's currently set, since restoring a backup is expected to
  * reproduce the exported state exactly — except the chat model selection specifically falls back
@@ -39,6 +42,7 @@ class SettingsImporter(
     private val apiProfileDao: ApiProfileDao,
     private val apiModelDao: ApiModelDao,
     private val systemPromptDao: SystemPromptDao,
+    private val skillDao: SkillDao,
     private val settingsRepository: SettingsRepository,
     private val apiKeyCipher: ApiKeyCipher,
     private val passwordCipher: PasswordSettingsCipher = PasswordSettingsCipher(),
@@ -128,8 +132,18 @@ class SettingsImporter(
             settingsRepository.setSelectedAssistantModel(null, null)
         }
 
+        val skillIdMap = mutableMapOf<Long, Long>()
+        val baseSkillTime = System.currentTimeMillis()
+        export.skills.forEachIndexed { index, skill ->
+            val newId = skillDao.insert(
+                SkillEntity(name = skill.name, description = skill.description, content = skill.content, createdAt = baseSkillTime + index),
+            )
+            skillIdMap[skill.id] = newId
+        }
+
         settingsRepository.saveMarkdownEnabled(export.markdownEnabled)
         settingsRepository.setSelectedSystemPromptIds(export.selectedSystemPromptIds.mapNotNull { promptIdMap[it] }.toSet())
+        settingsRepository.setSelectedSkillIds(export.selectedSkillIds.mapNotNull { skillIdMap[it] }.toSet())
 
         settingsRepository.setBraveSearchEnabled(export.webSearch.enabled)
         settingsRepository.setSelectedWebSearchProfileId(export.webSearch.selectedProfileId?.let { profileIdMap[it] })

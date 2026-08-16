@@ -35,6 +35,13 @@ data class SystemPromptOptionUiModel(
     val name: String,
 )
 
+/** One saved skill, as offered by the composer's selector dialog — see SkillRepository. */
+data class SkillOptionUiModel(
+    val id: Long,
+    val name: String,
+    val description: String,
+)
+
 /**
  * The empty-conversation suggestion rows go through this instead of a plain list so the UI can
  * show a loading skeleton while the LLM call is in flight, rather than flashing the generic
@@ -71,4 +78,11 @@ data class ChatUiState(
     // SystemPromptRepository.
     val systemPrompts: List<SystemPromptOptionUiModel> = emptyList(),
     val selectedSystemPromptIds: Set<Long> = emptySet(),
+    // Every saved skill, and which ones (zero or more) are currently active/advertised to the
+    // model — see SkillRepository. [forcedSkillId] is separate: a skill the user explicitly
+    // picked (via SkillDialog's "使う" action) to force into just the next message, regardless of
+    // whether it's in the active set — shown as a removable chip above the composer.
+    val skills: List<SkillOptionUiModel> = emptyList(),
+    val selectedSkillIds: Set<Long> = emptySet(),
+    val forcedSkillId: Long? = null,
 )

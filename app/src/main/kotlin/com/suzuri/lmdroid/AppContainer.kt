@@ -21,6 +21,7 @@ import com.suzuri.lmdroid.data.notes.DeviceNoteController
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
 import com.suzuri.lmdroid.data.repository.ImageGenerationRepository
+import com.suzuri.lmdroid.data.repository.SkillRepository
 import com.suzuri.lmdroid.data.repository.SystemPromptRepository
 import com.suzuri.lmdroid.data.settings.ApiKeyCipher
 import com.suzuri.lmdroid.data.settings.SettingsExporter
@@ -85,9 +86,9 @@ class AppContainer(context: Context) {
 
     val settingsRepository = SettingsRepository(appContext, apiKeyCipher, database.apiProfileDao())
 
-    val settingsExporter = SettingsExporter(database.apiProfileDao(), database.apiModelDao(), database.systemPromptDao(), settingsRepository, apiKeyCipher)
+    val settingsExporter = SettingsExporter(database.apiProfileDao(), database.apiModelDao(), database.systemPromptDao(), database.skillDao(), settingsRepository, apiKeyCipher)
 
-    val settingsImporter = SettingsImporter(database.apiProfileDao(), database.apiModelDao(), database.systemPromptDao(), settingsRepository, apiKeyCipher)
+    val settingsImporter = SettingsImporter(database.apiProfileDao(), database.apiModelDao(), database.systemPromptDao(), database.skillDao(), settingsRepository, apiKeyCipher)
 
     val openAiApiClient = OpenAiApiClient(okHttpClient, json)
 
@@ -141,6 +142,8 @@ class AppContainer(context: Context) {
 
     val systemPromptRepository = SystemPromptRepository(database.systemPromptDao(), settingsRepository)
 
+    val skillRepository = SkillRepository(database.skillDao(), settingsRepository)
+
     val sdGenerator = StableDiffusionGenerator(okHttpClient, json)
     val comfyUiGenerator = ComfyUiGenerator(okHttpClient, json)
     val bailianGenerator = BailianGenerator(okHttpClient, json)
@@ -174,6 +177,7 @@ class AppContainer(context: Context) {
         deviceMusicController = deviceMusicController,
         youTubeDataApiClient = youTubeDataApiClient,
         systemPromptRepository = systemPromptRepository,
+        skillRepository = skillRepository,
         json = json,
     )
 }

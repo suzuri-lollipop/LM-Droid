@@ -20,6 +20,8 @@ import com.suzuri.lmdroid.ui.settings.OpenAiTtsProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsExportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsImportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsViewModel
+import com.suzuri.lmdroid.ui.settings.SkillEditViewModel
+import com.suzuri.lmdroid.ui.settings.SkillListViewModel
 import com.suzuri.lmdroid.ui.settings.SystemPromptEditViewModel
 import com.suzuri.lmdroid.ui.settings.SystemPromptListViewModel
 import com.suzuri.lmdroid.ui.settings.SystemSettingsViewModel
@@ -39,6 +41,7 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
                 container.attachmentFileStore,
                 container.audioRecorder,
                 container.systemPromptRepository,
+                container.skillRepository,
                 container.json,
             ) as T
 
@@ -101,6 +104,12 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
 
         modelClass.isAssignableFrom(SystemPromptEditViewModel::class.java) ->
             SystemPromptEditViewModel(container.systemPromptRepository) as T
+
+        modelClass.isAssignableFrom(SkillListViewModel::class.java) ->
+            SkillListViewModel(container.skillRepository) as T
+
+        modelClass.isAssignableFrom(SkillEditViewModel::class.java) ->
+            SkillEditViewModel(container.skillRepository) as T
 
         modelClass.isAssignableFrom(AssistViewModel::class.java) ->
             AssistViewModel(container.conversationRepository, container.settingsRepository, container.assistSpeechPlayer) as T

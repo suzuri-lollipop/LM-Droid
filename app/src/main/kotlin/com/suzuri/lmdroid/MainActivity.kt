@@ -88,6 +88,10 @@ import com.suzuri.lmdroid.ui.settings.SettingsImportViewModel
 import com.suzuri.lmdroid.ui.settings.SettingsRoute
 import com.suzuri.lmdroid.ui.settings.SettingsRootScreen
 import com.suzuri.lmdroid.ui.settings.SettingsViewModel
+import com.suzuri.lmdroid.ui.settings.SkillEditScreen
+import com.suzuri.lmdroid.ui.settings.SkillEditViewModel
+import com.suzuri.lmdroid.ui.settings.SkillListScreen
+import com.suzuri.lmdroid.ui.settings.SkillListViewModel
 import com.suzuri.lmdroid.ui.settings.SystemPromptEditScreen
 import com.suzuri.lmdroid.ui.settings.SystemPromptEditViewModel
 import com.suzuri.lmdroid.ui.settings.SystemPromptListScreen
@@ -144,6 +148,8 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     // already-created prompt id just before navigating there (prompts are created immediately
     // when added, same as API profiles).
     var editingSystemPromptId by rememberSaveable { mutableStateOf<Long?>(null) }
+    // Same idea, but for SkillEdit.
+    var editingSkillId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     // Hoisted here (not inside the Scaffold content lambda) so the top bar's actions can also
     // reach them — e.g. tapping "new chat" from the history drawer.
@@ -165,6 +171,8 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val musicSettingsViewModel: MusicSettingsViewModel = viewModel(factory = viewModelFactory)
     val systemPromptListViewModel: SystemPromptListViewModel = viewModel(factory = viewModelFactory)
     val systemPromptEditViewModel: SystemPromptEditViewModel = viewModel(factory = viewModelFactory)
+    val skillListViewModel: SkillListViewModel = viewModel(factory = viewModelFactory)
+    val skillEditViewModel: SkillEditViewModel = viewModel(factory = viewModelFactory)
     val assistantSettingsViewModel: AssistantSettingsViewModel = viewModel(factory = viewModelFactory)
     val characterSettingsViewModel: CharacterSettingsViewModel = viewModel(factory = viewModelFactory)
     val historyViewModel: HistoryViewModel = viewModel(factory = viewModelFactory)
@@ -321,6 +329,8 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.Music -> stringResource(R.string.settings_music_category_title)
                                     SettingsRoute.SystemPromptList -> stringResource(R.string.settings_system_prompt_category_title)
                                     SettingsRoute.SystemPromptEdit -> stringResource(R.string.settings_system_prompt_category_title)
+                                    SettingsRoute.SkillList -> stringResource(R.string.settings_skill_category_title)
+                                    SettingsRoute.SkillEdit -> stringResource(R.string.settings_skill_category_title)
                                     SettingsRoute.Assistant -> stringResource(R.string.settings_assistant_category_title)
                                     SettingsRoute.Character -> stringResource(R.string.settings_character_category_title)
                                 }
@@ -391,6 +401,10 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                             settingsRoute = SettingsRoute.SystemPromptList
                             currentScreen = Screen.Settings
                         },
+                        onManageSkills = {
+                            settingsRoute = SettingsRoute.SkillList
+                            currentScreen = Screen.Settings
+                        },
                         modifier = Modifier.padding(innerPadding),
                     )
                 }
@@ -408,6 +422,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 onNavigateToMessaging = { settingsRoute = SettingsRoute.Messaging },
                                 onNavigateToMusic = { settingsRoute = SettingsRoute.Music },
                                 onNavigateToSystemPrompts = { settingsRoute = SettingsRoute.SystemPromptList },
+                                onNavigateToSkills = { settingsRoute = SettingsRoute.SkillList },
                                 onNavigateToAssistant = { settingsRoute = SettingsRoute.Assistant },
                                 onNavigateToCharacter = { settingsRoute = SettingsRoute.Character },
                                 modifier = Modifier.padding(innerPadding),
@@ -559,6 +574,26 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 SystemPromptEditScreen(
                                     viewModel = systemPromptEditViewModel,
                                     promptId = id,
+                                    modifier = Modifier.padding(innerPadding),
+                                )
+                            }
+                        }
+                        SettingsRoute.SkillList -> {
+                            SkillListScreen(
+                                viewModel = skillListViewModel,
+                                onNavigateToSkill = { id ->
+                                    editingSkillId = id
+                                    settingsRoute = SettingsRoute.SkillEdit
+                                },
+                                modifier = Modifier.padding(innerPadding),
+                            )
+                        }
+                        SettingsRoute.SkillEdit -> {
+                            val id = editingSkillId
+                            if (id != null) {
+                                SkillEditScreen(
+                                    viewModel = skillEditViewModel,
+                                    skillId = id,
                                     modifier = Modifier.padding(innerPadding),
                                 )
                             }

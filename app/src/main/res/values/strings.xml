@@ -32,6 +32,8 @@
     <string name="chat_voice_message_label">音声メッセージ</string>
     <string name="chat_system_prompt_title">システムプロンプト</string>
     <string name="chat_system_prompt_empty_message">まだシステムプロンプトがありません。「管理」から追加してください。</string>
+    <string name="chat_skill_title">スキル</string>
+    <string name="chat_skill_empty_message">まだスキルがありません。「管理」から追加してください。</string>
     <string name="chat_empty_greeting">今日は何をお手伝いしましょうか？</string>
     <string name="chat_suggestion_brainstorm">アイデアをブレインストーミングして</string>
     <string name="chat_suggestion_summarize">長い文章の要約を手伝って</string>
@@ -107,6 +109,24 @@
     <string name="system_prompt_content_placeholder">例: 常に日本語の敬語で回答してください</string>
     <string name="system_prompt_manage">管理</string>
     <string name="system_prompt_close">閉じる</string>
+
+    <string name="settings_skill_category_title">スキル</string>
+    <string name="skill_empty_message">まだスキルがありません。＋で追加してください</string>
+    <string name="skill_description_empty">説明未設定</string>
+    <string name="skill_delete">このスキルを削除</string>
+    <string name="skill_add">スキルを追加</string>
+    <string name="skill_create">作成</string>
+    <string name="skill_name_label">名前</string>
+    <string name="skill_name_placeholder">例: 翻訳</string>
+    <string name="skill_description_label">説明</string>
+    <string name="skill_description_placeholder">例: 英語⇔日本語の翻訳を手伝う</string>
+    <string name="skill_description_hint">AIには常にこの説明だけが見え、内容に合う依頼のときだけ自動的に呼び出されます</string>
+    <string name="skill_content_label">内容</string>
+    <string name="skill_content_placeholder">例: 依頼された文章を自然な日本語に翻訳してください</string>
+    <string name="skill_manage">管理</string>
+    <string name="skill_use_now">使う</string>
+    <string name="skill_forced_chip_label">スキル: %1$s</string>
+    <string name="skill_forced_chip_remove">このスキルの指定を取り消す</string>
 
     <string name="settings_websearch_category_title">Web検索</string>
     <string name="websearch_enable_label">Web検索を有効にする</string>

@@ -14,6 +14,7 @@ import com.suzuri.lmdroid.data.db.MessageDao
 import com.suzuri.lmdroid.data.db.MessageEntity
 import com.suzuri.lmdroid.data.db.MessageRole
 import com.suzuri.lmdroid.data.db.MessageWithAttachments
+import com.suzuri.lmdroid.data.db.SkillEntity
 import com.suzuri.lmdroid.data.db.ThinkingTimelineEntry
 import com.suzuri.lmdroid.data.location.DeviceLocationProvider
 import com.suzuri.lmdroid.data.messaging.DeviceMessageController
@@ -100,6 +101,7 @@ class ConversationRepository(
     private val deviceMusicController: DeviceMusicController,
     private val youTubeDataApiClient: YouTubeDataApiClient,
     private val systemPromptRepository: SystemPromptRepository,
+    private val skillRepository: SkillRepository,
     private val json: Json,
 ) {
     // For best-effort background work (auto-titling) that shouldn't make the caller wait for the
@@ -209,6 +211,12 @@ class ConversationRepository(
         // SettingsRepository.currentAssistantSettings()) resolve a different (profile, model) pair
         // than the chat selection — null (the default) keeps ChatViewModel's existing behavior.
         settingsOverride: AppSettings? = null,
+        // A skill the user explicitly picked for this one message (see SkillDialog's "使う"
+        // action), rather than left for the model to discover on its own via the "use_skill"
+        // tool — forces that skill's full content into context for just this reply, regardless
+        // of whether it's in the active/advertised set. null (the default) is the normal path,
+        // where the model decides for itself from the active skills' catalog.
+        forcedSkillId: Long? = null,
     ): SendResult {
         val settings = settingsOverride ?: settingsRepository.currentChatSettings()
         val apiKey = settings.apiKey
@@ -242,7 +250,7 @@ class ConversationRepository(
             generateTitleInBackground(conversationId, userText)
         }
 
-        return generateAssistantReply(conversationId, apiKey, settings)
+        return generateAssistantReply(conversationId, apiKey, settings, forcedSkillId)
     }
 
     /**
@@ -292,6 +300,7 @@ class ConversationRepository(
         conversationId: Long,
         apiKey: String,
         settings: AppSettings,
+        forcedSkillId: Long? = null,
     ): SendResult {
         val placeholderId = messageDao.insert(
             MessageEntity(
@@ -344,31 +353,82 @@ class ConversationRepository(
         // Every saved system prompt the user has selected as active (zero or more) — applies to
         // every conversation, not persisted as part of any one message, added fresh as leading
         // messages on every request rather than written into message history.
-        systemPromptRepository.currentActiveContents().forEachIndexed { index, content ->
+        val systemPromptContents = systemPromptRepository.currentActiveContents()
+        systemPromptContents.forEachIndexed { index, content ->
             history.add(1 + index, chatMessage("system", content))
+        }
+        // Where the next leading system message goes — right after the date and every system
+        // prompt just inserted above — tracked as a running index so skill messages below can
+        // insert in a stable, readable order instead of both fighting over the same position.
+        var leadingSystemMessageIndex = 1 + systemPromptContents.size
+
+        // Chain-of-thought and tool activity, in the exact order they happen (Claude-style),
+        // rather than two separate fixed blocks — a run of consecutive reasoning deltas coalesces
+        // into one entry; each tool call always starts a new one. See ThinkingTimelineEntry.
+        // Declared here (rather than alongside the streaming state further below) so the forced
+        // skill injection right after this can also record its own entry on it.
+        val timeline = mutableListOf<ThinkingTimelineEntry>()
+
+        // Skills: each active one (Settings → スキル, or per-conversation via SkillDialog) is a
+        // named bundle of instructions. Only its name/description is always visible to the model,
+        // as a compact catalog below — the full content is loaded on demand, either by the model
+        // itself via the "use_skill" tool (see availableTools()/executeToolCall()) or, when
+        // [forcedSkillId] is set, forced into context here regardless of whether that skill is
+        // even part of the active set — see SkillDialog's "使う" action and ChatViewModel's
+        // pendingForcedSkillId, the explicit, user-driven counterpart to the model's own discovery.
+        val activeSkills = skillRepository.currentActiveSkills()
+        Log.d(TAG, "skills: forcedSkillId=$forcedSkillId active=${activeSkills.map { it.name }}")
+        if (forcedSkillId != null) {
+            val forcedSkill = skillRepository.getSkill(forcedSkillId)
+            if (forcedSkill != null) {
+                history.add(
+                    leadingSystemMessageIndex++,
+                    chatMessage(
+                        "system",
+                        "The user explicitly invoked the \"${forcedSkill.name}\" skill for this message. " +
+                            "Follow these instructions when composing your reply:\n\n${forcedSkill.content}",
+                    ),
+                )
+                timeline += ThinkingTimelineEntry.ToolActivity(
+                    label = "🧩 ${forcedSkill.name}",
+                    content = "ユーザーがこの会話で明示的に呼び出しました。",
+                )
+            }
+        }
+        if (activeSkills.isNotEmpty()) {
+            val catalog = activeSkills.joinToString("\n") { skill ->
+                "- ${skill.name}: ${skill.description.ifBlank { "(説明未設定)" }}"
+            }
+            history.add(
+                leadingSystemMessageIndex++,
+                chatMessage(
+                    "system",
+                    "You have access to the following skills — named bundles of specialized " +
+                        "instructions. When the user's request matches one, call the $USE_SKILL_TOOL_NAME " +
+                        "tool with its exact name to load its full instructions before answering; you may " +
+                        "call it more than once if several apply. Do not call it for requests none of " +
+                        "these describe.\n\n$catalog",
+                ),
+            )
         }
 
         // Tools: when enabled and configured in Settings, the model is offered "web_search",
         // "fetch_webpage", "get_current_location", "set_alarm"/"set_timer", "create_note",
-        // "send_message", and/or "play_music" functions it can decide to call on its own (agentic
-        // tool calling), rather than the app deciding unconditionally what to
-        // search/fetch/locate/schedule/save/send/play and force-feeding the results into every
-        // request. The harness (this repository) only ever executes one when the model
+        // "send_message", "play_music", and/or "use_skill" functions it can decide to call on its
+        // own (agentic tool calling), rather than the app deciding unconditionally what to
+        // search/fetch/locate/schedule/save/send/play/load and force-feeding the results into
+        // every request. The harness (this repository) only ever executes one when the model
         // actually asks for it, via executeToolCall() below. maxToolRounds caps how many tool
         // round-trips one reply can make before it's forced to answer with what it has — 0 in
         // Settings means "no user-configured cap", bounded only by SAFETY_MAX_TOOL_ROUNDS so a
         // model that won't stop calling tools can't loop forever.
-        val tools = availableTools()
+        val tools = availableTools(activeSkills)
         val configuredMaxRounds = settingsRepository.currentWebSearchMaxToolRounds()
         val maxToolRounds = if (configuredMaxRounds <= 0) {
             SAFETY_MAX_TOOL_ROUNDS
         } else {
             configuredMaxRounds.coerceAtMost(SAFETY_MAX_TOOL_ROUNDS)
         }
-        // Chain-of-thought and tool activity, in the exact order they happen (Claude-style),
-        // rather than two separate fixed blocks — a run of consecutive reasoning deltas coalesces
-        // into one entry; each tool call always starts a new one. See ThinkingTimelineEntry.
-        val timeline = mutableListOf<ThinkingTimelineEntry>()
 
         fun appendReasoning(text: String) {
             val last = timeline.lastOrNull()
@@ -658,6 +718,24 @@ class ConversationRepository(
                     resultText
                 }
             }
+            USE_SKILL_TOOL_NAME -> {
+                val name = extractStringArgument(call.argumentsJson, "name")
+                if (name == null || name.isBlank()) {
+                    "Error: invalid arguments for $USE_SKILL_TOOL_NAME. Expected JSON like {\"name\": \"...\"}."
+                } else {
+                    val skill = activeSkills.find { it.name.equals(name, ignoreCase = true) }
+                    if (skill == null) {
+                        "Error: no skill named \"$name\" is available. Available skills: " +
+                            activeSkills.joinToString(", ") { it.name }
+                    } else {
+                        timeline += ThinkingTimelineEntry.ToolActivity(
+                            label = "🧩 ${skill.name}",
+                            content = "スキルの内容を読み込みました。",
+                        )
+                        skill.content
+                    }
+                }
+            }
             else -> "Error: unknown tool \"${call.name}\"."
         }
 
@@ -797,12 +875,12 @@ class ConversationRepository(
      * The function definitions offered to the model this turn — "web_search"/"fetch_webpage" when
      * Web検索 is enabled and configured, "get_current_location" when 位置情報 is enabled,
      * "set_alarm"/"set_timer" when アラーム・タイマー is enabled, "create_note" when メモ is enabled,
-     * "send_message" when メッセージ is enabled, "play_music" when 音楽 is enabled — or null if none
-     * of these are, so
+     * "send_message" when メッセージ is enabled, "play_music" when 音楽 is enabled, "use_skill" when
+     * at least one skill (Settings → スキル) is active — or null if none of these are, so
      * [ChatCompletionRequest.tools][com.suzuri.lmdroid.data.network.ChatCompletionRequest] is
      * omitted entirely rather than sent as an empty/useless list.
      */
-    private suspend fun availableTools(): List<ToolDefinitionDto>? {
+    private suspend fun availableTools(activeSkills: List<SkillEntity>): List<ToolDefinitionDto>? {
         val tools = mutableListOf<ToolDefinitionDto>()
 
         if (settingsRepository.currentBraveSearchEnabled() && !settingsRepository.currentWebSearchApiKey().isNullOrBlank()) {
@@ -948,6 +1026,19 @@ class ConversationRepository(
             ),
         )
 
+        if (activeSkills.isNotEmpty()) {
+            tools += ToolDefinitionDto(
+                function = FunctionSchemaDto(
+                    name = USE_SKILL_TOOL_NAME,
+                    description = "Load the full instructions for one of your available skills " +
+                        "(see the skills catalog in the system message) by its exact name. Call " +
+                        "this before following a skill's instructions — you only see its short " +
+                        "description until you do.",
+                    parameters = useSkillToolParameters,
+                ),
+            )
+        }
+
         Log.d(TAG, "availableTools: ${tools.map { it.function.name }} (locationEnabled=${settingsRepository.currentLocationEnabled()})")
         return tools.takeIf { it.isNotEmpty() }
     }
@@ -1045,6 +1136,7 @@ class ConversationRepository(
         const val SEND_MESSAGE_TOOL_NAME = "send_message"
         const val PLAY_MUSIC_TOOL_NAME = "play_music"
         const val GENERATE_IMAGE_TOOL_NAME = "generate_image"
+        const val USE_SKILL_TOOL_NAME = "use_skill"
 
         // A hard ceiling regardless of the user's own Settings → Web検索 configuration (where 0
         // means "no cap") — purely a safety valve against a truly runaway model that never stops
@@ -1253,6 +1345,23 @@ class ConversationRepository(
                     ),
                 ),
                 "required" to JsonArray(listOf(JsonPrimitive("prompt"))),
+            ),
+        )
+
+        val useSkillToolParameters: JsonElement = JsonObject(
+            mapOf(
+                "type" to JsonPrimitive("object"),
+                "properties" to JsonObject(
+                    mapOf(
+                        "name" to JsonObject(
+                            mapOf(
+                                "type" to JsonPrimitive("string"),
+                                "description" to JsonPrimitive("The exact name of the skill to load, as listed in the skills catalog."),
+                            ),
+                        ),
+                    ),
+                ),
+                "required" to JsonArray(listOf(JsonPrimitive("name"))),
             ),
         )
     }

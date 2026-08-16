@@ -5,6 +5,7 @@ import com.charleskorn.kaml.YamlConfiguration
 import com.suzuri.lmdroid.data.db.ApiModelDao
 import com.suzuri.lmdroid.data.db.ApiProfileDao
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
+import com.suzuri.lmdroid.data.db.SkillDao
 import com.suzuri.lmdroid.data.db.SystemPromptDao
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -16,9 +17,9 @@ import java.time.format.DateTimeFormatter
 
 /**
  * Serializes every user-configurable setting (API profiles + their registered models, chat/system/
- * アシスタント model selections, markdown preference, system prompt profiles, and Web検索/音声
- * settings) into a single YAML document — used by Settings → 設定をエクスポート for backup/inspection
- * purposes.
+ * アシスタント model selections, markdown preference, system prompt profiles, skills, and Web検索/
+ * 音声 settings) into a single YAML document — used by Settings → 設定をエクスポート for backup/
+ * inspection purposes.
  *
  * Two modes, chosen by whether the user supplies a password:
  *
@@ -39,6 +40,7 @@ class SettingsExporter(
     private val apiProfileDao: ApiProfileDao,
     private val apiModelDao: ApiModelDao,
     private val systemPromptDao: SystemPromptDao,
+    private val skillDao: SkillDao,
     private val settingsRepository: SettingsRepository,
     private val apiKeyCipher: ApiKeyCipher,
     private val passwordCipher: PasswordSettingsCipher = PasswordSettingsCipher(),
@@ -80,6 +82,7 @@ class SettingsExporter(
         val assistantSelection = settingsRepository.selectedAssistantModel.first()
 
         val systemPrompts = systemPromptDao.observeAll().first()
+        val skills = skillDao.observeAll().first()
 
         return SettingsExport(
             exportedAt = DateTimeFormatter.ISO_INSTANT.format(Instant.now()),
@@ -90,6 +93,8 @@ class SettingsExporter(
             markdownEnabled = settingsRepository.currentChatSettings().markdownEnabled,
             systemPrompts = systemPrompts.map { ExportedSystemPrompt(id = it.id, name = it.name, content = it.content) },
             selectedSystemPromptIds = settingsRepository.currentSelectedSystemPromptIds().sorted(),
+            skills = skills.map { ExportedSkill(id = it.id, name = it.name, description = it.description, content = it.content) },
+            selectedSkillIds = settingsRepository.currentSelectedSkillIds().sorted(),
             webSearch = ExportedWebSearchSettings(
                 enabled = settingsRepository.currentBraveSearchEnabled(),
                 selectedProfileId = settingsRepository.currentSelectedWebSearchProfileId(),
@@ -153,6 +158,8 @@ data class SettingsExport(
     val markdownEnabled: Boolean,
     val systemPrompts: List<ExportedSystemPrompt> = emptyList(),
     val selectedSystemPromptIds: List<Long> = emptyList(),
+    val skills: List<ExportedSkill> = emptyList(),
+    val selectedSkillIds: List<Long> = emptyList(),
     // Defaulted so an export from before Web検索 existed at all (which has no webSearch section
     // whatsoever, not just an outdated shape of one) still decodes instead of failing on a
     // "required field missing" error.
@@ -166,6 +173,14 @@ data class SettingsExport(
 data class ExportedSystemPrompt(
     val id: Long,
     val name: String,
+    val content: String,
+)
+
+@Serializable
+data class ExportedSkill(
+    val id: Long,
+    val name: String,
+    val description: String,
     val content: String,
 )
 
