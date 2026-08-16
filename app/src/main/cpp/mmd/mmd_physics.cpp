@@ -230,12 +230,39 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
         // all and so looked fine throughout. A body parked that far outside its cone has several
         // angular stops violated at once, all fighting through one tiny inertia.
         //
-        // The pair below is strictly better on both counts rather than trading one for the other:
-        // 0.3/1.02 = 0.29 is a genuinely softer stop than both the old value and Bullet's
-        // default, while the violation multiplier drops 0.5 -> 0.067, a 7.5x reduction (ahoge
-        // 26 degrees -> 3.5, hair bell 5.8 -> 0.8, bell ribbons 3.3 -> 0.44).
-        constexpr float kStopCfm = 0.02f;
-        constexpr float kStopErp = 0.3f;
+        // Dropping CFM alone fixed the hair ornaments but not the ahoge, because the ERP term is
+        // also the loop gain of a feedback path that the recurrence above — being single-axis —
+        // cannot see. A stop row does not apply a position correction; it commands a VELOCITY of
+        // fps*stopERP*violation, and that velocity survives the solve into integrateTransforms.
+        // On a body with several stops engaged at once the correction each row injects re-violates
+        // the others (the three angular rows ride Bullet's Euler-XYZ axes, which are neither the
+        // body's principal axes nor even mutually orthogonal — see calculateAngleInfo), so the
+        // corrections chase each other around the axes. Above a gain threshold that round trip has
+        // loop gain >= 1 and the body never comes to rest.
+        //
+        // Exactly one body in this rig closes that loop: the ahoge tip. Everything else has at
+        // most one angular axis actually pressed against a stop — the hard-locked axes of the hair
+        // ribbons sit at zero violation because those bodies just hang in plane. The ahoge has all
+        // three engaged simultaneously (X hard-locked at 0, Y driven past its ±5° cone, Z resting
+        // on its [-20°, 0] bound) plus the three linear locks, through an inertia tensor that is
+        // 8.5:1 anisotropic (a capsule: 0.0437 across, 0.0051 about its own long axis). Simulating
+        // the full six-row solve for this joint — static anchor, one 3 rad/s kick, then left alone
+        // — the hair ribbon and bell ribbon decay to exactly zero at every ERP tried, while the
+        // ahoge sustains a limit cycle forever at ERP 0.6 and 0.3 and settles to exactly zero at
+        // 0.15 and below. Gyroscopic coupling was the other candidate and is not involved:
+        // Bullet does apply an implicit-body gyroscopic impulse by default, but disabling it
+        // changes this joint's residual motion by ~0.1%.
+        //
+        // So ERP wants to be small — bounded below only by how fast a limit must be recovered
+        // after a fast head turn. At 0.1 (half of Bullet's own default, and a stop stiffness of
+        // 0.1/1.005 ≈ 0.0995, i.e. finally the "little give" this comment has claimed since the
+        // first round) the worst limit overshoot under a deliberately violent 25°-at-1.5Hz head
+        // shake stays under 2.4° on every accessory, with 1.5x margin below the 0.15 settling
+        // threshold. Pairing it with a smaller CFM keeps the static-violation multiplier at
+        // 0.05 — still better than the 0.067 that fixed the ornaments, and 10x better than the
+        // 0.5 this started at.
+        constexpr float kStopCfm = 0.005f;
+        constexpr float kStopErp = 0.1f;
         for (int axis = 0; axis < 6; axis++) {
             constraint->setParam(BT_CONSTRAINT_STOP_CFM, kStopCfm, axis);
             constraint->setParam(BT_CONSTRAINT_STOP_ERP, kStopErp, axis);
