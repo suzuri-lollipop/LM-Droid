@@ -15,6 +15,11 @@
     <string name="chat_edit_regenerate">この内容で再生成</string>
     <string name="chat_regenerate">再生成</string>
     <string name="chat_markdown_toggle_label">マークダウン表示</string>
+    <string name="chat_thinking_toggle_label">思考(Thinking)</string>
+    <string name="api_profile_thinking_default_label">思考(Thinking)の既定値</string>
+    <string name="api_profile_thinking_default_unset">サーバー既定</string>
+    <string name="api_profile_thinking_default_on">オン</string>
+    <string name="api_profile_thinking_default_off">オフ</string>
     <string name="chat_model_selector_placeholder">モデルを選択</string>
     <string name="chat_attach_file">ファイルを添付</string>
     <string name="chat_remove_attachment">添付を削除</string>

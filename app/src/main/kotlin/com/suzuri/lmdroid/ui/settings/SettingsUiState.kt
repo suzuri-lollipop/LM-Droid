@@ -19,4 +19,7 @@ data class SettingsUiState(
     // typed in by hand.
     val models: List<String> = emptyList(),
     val saved: Boolean = false,
+    // This profile's configured default for the chat screen's 思考 toggle — see
+    // ApiProfileEntity.defaultThinkingEnabled. null = サーバー既定 (no configured default).
+    val defaultThinkingEnabled: Boolean? = null,
 )

@@ -62,6 +62,7 @@ class SettingsViewModel(
                     isKeyVisible = false,
                     testState = TestConnectionState.Idle,
                     saved = false,
+                    defaultThinkingEnabled = profile.defaultThinkingEnabled,
                 )
             }
         }
@@ -83,13 +84,24 @@ class SettingsViewModel(
         _uiState.update { it.copy(isKeyVisible = !it.isKeyVisible) }
     }
 
+    /** null = サーバー既定 (no configured default) — see ApiProfileEntity.defaultThinkingEnabled. */
+    fun onDefaultThinkingEnabledChange(value: Boolean?) {
+        _uiState.update { it.copy(defaultThinkingEnabled = value, saved = false) }
+    }
+
     fun onSave() {
         val id = profileId ?: return
         val state = _uiState.value
         val apiKey = state.apiKey
         val baseUrl = state.baseUrl.ifBlank { AppSettings.DEFAULT_BASE_URL }
         viewModelScope.launch {
-            apiProfileRepository.updateProfile(id = id, name = state.profileName, apiKey = apiKey, baseUrl = baseUrl)
+            apiProfileRepository.updateProfile(
+                id = id,
+                name = state.profileName,
+                apiKey = apiKey,
+                baseUrl = baseUrl,
+                defaultThinkingEnabled = state.defaultThinkingEnabled,
+            )
             _uiState.update { it.copy(saved = true) }
 
             // Saving a key is also how its models get registered — without this, a profile with

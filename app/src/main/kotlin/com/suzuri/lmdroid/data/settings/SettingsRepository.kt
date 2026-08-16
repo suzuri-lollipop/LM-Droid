@@ -19,6 +19,7 @@ import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import com.suzuri.lmdroid.data.tts.MouthAmplitudeTracker
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -62,6 +63,10 @@ class SettingsRepository(
 
     private val markdownEnabledFlow: Flow<Boolean> =
         context.settingsDataStore.data.map { it[KEY_MARKDOWN_ENABLED] ?: true }
+
+    /** See [AppSettings.thinkingEnabled]. */
+    private val thinkingEnabledFlow: Flow<Boolean> =
+        context.settingsDataStore.data.map { it[KEY_THINKING_ENABLED] ?: true }
 
     val chatSettings: Flow<AppSettings> = selectedChatModel.flatMapLatest { selected -> resolve(selected) }
 
@@ -116,6 +121,10 @@ class SettingsRepository(
 
     suspend fun saveMarkdownEnabled(enabled: Boolean) {
         context.settingsDataStore.edit { prefs -> prefs[KEY_MARKDOWN_ENABLED] = enabled }
+    }
+
+    suspend fun saveThinkingEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_THINKING_ENABLED] = enabled }
     }
 
     /** Whether the Brave Search harness (see ConversationRepository) is forced on for every message. */
@@ -451,18 +460,24 @@ class SettingsRepository(
     }
 
     private fun resolve(selected: SelectedModel?): Flow<AppSettings> {
+        val preferencesFlow = combine(markdownEnabledFlow, thinkingEnabledFlow) { markdownEnabled, thinkingEnabled ->
+            markdownEnabled to thinkingEnabled
+        }
         if (selected == null) {
-            return markdownEnabledFlow.map { markdownEnabled ->
+            return preferencesFlow.map { (markdownEnabled, thinkingEnabled) ->
                 AppSettings(
                     apiKey = null,
                     model = AppSettings.DEFAULT_MODEL,
                     baseUrl = AppSettings.DEFAULT_BASE_URL,
                     markdownEnabled = markdownEnabled,
+                    thinkingEnabled = thinkingEnabled,
                 )
             }
         }
         return apiProfileDao.observeById(selected.profileId).flatMapLatest { profile ->
-            markdownEnabledFlow.map { markdownEnabled -> profile.toAppSettings(selected.model, markdownEnabled) }
+            preferencesFlow.map { (markdownEnabled, thinkingEnabled) ->
+                profile.toAppSettings(selected.model, markdownEnabled, thinkingEnabled)
+            }
         }
     }
 
@@ -475,9 +490,15 @@ class SettingsRepository(
         return SelectedModel(profileId, model)
     }
 
-    private fun ApiProfileEntity?.toAppSettings(model: String, markdownEnabled: Boolean): AppSettings {
+    private fun ApiProfileEntity?.toAppSettings(model: String, markdownEnabled: Boolean, thinkingEnabled: Boolean): AppSettings {
         if (this == null) {
-            return AppSettings(apiKey = null, model = model, baseUrl = AppSettings.DEFAULT_BASE_URL, markdownEnabled = markdownEnabled)
+            return AppSettings(
+                apiKey = null,
+                model = model,
+                baseUrl = AppSettings.DEFAULT_BASE_URL,
+                markdownEnabled = markdownEnabled,
+                thinkingEnabled = thinkingEnabled,
+            )
         }
         val ciphertext = apiKeyCiphertext
         val iv = apiKeyIv
@@ -486,7 +507,14 @@ class SettingsRepository(
         } else {
             null
         }
-        return AppSettings(apiKey = apiKey, model = model, baseUrl = baseUrl, markdownEnabled = markdownEnabled, profileName = name)
+        return AppSettings(
+            apiKey = apiKey,
+            model = model,
+            baseUrl = baseUrl,
+            markdownEnabled = markdownEnabled,
+            thinkingEnabled = thinkingEnabled,
+            profileName = name,
+        )
     }
 
     private companion object {
@@ -497,6 +525,7 @@ class SettingsRepository(
         val KEY_ASSISTANT_PROFILE_ID = longPreferencesKey("assistant_profile_id")
         val KEY_ASSISTANT_MODEL = stringPreferencesKey("assistant_model")
         val KEY_MARKDOWN_ENABLED = booleanPreferencesKey("markdown_enabled")
+        val KEY_THINKING_ENABLED = booleanPreferencesKey("thinking_enabled")
         val KEY_BRAVE_SEARCH_ENABLED = booleanPreferencesKey("brave_search_enabled")
         val KEY_SELECTED_WEB_SEARCH_PROFILE_ID = longPreferencesKey("selected_web_search_profile_id")
         val KEY_WEB_SEARCH_MAX_TOOL_ROUNDS = intPreferencesKey("web_search_max_tool_rounds")

@@ -73,6 +73,7 @@ class SettingsExporter(
                 voicevoxSpeakerId = profile.voicevoxSpeakerId,
                 openaiTtsModel = profile.openaiTtsModel,
                 openaiTtsVoice = profile.openaiTtsVoice,
+                defaultThinkingEnabled = profile.defaultThinkingEnabled,
             )
         }
         val profileNameById = profiles.associate { it.id to it.name }
@@ -83,6 +84,7 @@ class SettingsExporter(
 
         val systemPrompts = systemPromptDao.observeAll().first()
         val skills = skillDao.observeAll().first()
+        val chatSettings = settingsRepository.currentChatSettings()
 
         return SettingsExport(
             exportedAt = DateTimeFormatter.ISO_INSTANT.format(Instant.now()),
@@ -90,7 +92,8 @@ class SettingsExporter(
             chatSelection = chatSelection?.toExported(profileNameById),
             systemSelection = systemSelection?.toExported(profileNameById),
             assistantSelection = assistantSelection?.toExported(profileNameById),
-            markdownEnabled = settingsRepository.currentChatSettings().markdownEnabled,
+            markdownEnabled = chatSettings.markdownEnabled,
+            thinkingEnabled = chatSettings.thinkingEnabled,
             systemPrompts = systemPrompts.map { ExportedSystemPrompt(id = it.id, name = it.name, content = it.content) },
             selectedSystemPromptIds = settingsRepository.currentSelectedSystemPromptIds().sorted(),
             skills = skills.map { ExportedSkill(id = it.id, name = it.name, description = it.description, content = it.content) },
@@ -156,6 +159,9 @@ data class SettingsExport(
     val systemSelection: ExportedModelSelection? = null,
     val assistantSelection: ExportedModelSelection? = null,
     val markdownEnabled: Boolean,
+    // Defaulted (unlike markdownEnabled) so an export from before this toggle existed still
+    // decodes instead of failing on a "required field missing" error.
+    val thinkingEnabled: Boolean = true,
     val systemPrompts: List<ExportedSystemPrompt> = emptyList(),
     val selectedSystemPromptIds: List<Long> = emptyList(),
     val skills: List<ExportedSkill> = emptyList(),
@@ -205,6 +211,8 @@ data class ExportedApiProfile(
     // Only meaningful for PROVIDER_OPENAI_TTS.
     val openaiTtsModel: String? = null,
     val openaiTtsVoice: String? = null,
+    // Only meaningful for PROVIDER_OPENAI_COMPATIBLE — see ApiProfileEntity.defaultThinkingEnabled.
+    val defaultThinkingEnabled: Boolean? = null,
 )
 
 @Serializable

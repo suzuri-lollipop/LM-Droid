@@ -43,10 +43,21 @@ class OpenAiApiClient(
         // (see ConversationRepository's round cap) — offering the model a way to call out on its
         // own, rather than the app deciding unconditionally what to feed it ahead of time.
         tools: List<ToolDefinitionDto>? = null,
+        // Null leaves the model/server at its own default (most reasoning models think by
+        // default); false explicitly asks the server to suppress it via chat_template_kwargs —
+        // see ChatTemplateKwargsDto. There's no "force true" distinct from "leave at default"
+        // since no server-side default actually needs overriding upward.
+        enableThinking: Boolean? = null,
     ): Flow<StreamEvent> = callbackFlow {
         val requestJson = json.encodeToString(
             ChatCompletionRequest.serializer(),
-            ChatCompletionRequest(model = model, messages = messages, stream = true, tools = tools),
+            ChatCompletionRequest(
+                model = model,
+                messages = messages,
+                stream = true,
+                tools = tools,
+                chatTemplateKwargs = enableThinking?.let { ChatTemplateKwargsDto(enableThinking = it) },
+            ),
         )
         // Deliberately just the tool names, not the full request body — the latter can carry a
         // full conversation history plus base64 image/audio attachments, which would either spam

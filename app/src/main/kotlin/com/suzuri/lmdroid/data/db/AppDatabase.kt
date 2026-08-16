@@ -15,7 +15,7 @@ import androidx.room.TypeConverters
         SystemPromptEntity::class,
         SkillEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

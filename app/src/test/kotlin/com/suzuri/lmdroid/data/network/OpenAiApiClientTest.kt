@@ -93,6 +93,45 @@ class OpenAiApiClientTest {
     }
 
     @Test
+    fun `streamChatCompletion omits chat_template_kwargs when thinking is left at its default`() = runTest {
+        // A plain OpenAI (or other) server that has never heard of llama.cpp's
+        // chat_template_kwargs extension must not see it on every request just because this app's
+        // 思考 toggle exists — only an explicit override (enableThinking = false) should send it.
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl).test {
+            awaitItem() // Done
+            awaitComplete()
+        }
+
+        val requestBody = server.takeRequest().body.readUtf8()
+        assertTrue(!requestBody.contains("chat_template_kwargs"))
+    }
+
+    @Test
+    fun `streamChatCompletion sends chat_template_kwargs enable_thinking=false when thinking is disabled`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+
+        client.streamChatCompletion(
+            "test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl, enableThinking = false,
+        ).test {
+            awaitItem() // Done
+            awaitComplete()
+        }
+
+        val requestBody = server.takeRequest().body.readUtf8()
+        assertTrue(requestBody.contains("\"chat_template_kwargs\":{\"enable_thinking\":false}"))
+    }
+
+    @Test
     fun `streamChatCompletion serializes a multimodal message as a content parts array`() = runTest {
         // Regression test for MessageContentSerializer: a text-only message's "content" must stay
         // a plain JSON string (unchanged wire format), but a message with an image attachment

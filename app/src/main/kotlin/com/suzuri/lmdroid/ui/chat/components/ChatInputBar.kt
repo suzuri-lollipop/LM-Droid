@@ -23,11 +23,13 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -51,7 +53,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  * between a row of icons), then — below it — a row of staged image/voice-message previews (when
  * any are attached) and a chip for [forcedSkillName] (when the user explicitly picked a skill to
  * force into the next message, see SkillDialog), then a single toolbar row with every action:
- * file-attach, system-prompt, skill, the model switcher, mic, and send/stop. The mic button is
+ * file-attach, system-prompt, skill, the model switcher (with the 思考/thinking toggle right next
+ * to it, since it's a per-model concern), mic, and send/stop. The mic button is
  * dual-purpose: a quick tap dictates speech to text (see [onVoiceInput]), while pressing and
  * holding records a voice message to attach and send as audio (see [onStartVoiceRecording]/
  * [onStopVoiceRecording]) — mirroring how voice-message apps use the same gesture split.
@@ -68,6 +71,10 @@ fun ChatInputBar(
     availableModels: List<ModelOptionRow>,
     selectedModel: SelectedModel?,
     onSelectModel: (ModelOptionRow) -> Unit,
+    // See AppSettings.thinkingEnabled — shown as a brain icon right next to the model switcher
+    // since it's a per-model concern (only reasoning-capable models like Qwen3/Gemma act on it).
+    thinkingEnabled: Boolean,
+    onThinkingEnabledChange: (Boolean) -> Unit,
     pendingAttachments: List<PendingAttachmentUiModel>,
     onAttachFile: () -> Unit,
     onOpenSystemPrompt: () -> Unit,
@@ -218,6 +225,17 @@ fun ChatInputBar(
                             .widthIn(max = 120.dp)
                             .padding(start = 4.dp),
                     )
+                    IconToggleButton(checked = thinkingEnabled, onCheckedChange = onThinkingEnabledChange) {
+                        Icon(
+                            imageVector = Icons.Filled.Psychology,
+                            contentDescription = stringResource(R.string.chat_thinking_toggle_label),
+                            tint = if (thinkingEnabled) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.weight(1f))

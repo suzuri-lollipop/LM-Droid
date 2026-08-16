@@ -128,6 +128,24 @@ data class ChatCompletionRequest(
     // every single request just because the feature happens to exist in this app.
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val tools: List<ToolDefinitionDto>? = null,
+    // Only non-null when the user has explicitly turned the chat screen's 思考 toggle off — left
+    // absent (rather than sent as {"enable_thinking": true}) whenever thinking is left at its
+    // default so plain OpenAI and other servers that don't recognize this llama.cpp-specific field
+    // never see it. See OpenAiApiClient.streamChatCompletion.
+    @SerialName("chat_template_kwargs")
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val chatTemplateKwargs: ChatTemplateKwargsDto? = null,
+)
+
+/**
+ * llama-server (llama.cpp) forwards this object's fields straight into the model's Jinja chat
+ * template as kwargs. `enable_thinking` is the switch reasoning-capable templates (e.g. Qwen3,
+ * Gemma) branch on to suppress their `<think>...</think>` preamble; a template that doesn't
+ * reference it simply ignores it.
+ */
+@Serializable
+data class ChatTemplateKwargsDto(
+    @SerialName("enable_thinking") val enableThinking: Boolean,
 )
 
 /** One function the model may call, in OpenAI's tool-calling request shape. */

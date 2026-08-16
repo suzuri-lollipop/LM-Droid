@@ -66,6 +66,7 @@ data class ChatUiState(
     val apiKeyMissing: Boolean = false,
     val errorMessage: String? = null,
     val markdownEnabled: Boolean = true,
+    val thinkingEnabled: Boolean = true,
     val suggestionsState: SuggestionsUiState = SuggestionsUiState.Loading,
     // Every model offered by every *enabled* profile — the chat-screen model switcher's choices.
     val availableModels: List<ModelOptionRow> = emptyList(),

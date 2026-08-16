@@ -65,8 +65,19 @@ class ApiProfileRepository(
         )
     }
 
-    /** Blank [apiKey] clears the profile's stored key, matching the old single-profile "clear the field to forget the key" behavior. */
-    suspend fun updateProfile(id: Long, name: String, apiKey: String, baseUrl: String) {
+    /**
+     * Blank [apiKey] clears the profile's stored key, matching the old single-profile "clear the
+     * field to forget the key" behavior. [defaultThinkingEnabled] is only meaningful for
+     * PROVIDER_OPENAI_COMPATIBLE — defaults to null (サーバー既定) since the other provider types
+     * that also call this (Brave Search, YouTube Data API) never set it.
+     */
+    suspend fun updateProfile(
+        id: Long,
+        name: String,
+        apiKey: String,
+        baseUrl: String,
+        defaultThinkingEnabled: Boolean? = null,
+    ) {
         val existing = apiProfileDao.getById(id) ?: return
         val encrypted = apiKey.takeIf { it.isNotBlank() }?.let { cipher.encrypt(it) }
         apiProfileDao.update(
@@ -75,6 +86,7 @@ class ApiProfileRepository(
                 apiKeyCiphertext = encrypted?.ciphertextBase64,
                 apiKeyIv = encrypted?.ivBase64,
                 baseUrl = baseUrl.ifBlank { AppSettings.DEFAULT_BASE_URL },
+                defaultThinkingEnabled = defaultThinkingEnabled,
             ),
         )
     }

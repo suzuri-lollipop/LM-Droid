@@ -1,5 +1,6 @@
 package com.suzuri.lmdroid.ui.settings
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +15,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -91,6 +93,39 @@ fun OpenAiCompatibleScreen(
             placeholder = { Text(AppSettings.DEFAULT_BASE_URL) },
             singleLine = true,
         )
+
+        Text(
+            text = stringResource(R.string.api_profile_thinking_default_label),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 20.dp),
+        )
+        // Seeds the chat screen's 思考 toggle whenever the user switches to one of this profile's
+        // models (ChatViewModel.onSelectModel) — e.g. off by default for a Gemma profile run
+        // without thinking, on for a Qwen3 profile that reasons by default. サーバー既定 (null)
+        // leaves the toggle exactly as the user last set it.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FilterChip(
+                selected = uiState.defaultThinkingEnabled == null,
+                onClick = { viewModel.onDefaultThinkingEnabledChange(null) },
+                label = { Text(stringResource(R.string.api_profile_thinking_default_unset)) },
+            )
+            FilterChip(
+                selected = uiState.defaultThinkingEnabled == true,
+                onClick = { viewModel.onDefaultThinkingEnabledChange(true) },
+                label = { Text(stringResource(R.string.api_profile_thinking_default_on)) },
+            )
+            FilterChip(
+                selected = uiState.defaultThinkingEnabled == false,
+                onClick = { viewModel.onDefaultThinkingEnabledChange(false) },
+                label = { Text(stringResource(R.string.api_profile_thinking_default_off)) },
+            )
+        }
 
         Row(modifier = Modifier.padding(top = 20.dp)) {
             Button(onClick = viewModel::onSave) {

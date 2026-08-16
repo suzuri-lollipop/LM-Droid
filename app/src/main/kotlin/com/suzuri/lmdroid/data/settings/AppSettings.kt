@@ -5,6 +5,11 @@ data class AppSettings(
     val model: String,
     val baseUrl: String,
     val markdownEnabled: Boolean = true,
+    // Global 思考(thinking) toggle for reasoning-capable local models (e.g. Qwen3, Gemma served via
+    // llama-server) — true (default) leaves the model/server's own default behavior alone; false
+    // is forwarded as chat_template_kwargs.enable_thinking=false. A template that doesn't support
+    // this simply ignores it. See OpenAiApiClient.streamChatCompletion.
+    val thinkingEnabled: Boolean = true,
     // The registered ApiProfileEntity's own display name (e.g. "ローカルサーバー") — null when no
     // profile backs this AppSettings at all (nothing configured yet). Lets a UI show which profile
     // is actually active (see AssistScreen's title) without having to look the profile back up.

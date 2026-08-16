@@ -36,6 +36,13 @@ data class ApiProfileEntity(
     // Models: tts-1, tts-1-hd. Voices: alloy, echo, fable, onyx, nova, shimmer.
     val openaiTtsModel: String? = null,
     val openaiTtsVoice: String? = null,
+    // Only meaningful for PROVIDER_OPENAI_COMPATIBLE — this profile's default for the chat
+    // screen's 思考(thinking) toggle (see AppSettings.thinkingEnabled), applied automatically
+    // whenever the user switches to one of this profile's models (ChatViewModel.onSelectModel).
+    // null = no configured default (leave the toggle as the user last set it); true/false = seed
+    // the toggle to that state, e.g. off by default for a Gemma profile the user runs without
+    // thinking and on for a Qwen3 profile that reasons by default.
+    val defaultThinkingEnabled: Boolean? = null,
 ) {
     companion object {
         const val PROVIDER_OPENAI_COMPATIBLE = "openai_compatible"

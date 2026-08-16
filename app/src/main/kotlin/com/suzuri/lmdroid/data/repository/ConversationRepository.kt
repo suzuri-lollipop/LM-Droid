@@ -750,6 +750,7 @@ class ConversationRepository(
                     messages = history,
                     baseUrl = settings.baseUrl,
                     tools = if (offerTools) tools else null,
+                    enableThinking = if (settings.thinkingEnabled) null else false,
                 ).collect { event ->
                     when (event) {
                         is StreamEvent.Delta -> {
