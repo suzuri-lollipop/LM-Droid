@@ -112,6 +112,7 @@ bool MmdEngine::loadModel(const std::string& pmxPath, std::string* error) {
 
     bindWorld_.resize(boneCount);
     boneWorld_.resize(boneCount);
+    noPhysicsBones_.assign(boneCount, 0);
     animRot_.assign(boneCount, btQuaternion(0, 0, 0, 1));
     animPos_.assign(boneCount, btVector3(0, 0, 0));
     morphWeights_.assign(model_.morphs.size(), 0.f);
@@ -202,7 +203,14 @@ void MmdEngine::update(float dt, CharacterState state, float mouthOpen, bool lip
         physics_->syncKinematic(model_, boneWorld_);
         physics_->step(dt);
         std::vector<int> overridden = physics_->writeBack(model_, boneWorld_);
-        for (int bone : overridden) recomputeSubtree(bone);
+        // A multi-link chain (skirt/hair/breast bones with 2+ segments) has each link as its own
+        // physics body AND as the bone-hierarchy child of the previous link. writeBack already
+        // set every one of them correctly; recomputeSubtree must not re-derive a child that's in
+        // this set from animation, or it silently throws away that link's own physics result
+        // every frame — only the chain's root would ever visibly move.
+        std::vector<uint8_t> physicsBones(model_.bones.size(), 0);
+        for (int bone : overridden) physicsBones[bone] = 1;
+        for (int bone : overridden) recomputeSubtree(bone, physicsBones);
     }
 
     skinVertices();
@@ -363,27 +371,33 @@ void MmdEngine::solveIk(int ikBone) {
             }
 
             boneWorld_[link.index].setRotation(worldRot.normalize());
-            recomputeSubtree(link.index);
+            recomputeSubtree(link.index, noPhysicsBones_);
         }
         if (converged) break;
     }
 }
 
-void MmdEngine::recomputeSubtree(int bone) {
+void MmdEngine::recomputeSubtree(int bone, const std::vector<uint8_t>& physicsBones) {
     for (int child : children_[bone]) {
-        const PmxBone& childBone = model_.bones[child];
-        btVector3 offset = childBone.position - model_.bones[bone].position;
-        btQuaternion rot(0, 0, 0, 1);
-        btVector3 pos(0, 0, 0);
-        // Re-derive the child's local delta from its (possibly granted) animation sample.
-        // Re-running the grant logic here would risk cycles, so grants keep their base sample.
-        rot = animRot_[child];
-        pos = animPos_[child];
-        if (!(childBone.flags & PmxBone::FLAG_ROTATABLE)) rot = btQuaternion(0, 0, 0, 1);
-        if (!(childBone.flags & PmxBone::FLAG_MOVABLE)) pos = btVector3(0, 0, 0);
-        boneWorld_[child] = boneWorld_[bone] * btTransform(btQuaternion(0, 0, 0, 1), offset) *
-                            makeLocalDelta(pos, rot);
-        recomputeSubtree(child);
+        // This child has its own physics body and writeBack already gave it the correct
+        // transform this frame — leave it alone, just recurse to carry it to non-physics
+        // descendants (e.g. a chain's second link still needs to reposition a third that has
+        // no rigid body of its own).
+        if (!physicsBones[child]) {
+            const PmxBone& childBone = model_.bones[child];
+            btVector3 offset = childBone.position - model_.bones[bone].position;
+            btQuaternion rot(0, 0, 0, 1);
+            btVector3 pos(0, 0, 0);
+            // Re-derive the child's local delta from its (possibly granted) animation sample.
+            // Re-running the grant logic here would risk cycles, so grants keep their base sample.
+            rot = animRot_[child];
+            pos = animPos_[child];
+            if (!(childBone.flags & PmxBone::FLAG_ROTATABLE)) rot = btQuaternion(0, 0, 0, 1);
+            if (!(childBone.flags & PmxBone::FLAG_MOVABLE)) pos = btVector3(0, 0, 0);
+            boneWorld_[child] = boneWorld_[bone] * btTransform(btQuaternion(0, 0, 0, 1), offset) *
+                                makeLocalDelta(pos, rot);
+        }
+        recomputeSubtree(child, physicsBones);
     }
 }
 

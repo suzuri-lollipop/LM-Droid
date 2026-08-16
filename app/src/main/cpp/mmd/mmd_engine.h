@@ -42,7 +42,9 @@ private:
     void applyMorphs();
     void solveSkeleton();
     void solveIk(int ikBone);
-    void recomputeSubtree(int bone);
+    // [physicsBones] marks bones writeBack just set this frame — recomputeSubtree must not
+    // stomp those with an animation-derived guess, only propagate through non-physics ones.
+    void recomputeSubtree(int bone, const std::vector<uint8_t>& physicsBones);
     void skinVertices();
     int resolveMorphByName(const std::vector<std::string>& candidates) const;
 
@@ -52,6 +54,9 @@ private:
     bool hasMotion_ = false;
 
     std::vector<std::vector<int>> children_;
+    // All-zero, sized to bones.size(): physics hasn't run yet during IK solving, so nothing is
+    // protected from recomputeSubtree's animation-derived overwrite at that point.
+    std::vector<uint8_t> noPhysicsBones_;
     std::vector<btTransform> bindWorld_;
     std::vector<btTransform> boneWorld_;
     std::vector<btQuaternion> animRot_;

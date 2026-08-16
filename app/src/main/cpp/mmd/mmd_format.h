@@ -103,7 +103,9 @@ struct PmxRigidBody {
     std::string name;
     int bone;               // associated bone, -1 for none
     uint8_t group;
-    uint16_t collisionMask; // bits of groups this body does NOT collide with
+    uint16_t collisionMask; // bits of groups this body DOES collide with (a Bullet mask as-is;
+                            // the spec's "非衝突グループ" name is the editor's checkbox wording,
+                            // the stored value is already inverted — see MmdPhysics::init)
     uint8_t shape;          // 0 sphere, 1 box, 2 capsule
     btVector3 size;         // sphere: x=radius; box: half extents; capsule: x=radius, y=length
     btVector3 position;     // offset from the bone's bind position

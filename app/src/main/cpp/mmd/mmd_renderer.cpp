@@ -282,6 +282,11 @@ void MmdRenderer::setTexture(int index, int width, int height, const uint32_t* a
 void MmdRenderer::resize(int width, int height) {
     screenWidth_ = width;
     screenHeight_ = height;
+    // The GL viewport isn't touched anywhere else; without this, the framebuffer keeps
+    // whatever viewport was active at context creation, so the model stays pinned to that
+    // original size/region (stretched or partly off-screen) after any later resize — rotation,
+    // entering/leaving split-screen, or the IME changing the available height.
+    glViewport(0, 0, width, height);
 }
 
 void MmdRenderer::setFraming(float zoom, float panX, float panY) {

@@ -8,6 +8,7 @@
 #include <BulletCollision/CollisionShapes/btSphereShape.h>
 #include <BulletCollision/CollisionShapes/btStaticPlaneShape.h>
 #include <BulletDynamics/ConstraintSolver/btGeneric6DofSpringConstraint.h>
+#include <BulletDynamics/ConstraintSolver/btPoint2PointConstraint.h>
 #include <BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h>
 #include <BulletDynamics/Dynamics/btRigidBody.h>
 #include <android/log.h>
@@ -47,6 +48,40 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
     // PMX units are roughly decimeters, so MMD's -9.8 m/s^2 lands as -98 here.
     world_->setGravity(btVector3(0, -98.f, 0));
 
+    // Same idea as the joint-stop softening below, applied to plain body-vs-body contacts: a
+    // kinematic body (bone-driven, never yields) permanently overlapping a dynamic one (pulled
+    // back in every step by gravity or a joint spring) makes a perfectly rigid contact response
+    // fight that overlap forever instead of settling — visible as jitter that never stops as
+    // long as the two stay interfering. A little CFM softens that tug-of-war, and more solver
+    // iterations help it actually converge each step instead of leaving residual penetration for
+    // the next step to fight again.
+    //
+    // The iteration count is load-bearing for the joint springs too, and NOT in the intuitive
+    // direction — see kMaxSpringServoGain below. btGeneric6DofSpringConstraint divides its
+    // spring target velocity by this number, so lowering it back toward Bullet's default of 10
+    // would DOUBLE every spring's per-step gain; on this project's test model that takes the
+    // stiffest joints (the hair ornaments, stiffness 100) from a gain of 1.5 to 3.0, i.e. from
+    // a decaying two-frame oscillation to a growing one. Raise it, never lower it.
+    btContactSolverInfo& solverInfo = world_->getSolverInfo();
+    solverInfo.m_globalCfm = 0.02f;
+    solverInfo.m_numIterations = 20;
+
+    // The two solver constants below are lengths/speeds, and Bullet's defaults for them assume a
+    // world where 1 unit == 1 metre. This one runs at MMD's scale — 1 unit is roughly 10cm, which
+    // is why gravity above is -98 and not -9.8 — so both defaults are an order of magnitude too
+    // small here and misbehave specifically on bodies that stay in contact.
+    //
+    // A zero linear slop asks the solver to drive every contact to *exactly* zero penetration.
+    // Two bodies the rig keeps pressed together never get there, so a correction impulse is
+    // regenerated every step forever instead of the pair settling. A small tolerance (~3mm at this
+    // model's scale, invisible) lets a resting or deliberately-overlapping pair come to rest.
+    solverInfo.m_linearSlop = 0.03f;
+    // Below this relative speed restitution is ignored, which is what stops a resting body from
+    // bouncing in place. At the default 0.2 a single frame of this world's gravity (98/60 ≈ 1.6
+    // units/s) already clears the threshold, so any model authoring a non-zero 反発力 would have
+    // its resting contacts bounce forever. Scaled to match the unit scale it guards again.
+    solverInfo.m_restitutionVelocityThreshold = 2.f;
+
     // Ground plane at y=0 so hair/skirts/clothes rest instead of falling out of the world.
     groundShape_ = std::make_unique<btStaticPlaneShape>(btVector3(0, 1, 0), 0.f);
     ground_ = std::make_unique<btRigidBody>(btRigidBody::btRigidBodyConstructionInfo(0.f, nullptr, groundShape_.get()));
@@ -59,6 +94,7 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
     bodies_.reserve(bodyCount);
     bodyOffsets_.resize(bodyCount);
     modes_.resize(bodyCount);
+    followPivots_.resize(bodyCount, nullptr);
 
     for (size_t i = 0; i < bodyCount; i++) {
         const PmxRigidBody& rb = model.rigidBodies[i];
@@ -96,10 +132,44 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
         } else {
             body->setActivationState(DISABLE_DEACTIVATION);
         }
-        // PMX collisionMask bits mark groups this body does NOT collide with.
-        short groupBit = static_cast<short>(1 << (rb.group & 15));
-        short mask = static_cast<short>(~rb.collisionMask & 0xFFFF);
+        // PMX's 16-bit field is the set of groups this body DOES collide with — a set bit means
+        // "collides" — despite the spec calling it 非衝突グループフラグ ("non-collision group
+        // flags"): that name describes the editor's checkboxes, which are stored already inverted.
+        // It is a Bullet collision mask as-is, so inverting it here turned every non-collision
+        // relationship the model author authored into a forced collision and vice versa. That is
+        // the "interfering bodies twitch forever" bug: a rig's overlapping parts are made to
+        // overlap on purpose and then excluded from colliding, so once the exclusion flips into a
+        // requirement, the solver has to separate bodies that the rig puts back inside each other
+        // every frame — a conflict with no solution, re-fought every step. On this project's test
+        // model the inversion turned the 28 hair/ribbon bodies in group 4 (authored 0xFFEF, "hit
+        // everything except my own group", precisely because they interpenetrate in the bind pose)
+        // into "hit ONLY my own group", and turned the kinematic body core (0xFFFF, "hit
+        // everything") into 0x0000 so the real body-vs-hair collisions stopped happening at all.
+        // Counting unjointed body pairs that already interpenetrate in that model's bind pose,
+        // the inversion put 52 of them under a collision requirement they can never satisfy,
+        // where the authored masks leave 14. int rather than short: group 15 would make 1 << 15
+        // a negative short and sign-extend into every high mask bit.
+        int groupBit = 1 << (rb.group & 15);
+        int mask = rb.collisionMask;
         world_->addRigidBody(body.get(), groupBit, mask);
+
+        // A DYNAMIC/DYNAMIC_FOLLOW body with mass<=0 was just flagged CF_KINEMATIC_OBJECT above
+        // (kinematic, true) — Bullet ignores constraints on kinematic bodies entirely, so a pivot
+        // here would be a silent no-op. Guard on the same condition so we don't create one.
+        if (modes_[i] == PmxRigidBody::MODE_DYNAMIC_FOLLOW && !kinematic) {
+            // Pins this body's origin to the bone through the solver instead of teleporting it in
+            // syncKinematic. A teleport is a hard override applied before the solve even starts,
+            // so a body interfering with anything got reset back into the same overlap every
+            // single frame regardless of what contact resolution had just done — the two fought
+            // forever instead of settling, showing up as jitter that never stopped as long as the
+            // interference lasted. Pinning through a constraint lets the same LCP solve that
+            // resolves collisions also resolve this position pull, so the two settle together.
+            auto follow = std::make_unique<btPoint2PointConstraint>(*body, btVector3(0, 0, 0));
+            followPivots_[i] = follow.get();
+            world_->addConstraint(follow.get(), true);
+            constraints_.push_back(std::move(follow));
+        }
+
         bodies_.push_back(std::move(body));
     }
 
@@ -132,25 +202,86 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
         // was never the springs' damping; it was the limit stops themselves vibrating against
         // gravity. Softening every axis (even ones without a limit configured — harmless, they
         // have nothing to stop against) gives the stop a little give instead of a hard wall.
+        //
+        // How much give, though, is not free, and the previous pair of values here (CFM 0.3 /
+        // ERP 0.6) bought none of it. Working the stop row out of the solver (get_limit_motor_info2
+        // writes constraintError = -fps*stopERP*violation with cfm = stopCFM, and joint rows use
+        // cfm raw — unlike contact rows it is not pre-multiplied by jacDiagABInv, so it acts as a
+        // plain relative-compliance factor) the per-step recurrence for a body held against a stop
+        // by a constant load is
+        //
+        //     violation_next = violation * (1 - stopERP/(1 + stopCFM))  +  dv * dt * stopCFM/(1 + stopCFM)
+        //
+        // where dv is the velocity that load injects per substep. Two consequences:
+        //   * the stop's stiffness is stopERP/(1 + stopCFM), so tripling ERP to 0.6 more than
+        //     cancelled the CFM softening — 0.6/1.3 = 0.46 is over TWICE as rigid as Bullet's
+        //     own default of 0.2, the exact opposite of what the paragraph above intends; and
+        //   * the stop settles at a permanent violation of  dv * dt * stopCFM/stopERP, so that
+        //     CFM/ERP ratio (0.5) is a direct multiplier on how far every joint in the model
+        //     hangs outside the range its rigger authored.
+        //
+        // That second term is the one that singles out the parts still visibly misbehaving. It
+        // scales with dv = torque/inertia, and the small head accessories have by far the worst
+        // ratio in this rig — the ahoge's tip has an inertia of 0.005 against a 0.5 mass on a
+        // 0.37 lever, ~10x worse than the skirt panels. At 0.5 it left the ahoge sitting 26
+        // degrees outside its authored +-5 degree cone (measured and predicted, they agree to
+        // three digits), the hair bell 5.8 degrees outside +-10, the bell ribbons 3.3 degrees
+        // outside their +5; the skirt, whose limits are +-160 degrees, never reaches a stop at
+        // all and so looked fine throughout. A body parked that far outside its cone has several
+        // angular stops violated at once, all fighting through one tiny inertia.
+        //
+        // The pair below is strictly better on both counts rather than trading one for the other:
+        // 0.3/1.02 = 0.29 is a genuinely softer stop than both the old value and Bullet's
+        // default, while the violation multiplier drops 0.5 -> 0.067, a 7.5x reduction (ahoge
+        // 26 degrees -> 3.5, hair bell 5.8 -> 0.8, bell ribbons 3.3 -> 0.44).
+        constexpr float kStopCfm = 0.02f;
+        constexpr float kStopErp = 0.3f;
         for (int axis = 0; axis < 6; axis++) {
-            constraint->setParam(BT_CONSTRAINT_STOP_CFM, 0.3f, axis);
-            constraint->setParam(BT_CONSTRAINT_STOP_ERP, 0.6f, axis);
+            constraint->setParam(BT_CONSTRAINT_STOP_CFM, kStopCfm, axis);
+            constraint->setParam(BT_CONSTRAINT_STOP_ERP, kStopErp, axis);
         }
         // btGeneric6DofSpringConstraint's damping scale is inverted from what its name suggests
         // (1 == no damping, per its own header) and defaults to 1 — PMX carries no separate
         // spring-damping field, so every enabled spring here was running fully undamped until
         // explicitly set.
+        //
+        // It is not a damping coefficient at all, though: internalUpdateSprings turns the spring
+        // into a velocity motor with target = (fps * damping / numIterations) * stiffness * error
+        // and an impulse clamp of +-|stiffness * error| / fps. Away from that clamp the row is a
+        // dead-beat position servo, and its per-step contraction works out to
+        //
+        //     g = damping * stiffness / numIterations
+        //
+        // with dt, mass and inertia all cancelling — so g, not `damping`, is the number that
+        // decides whether a joint settles. g < 1 decays monotonically; 1 < g < 2 overshoots the
+        // equilibrium and REVERSES THE JOINT ANGLE'S SIGN EVERY FRAME, which is what jitter looks
+        // like; g >= 2 diverges. A single flat damping value cannot control g, because stiffness
+        // is per-joint and authored: at 0.3/20 this model's joints ran from g = 0.07 (fine) up to
+        // g = 1.05 on its 96 stiffness-70 axes and g = 1.5 on the 14 stiffness-100 axes — which
+        // are the bell ribbons in the hair, i.e. the second part reported as still jittering. Six
+        // more axes carry the "locked" idiom of stiffness 100000, g = 1500.
+        //
+        // Deriving damping from the joint's own stiffness pins g instead of leaving it to whatever
+        // the rigger typed. Taking the smaller of the two also means no joint ends up with less
+        // damping than the flat value gave it (only stiffness > 66 is affected here), so nothing
+        // that already settles can regress. It cancels numIterations out of g as well, so the
+        // rig stops depending on a solver tuning knob.
         constexpr float kSpringDamping = 0.3f;
+        constexpr float kMaxSpringServoGain = 1.f;
+        const float iterations = static_cast<float>(solverInfo.m_numIterations);
+        auto springDamping = [&](float stiffness) {
+            return std::min(kSpringDamping, kMaxSpringServoGain * iterations / stiffness);
+        };
         for (int axis = 0; axis < 3; axis++) {
             if (joint.linearSpring[axis] > 0.f) {
                 constraint->enableSpring(axis, true);
                 constraint->setStiffness(axis, joint.linearSpring[axis]);
-                constraint->setDamping(axis, kSpringDamping);
+                constraint->setDamping(axis, springDamping(joint.linearSpring[axis]));
             }
             if (joint.angularSpring[axis] > 0.f) {
                 constraint->enableSpring(axis + 3, true);
                 constraint->setStiffness(axis + 3, joint.angularSpring[axis]);
-                constraint->setDamping(axis + 3, kSpringDamping);
+                constraint->setDamping(axis + 3, springDamping(joint.angularSpring[axis]));
             }
         }
         world_->addConstraint(constraint.get(), true);
@@ -167,21 +298,18 @@ void MmdPhysics::syncKinematic(const PmxModel& model, const std::vector<btTransf
                                ? boneWorld[rb.bone]
                                : btTransform::getIdentity();
         btTransform target = bone * bodyOffsets_[i];
-        if (modes_[i] == PmxRigidBody::MODE_KINEMATIC) {
+        // isKinematicObject(), not modes_[i] == MODE_KINEMATIC: init() also flags a
+        // DYNAMIC/DYNAMIC_FOLLOW body kinematic when its PMX mass is <= 0 (Bullet can't derive
+        // an inertia tensor for it, so it can't simulate). modes_[i] alone misses that case,
+        // which left such a body's transform never touched here — frozen at bind pose forever
+        // (and see writeBack, which was then copying that frozen pose back onto the bone).
+        if (bodies_[i]->isKinematicObject()) {
             bodies_[i]->setWorldTransform(target);
-        } else if (modes_[i] == PmxRigidBody::MODE_DYNAMIC_FOLLOW) {
-            // Follows the bone's position but keeps its simulated rotation. setWorldTransform
-            // only moves the body — it doesn't touch velocity, so gravity/spring forces kept
-            // accelerating it toward a displacement this override discards every frame, without
-            // that linear velocity ever being spent (or damped by actually moving). It built up
-            // to a sustained, non-decaying speed — visible as persistent jitter — instead of
-            // settling. The joint's own zero linear-limit range already locks this body to its
-            // anchor, so the swing this chain shows comes entirely from rotation; zeroing linear
-            // velocity here doesn't remove any of it.
-            btTransform current = bodies_[i]->getWorldTransform();
-            current.setOrigin(target.getOrigin());
-            bodies_[i]->setWorldTransform(current);
-            bodies_[i]->setLinearVelocity(btVector3(0, 0, 0));
+        } else if (modes_[i] == PmxRigidBody::MODE_DYNAMIC_FOLLOW && followPivots_[i]) {
+            // Moves the pin, not the body — the solver pulls the body's origin toward it next
+            // step, blended with any contacts it's touching, instead of the body being placed
+            // there directly. Rotation stays fully simulated, as before.
+            followPivots_[i]->setPivotB(target.getOrigin());
         }
     }
 }
@@ -197,17 +325,34 @@ void MmdPhysics::step(float dt) {
     // the same way regardless of which joint is still chattering, rather than retuning each one.
     constexpr float kExtraDampingPerSecond = 10.f;
     const float decay = expf(-kExtraDampingPerSecond * dt);
+    // Exponential decay only ever approaches zero, never reaches it, and every dynamic body has
+    // DISABLE_DEACTIVATION set (so it stays responsive to bone motion instead of needing a wake-up
+    // we might miss) — meaning Bullet's own sleep-when-still mechanism, which is what normally
+    // zeroes out this kind of leftover solver noise, never gets a chance to fire. Without it, a
+    // body resting against something it interferes with settles toward an amplitude too small to
+    // see rather than an amplitude of exactly zero, and keeps visibly twitching indefinitely.
+    // Snapping sub-threshold velocity to zero gives it the same "close enough, stop" that
+    // deactivation would have.
+    constexpr float kRestSpeedSq = 1e-3f;
     for (size_t i = 0; i < bodies_.size(); i++) {
-        if (modes_[i] == PmxRigidBody::MODE_KINEMATIC) continue;
-        bodies_[i]->setLinearVelocity(bodies_[i]->getLinearVelocity() * decay);
-        bodies_[i]->setAngularVelocity(bodies_[i]->getAngularVelocity() * decay);
+        if (bodies_[i]->isKinematicObject()) continue;
+        btVector3 linear = bodies_[i]->getLinearVelocity() * decay;
+        btVector3 angular = bodies_[i]->getAngularVelocity() * decay;
+        if (linear.length2() < kRestSpeedSq) linear.setZero();
+        if (angular.length2() < kRestSpeedSq) angular.setZero();
+        bodies_[i]->setLinearVelocity(linear);
+        bodies_[i]->setAngularVelocity(angular);
     }
 }
 
 std::vector<int> MmdPhysics::writeBack(const PmxModel& model, std::vector<btTransform>& boneWorld) {
     std::vector<int> overridden;
     for (size_t i = 0; i < bodies_.size(); i++) {
-        if (modes_[i] == PmxRigidBody::MODE_KINEMATIC) continue;
+        // isKinematicObject(), not modes_[i] == MODE_KINEMATIC (see syncKinematic): a
+        // DYNAMIC/DYNAMIC_FOLLOW body with PMX mass <= 0 is kinematic too, and was never moved by
+        // physics — without this, its untouched bind-pose transform got written over the bone's
+        // animated transform every single frame, freezing that bone in place.
+        if (bodies_[i]->isKinematicObject()) continue;
         const PmxRigidBody& rb = model.rigidBodies[i];
         if (rb.bone < 0 || rb.bone >= static_cast<int>(boneWorld.size())) continue;
         boneWorld[rb.bone] = bodies_[i]->getWorldTransform() * bodyOffsets_[i].inverse();

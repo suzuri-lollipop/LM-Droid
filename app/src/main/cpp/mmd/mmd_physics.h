@@ -12,6 +12,7 @@
 class btRigidBody;
 class btCollisionShape;
 class btTypedConstraint;
+class btPoint2PointConstraint;
 class btDefaultCollisionConfiguration;
 class btCollisionDispatcher;
 class btDbvtBroadphase;
@@ -47,6 +48,11 @@ private:
     std::vector<std::unique_ptr<btTypedConstraint>> constraints_;
     std::vector<btTransform> bodyOffsets_; // body transform = boneWorld * offset
     std::vector<uint8_t> modes_;
+    // Non-owning; MODE_DYNAMIC_FOLLOW bodies only (nullptr otherwise). Owned by constraints_.
+    // Pulls the body's origin toward the bone each frame through the solver (see syncKinematic),
+    // instead of teleporting it, so a body resting against something it interferes with gets
+    // resolved together with that contact rather than fighting it every frame.
+    std::vector<btPoint2PointConstraint*> followPivots_;
 
     std::unique_ptr<btCollisionShape> groundShape_;
     std::unique_ptr<btRigidBody> ground_;

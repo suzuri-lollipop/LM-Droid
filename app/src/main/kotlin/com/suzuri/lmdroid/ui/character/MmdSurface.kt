@@ -1,5 +1,6 @@
 package com.suzuri.lmdroid.ui.character
 
+import android.graphics.PixelFormat
 import android.opengl.GLSurfaceView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -44,6 +45,10 @@ fun MmdSurface(
             GLSurfaceView(context).apply {
                 setEGLContextClientVersion(3)
                 setEGLConfigChooser(8, 8, 8, 8, 16, 0)
+                // The alpha-capable EGL config above only lets the GL context render alpha; the
+                // Surface itself still composites opaque (alpha-blind, showing as solid black)
+                // unless its own pixel format is explicitly translucent too.
+                holder.setFormat(PixelFormat.TRANSLUCENT)
                 setRenderer(renderer)
                 renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
             }
