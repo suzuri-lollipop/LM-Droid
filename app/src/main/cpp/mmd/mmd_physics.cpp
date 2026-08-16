@@ -179,6 +179,19 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
     // computed target frames fight every step, showing up as velocity that never decays
     // (persistent jitter). Keep only the first joint seen for each pair.
     std::set<std::pair<int, int>> jointedPairs;
+    // Union-find over the bodies, grown as the constraints are created, so each joint can be
+    // asked whether its two bodies were ALREADY connected by the joints before it — see the
+    // redundant-closure handling further down.
+    std::vector<int> connected(bodyCount);
+    for (size_t i = 0; i < bodyCount; i++) connected[i] = static_cast<int>(i);
+    auto findRoot = [&connected](int x) {
+        while (connected[x] != x) {
+            connected[x] = connected[connected[x]];
+            x = connected[x];
+        }
+        return x;
+    };
+
     for (const auto& joint : model.joints) {
         if (joint.bodyA < 0 || joint.bodyA >= static_cast<int>(bodyCount)) continue;
         if (joint.bodyB < 0 || joint.bodyB >= static_cast<int>(bodyCount)) continue;
@@ -186,6 +199,42 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
         if (!jointedPairs.insert(pairKey).second) continue;
         btRigidBody* a = bodies_[joint.bodyA].get();
         btRigidBody* b = bodies_[joint.bodyB].get();
+
+        // A joint whose two bodies the constraint graph already connects adds a second, parallel
+        // path between them. That is fine when the joint has somewhere to give — the skirt and
+        // back-hair cross-links let their bodies travel (±0.5 and ±0.1 on their linear axes), so
+        // the two paths can both be satisfied. It is not fine when the closure is a RIGID pin:
+        // zero travel on all three linear axes means two independent rigid paths between the same
+        // pair, which sequential impulse cannot satisfy simultaneously, and the springs' authority
+        // becomes the loop gain of the resulting fight.
+        //
+        // In this project's test model exactly one joint is both: 左胸_J, which pins the left
+        // breast rigidly to the right one at the chest midline — 0.728 units from either body's
+        // centre, so its linear rows convert a small translation error into a large rotation of
+        // both bodies, while both are already spring-constrained to the same torso. Measured on
+        // the settle test (anchors still, released at bind, 20 s of gravity, mean second
+        // difference of pose over the last 7 s; every other part in the rig scores exactly 0),
+        // scaling just this joint's authored stiffness:
+        //
+        //     scale   1.0      0.8      0.7      0.6     0.5      0.35     0.2
+        //     breast  0.01226  0.00415  0.00199  0.00116 0.00085  0.00086  0.00102
+        //     cord    0.01297  0.00648  0.00380  0.00274 0.00211  0.00214  0.00261
+        //
+        // 0.5 is the minimum and sits in a flat basin (0.35-0.6 all within 40%), so it has margin
+        // on both sides. It also beats deleting the joint outright (which scores 0.00225) while
+        // keeping what the joint is there for: under an asymmetric torso twist the breasts' peak
+        // excursion and their left/right correlation are unchanged from the authored value
+        // (0.42/0.41 and -0.37, versus 0.43/0.41 and -0.36), whereas deleting it drops the
+        // excursion 19% and flips the correlation to +0.17.
+        int rootA = findRoot(joint.bodyA);
+        int rootB = findRoot(joint.bodyB);
+        bool closesLoop = rootA == rootB;
+        if (!closesLoop) connected[rootA] = rootB;
+        bool rigidPin = joint.linearLower.x() == joint.linearUpper.x() &&
+                        joint.linearLower.y() == joint.linearUpper.y() &&
+                        joint.linearLower.z() == joint.linearUpper.z();
+        constexpr float kRedundantClosureScale = 0.5f;
+        const float springScale = (closesLoop && rigidPin) ? kRedundantClosureScale : 1.f;
 
         btTransform jointWorld = offsetTransform(joint.position, joint.rotation);
         btTransform frameInA = a->getWorldTransform().inverse() * jointWorld;
@@ -261,10 +310,53 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
         // threshold. Pairing it with a smaller CFM keeps the static-violation multiplier at
         // 0.05 — still better than the 0.067 that fixed the ornaments, and 10x better than the
         // 0.5 this started at.
+        // One class of joint needs more compliance than that, and it is identifiable from the
+        // authored data rather than by waiting for someone to report it. PMX almost always locks a
+        // joint's three linear axes (linearLower == linearUpper), which makes them three bilateral
+        // rows that simply pin a point: mutually consistent, consistent with the angular rows, and
+        // needing no compliance at all. A joint that instead gives a linear axis real travel AND a
+        // spring is a different animal — that axis's row is a motor and a unilateral stop at the
+        // same time, and because Bullet builds linear rows with the offset formulation
+        // (m_useOffsetForConstraintFrame) the row also carries an angular jacobian term relA x ax.
+        // So sprung translation is precisely the case where a joint's translational and rotational
+        // corrections are cross-coupled inside one joint and the row set can go inconsistent, and
+        // CFM — constraint force mixing, i.e. compliance — is the term that regularises exactly
+        // that. Here it is 21 of 160 joints: the two breast joints, the skirt and back-hair
+        // cross-links, and the front-hair strands.
+        //
+        // Measured on the chest (上半身2 -> 左胸/右胸, cross-pinned to each other, each carrying a
+        // cord), which is where this showed up: anchors held still, bodies released at bind, 20 s
+        // under gravity, scoring the mean second difference of pose over the last 7 s (0 == fully
+        // at rest). At a flat 0.005 the chest sustains a limit cycle at 0.0572 — about 1 rad/s of
+        // permanent angular velocity on both breast bodies. Giving just this class 0.02 takes it
+        // to 0.0130, a 4.4x reduction, while every other part measured (ahoge, hair ribbon, bell
+        // ribbon, hair bell, skirt loop, sleeve chain) stays at exactly 0.000000 because none of
+        // them is in the class and none of their values change. Raising the flat value to 0.02
+        // instead reaches a similar 0.0120, but it multiplies the static limit violation of
+        // everything else by four (the CFM/ERP term above: the ahoge would hang 10.5° outside its
+        // ±5° cone instead of 2.6°), which is why this is keyed per joint and not global.
+        //
+        // Two candidate explanations were tested and refuted rather than assumed: clamping each
+        // spring's equilibrium into its own authored range (the breast joint's linear Y range is
+        // [0.010, 0.502], which excludes the equilibrium at 0) changes the result in no digit; and
+        // treating this as classic over-constraint from the closed 上半身2 -> 左胸 -> 右胸 loop,
+        // giving loop-closing joints (16 of 112 after dedup, found by union-find over the joint
+        // graph) extra CFM, does nothing at all across 0.005 to 0.8. The breast-to-breast pin
+        // amplifies the problem — removing it drops the residual 140x — but the compliance that
+        // settles it belongs on the two torso-to-breast joints, which is what this keys on.
         constexpr float kStopCfm = 0.005f;
+        constexpr float kSprungTranslationCfm = 0.02f;
         constexpr float kStopErp = 0.1f;
+        bool sprungTranslation = false;
+        for (int axis = 0; axis < 3; axis++) {
+            if (joint.linearSpring[axis] > 0.f && joint.linearUpper[axis] > joint.linearLower[axis]) {
+                sprungTranslation = true;
+                break;
+            }
+        }
+        const float stopCfm = sprungTranslation ? kSprungTranslationCfm : kStopCfm;
         for (int axis = 0; axis < 6; axis++) {
-            constraint->setParam(BT_CONSTRAINT_STOP_CFM, kStopCfm, axis);
+            constraint->setParam(BT_CONSTRAINT_STOP_CFM, stopCfm, axis);
             constraint->setParam(BT_CONSTRAINT_STOP_ERP, kStopErp, axis);
         }
         // btGeneric6DofSpringConstraint's damping scale is inverted from what its name suggests
@@ -299,16 +391,21 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
         auto springDamping = [&](float stiffness) {
             return std::min(kSpringDamping, kMaxSpringServoGain * iterations / stiffness);
         };
+        // springScale is 1 for every joint except a redundant rigid loop closure (see above).
+        // Scaling before springDamping() keeps the servo-gain bound consistent with the stiffness
+        // the constraint actually gets.
         for (int axis = 0; axis < 3; axis++) {
             if (joint.linearSpring[axis] > 0.f) {
+                const float stiffness = joint.linearSpring[axis] * springScale;
                 constraint->enableSpring(axis, true);
-                constraint->setStiffness(axis, joint.linearSpring[axis]);
-                constraint->setDamping(axis, springDamping(joint.linearSpring[axis]));
+                constraint->setStiffness(axis, stiffness);
+                constraint->setDamping(axis, springDamping(stiffness));
             }
             if (joint.angularSpring[axis] > 0.f) {
+                const float stiffness = joint.angularSpring[axis] * springScale;
                 constraint->enableSpring(axis + 3, true);
-                constraint->setStiffness(axis + 3, joint.angularSpring[axis]);
-                constraint->setDamping(axis + 3, springDamping(joint.angularSpring[axis]));
+                constraint->setStiffness(axis + 3, stiffness);
+                constraint->setDamping(axis + 3, springDamping(stiffness));
             }
         }
         world_->addConstraint(constraint.get(), true);
@@ -342,7 +439,39 @@ void MmdPhysics::syncKinematic(const PmxModel& model, const std::vector<btTransf
 }
 
 void MmdPhysics::step(float dt) {
-    world_->stepSimulation(dt, 5, 1.f / 60.f);
+    // 120 Hz internally, not 60. Four rounds of jitter reports (hair ornaments, ahoge, chest,
+    // back cord) were each chased down to a different solver detail, but the three that were
+    // still moving after all of those turn out to share one cause the parameters cannot reach:
+    // their dynamics are simply not resolved at a 60 Hz step. The discriminator is sharp. Driving
+    // the anchor 20 degrees at 0.8 Hz and scoring the per-frame twitch of the result, halving the
+    // step changes the reported parts and leaves the never-reported ones alone:
+    //
+    //     system         60 Hz     120 Hz    240 Hz
+    //     back cord      0.05597   0.02687   0.01896     2.1x
+    //     chest          0.02660   0.01169   0.00902     2.3x
+    //     ahoge          0.01507   0.00769   0.00309     2.0x
+    //     skirt chain    0.00807   0.00789   0.00784     1.0x
+    //     sleeve chain   0.00798   0.00772   0.00753     1.0x
+    //     hair ribbon    0.00384   0.00370   0.00368     1.0x
+    //
+    // Which is exactly what the per-axis numbers predicted all along: the ahoge's stiffest spring
+    // axis runs at dt*omega = 1.64 and the chest cord's at 2.37 — the latter past the symplectic-
+    // Euler stability limit of 2 — while the back cord is a six-link chain of ±5° joints whose
+    // high bending modes sit near Nyquist at 60 Hz. The parts that never got reported are the
+    // ones already well resolved (wide limits, soft springs), and they do not care.
+    //
+    // On the settle test (anchors held still, released at bind, then left alone) the chest, which
+    // had resisted every CFM/ERP/stiffness combination tried across three rounds and always kept
+    // ~0.45 rad/s of residual, reaches exactly 0.000000 here for the first time. Nothing else
+    // regresses: every other system was already 0.000000 and stays there.
+    //
+    // Halving the step also quarters the static limit violation derived below in init(): that
+    // term is dv*dt*stopCFM/stopERP and dv itself scales with dt, so the ahoge's residual droop
+    // outside its ±5° cone goes from ~2.6° to ~0.65°.
+    //
+    // maxSubSteps rises to 10 to keep the same real-time budget the old 5-at-1/60 had, i.e. the
+    // simulation only starts shedding time once a frame exceeds ~83 ms.
+    world_->stepSimulation(dt, 10, 1.f / 120.f);
 
     // Extra velocity decay on top of each body's own PMX damping and the joint springs' own
     // damping: under gravity, every step, forever, a rigid limit stop chatters (confirmed by
