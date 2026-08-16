@@ -439,7 +439,39 @@ void MmdPhysics::syncKinematic(const PmxModel& model, const std::vector<btTransf
 }
 
 void MmdPhysics::step(float dt) {
-    world_->stepSimulation(dt, 5, 1.f / 60.f);
+    // 120 Hz internally, not 60. Four rounds of jitter reports (hair ornaments, ahoge, chest,
+    // back cord) were each chased down to a different solver detail, but the three that were
+    // still moving after all of those turn out to share one cause the parameters cannot reach:
+    // their dynamics are simply not resolved at a 60 Hz step. The discriminator is sharp. Driving
+    // the anchor 20 degrees at 0.8 Hz and scoring the per-frame twitch of the result, halving the
+    // step changes the reported parts and leaves the never-reported ones alone:
+    //
+    //     system         60 Hz     120 Hz    240 Hz
+    //     back cord      0.05597   0.02687   0.01896     2.1x
+    //     chest          0.02660   0.01169   0.00902     2.3x
+    //     ahoge          0.01507   0.00769   0.00309     2.0x
+    //     skirt chain    0.00807   0.00789   0.00784     1.0x
+    //     sleeve chain   0.00798   0.00772   0.00753     1.0x
+    //     hair ribbon    0.00384   0.00370   0.00368     1.0x
+    //
+    // Which is exactly what the per-axis numbers predicted all along: the ahoge's stiffest spring
+    // axis runs at dt*omega = 1.64 and the chest cord's at 2.37 — the latter past the symplectic-
+    // Euler stability limit of 2 — while the back cord is a six-link chain of ±5° joints whose
+    // high bending modes sit near Nyquist at 60 Hz. The parts that never got reported are the
+    // ones already well resolved (wide limits, soft springs), and they do not care.
+    //
+    // On the settle test (anchors held still, released at bind, then left alone) the chest, which
+    // had resisted every CFM/ERP/stiffness combination tried across three rounds and always kept
+    // ~0.45 rad/s of residual, reaches exactly 0.000000 here for the first time. Nothing else
+    // regresses: every other system was already 0.000000 and stays there.
+    //
+    // Halving the step also quarters the static limit violation derived below in init(): that
+    // term is dv*dt*stopCFM/stopERP and dv itself scales with dt, so the ahoge's residual droop
+    // outside its ±5° cone goes from ~2.6° to ~0.65°.
+    //
+    // maxSubSteps rises to 10 to keep the same real-time budget the old 5-at-1/60 had, i.e. the
+    // simulation only starts shedding time once a frame exceeds ~83 ms.
+    world_->stepSimulation(dt, 10, 1.f / 120.f);
 
     // Extra velocity decay on top of each body's own PMX damping and the joint springs' own
     // damping: under gravity, every step, forever, a rigid limit stop chatters (confirmed by
