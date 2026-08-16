@@ -396,6 +396,7 @@ private fun AssistStage(
             settings = uiState.characterSettings,
             characterState = characterState,
             lipSyncEnabled = uiState.characterSettings.lipSyncEnabled,
+            mouthAmplitude = uiState.mouthAmplitude,
             onTap = null,
             modifier = Modifier.fillMaxSize(),
         )

@@ -344,20 +344,55 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
         // graph) extra CFM, does nothing at all across 0.005 to 0.8. The breast-to-breast pin
         // amplifies the problem — removing it drops the residual 140x — but the compliance that
         // settles it belongs on the two torso-to-breast joints, which is what this keys on.
+        // One more class wants a softer stop still, and it is the one behind the pose-dependent
+        // trembling of the sleeve ribbons. A unilateral stop only misbehaves while the joint is
+        // actually sitting on it. Most joints rest somewhere inside their range and only touch a
+        // stop in passing; a few are authored so that the rest configuration (the springs'
+        // equilibrium, which is always 0 because setEquilibriumPoint is never called) lies exactly
+        // ON a bound, so that stop is engaged from frame one. When that is true of all three
+        // angular axes at once, all three rows sit on the switching boundary simultaneously, and
+        // because they ride Bullet's non-orthogonal Euler axes the switching is coupled — whether
+        // the loop actually closes then depends on which of the three gravity happens to load,
+        // i.e. on the anchor's orientation. That is exactly the reported symptom: trembling at
+        // some poses and not others, rather than the steady buzz every earlier round chased.
+        //
+        // Counting joints by how many angular axes rest on a bound gives 93 with none, 57 with
+        // one, 5 with two and 5 with three — and the five are 左紐_A plus all four 袖_リボンA,
+        // the reported bodies. The B ribbons, whose X axis is instead free over ±180°, have only
+        // two and settle fine, which is the control that makes the count the right key rather
+        // than some property of ribbons generally.
+        //
+        // Measured with a pose-change test (anchor holds, sweeps 120° in 0.2 s, holds; worst case
+        // over eight anchor orientations; residual scored 4-6 s after the sweep):
+        //
+        //                       residual    residual w    peak
+        //     sleeve ribbons   0.000458 -> 0.000142   0 -> 0   0.323 -> 0.377
+        //     back cord        0.013791 -> 0.008156   0.471 -> 0.237   unchanged
+        //     the other eight systems      identical in every column
+        //
+        // 3.2x less residual on the reported part and 1.7x on the back cord (whose 左紐_A is in
+        // the same class), for a 17% larger peak swing during the pose change itself — the same
+        // trade a softer stop always makes, and the peak is the ribbon moving, which is wanted.
         constexpr float kStopCfm = 0.005f;
         constexpr float kSprungTranslationCfm = 0.02f;
         constexpr float kStopErp = 0.1f;
+        constexpr float kRestOnBoundErp = 0.02f;
         bool sprungTranslation = false;
+        int restOnBound = 0;
         for (int axis = 0; axis < 3; axis++) {
             if (joint.linearSpring[axis] > 0.f && joint.linearUpper[axis] > joint.linearLower[axis]) {
                 sprungTranslation = true;
-                break;
+            }
+            if (joint.angularLower[axis] < joint.angularUpper[axis] &&
+                (joint.angularLower[axis] == 0.f || joint.angularUpper[axis] == 0.f)) {
+                restOnBound++;
             }
         }
         const float stopCfm = sprungTranslation ? kSprungTranslationCfm : kStopCfm;
+        const float stopErp = restOnBound == 3 ? kRestOnBoundErp : kStopErp;
         for (int axis = 0; axis < 6; axis++) {
             constraint->setParam(BT_CONSTRAINT_STOP_CFM, stopCfm, axis);
-            constraint->setParam(BT_CONSTRAINT_STOP_ERP, kStopErp, axis);
+            constraint->setParam(BT_CONSTRAINT_STOP_ERP, stopErp, axis);
         }
         // btGeneric6DofSpringConstraint's damping scale is inverted from what its name suggests
         // (1 == no damping, per its own header) and defaults to 1 — PMX carries no separate

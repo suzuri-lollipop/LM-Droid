@@ -50,6 +50,9 @@ fun CharacterStage(
     lipSyncEnabled: Boolean,
     onTap: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    // The TTS audio's live 0..1 loudness while characterState == Speaking (see AssistUiState) —
+    // defaults to 0 for callers with nothing to speak (e.g. the Settings preview, always Idle).
+    mouthAmplitude: Float = 0f,
 ) {
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         when (settings.modelType) {
@@ -58,6 +61,7 @@ fun CharacterStage(
                 scale = settings.scale,
                 characterState = characterState,
                 lipSyncEnabled = lipSyncEnabled,
+                mouthAmplitude = mouthAmplitude,
                 onTap = onTap,
             )
             CharacterModelType.MMD -> {
@@ -68,6 +72,7 @@ fun CharacterStage(
                         vmdPath = settings.motionPath,
                         characterState = characterState,
                         lipSyncEnabled = lipSyncEnabled,
+                        mouthAmplitude = mouthAmplitude,
                         zoom = settings.mmdZoom,
                         panX = settings.mmdPanX,
                         panY = settings.mmdPanY,
@@ -92,6 +97,7 @@ private fun StaticSprite(
     scale: Float,
     characterState: CharacterUiState,
     lipSyncEnabled: Boolean,
+    mouthAmplitude: Float,
     onTap: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
@@ -132,6 +138,10 @@ private fun StaticSprite(
         label = "character-talking",
     )
     val isTalking = characterState == CharacterUiState.Speaking && lipSyncEnabled
+    // Scales the pulse's own deviation from 1.0 by how loud the voice is right now, so a still
+    // image's pseudo lip-sync also tracks the actual speech instead of pulsing at a fixed size
+    // regardless of what's being said.
+    val talkingScale = 1f + (talkingPulse - 1f) * mouthAmplitude
 
     // Tap bounce: a quick overshoot scale driven by Animatable, keyed by how many taps landed.
     val tapScale = remember { androidx.compose.animation.core.Animatable(1f) }
@@ -143,7 +153,7 @@ private fun StaticSprite(
         contentScale = ContentScale.Fit,
         modifier = modifier
             .heightIn(max = 480.dp)
-            .scale(scale * breathing * (if (isTalking) talkingPulse else 1f) * tapScale.value)
+            .scale(scale * breathing * (if (isTalking) talkingScale else 1f) * tapScale.value)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

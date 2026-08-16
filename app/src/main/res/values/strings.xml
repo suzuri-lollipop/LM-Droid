@@ -214,6 +214,8 @@
     <string name="character_typewriter_description">ノベルゲームのように返信を1文字ずつ表示します。タップすると全文を表示します。</string>
     <string name="character_lip_sync_label">リップシンク</string>
     <string name="character_lip_sync_description">返信の読み上げ中にキャラクターを動かします。</string>
+    <string name="character_lip_sync_threshold_label">リップシンクの反応閾値</string>
+    <string name="character_lip_sync_threshold_description">値が小さいほど小さな声にも敏感に反応し、大きいほど声が大きいときだけ口が動きます。</string>
     <string name="character_import_failed">ファイルのインポートに失敗しました</string>
 
     <string name="settings_wake_word_title">ウェイクアップワード</string>

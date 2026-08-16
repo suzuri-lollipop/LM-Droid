@@ -254,12 +254,21 @@ void MmdEngine::sampleMorphWeights(float frame, CharacterState state, float mout
         morphWeights_[blinkMorph_] = btMax(morphWeights_[blinkMorph_], blink);
     }
 
-    // Procedural lip sync: oscillate the mouth morph while the overlay speaks; the VMD's own
-    // mouth track wins when it's wider open than the oscillator.
-    if (state == CharacterState::Speaking && lipSync && mouthMorph_ >= 0) {
-        float oscillation = 0.55f + 0.45f * sinf(timeFrames_ * 1.05f);
-        float weight = mouthOpen * oscillation;
-        morphWeights_[mouthMorph_] = btMax(morphWeights_[mouthMorph_], weight);
+    // Lip sync: [mouthOpen] is the current TTS audio's amplitude at the caller's sample rate —
+    // loud syllables open the mouth, pauses and quiet consonants close it — smoothed here since
+    // the caller updates it far less often than every render frame. Attack faster than release
+    // (same asymmetry as a VU meter): a sudden loud syllable should show up right away, but the
+    // mouth eases back down through a gap rather than chattering shut between samples. The VMD's
+    // own mouth track (sampled into morphWeights_ above, if this motion has one) still wins
+    // whenever it's opened wider than this.
+    if (lipSync && mouthMorph_ >= 0) {
+        constexpr float kMouthAttackPerSecond = 18.f;
+        constexpr float kMouthReleasePerSecond = 9.f;
+        float target = (state == CharacterState::Speaking) ? clampf(mouthOpen, 0.f, 1.f) : 0.f;
+        float rate = target > mouthOpenSmoothed_ ? kMouthAttackPerSecond : kMouthReleasePerSecond;
+        float maxStep = rate * dt;
+        mouthOpenSmoothed_ += clampf(target - mouthOpenSmoothed_, -maxStep, maxStep);
+        morphWeights_[mouthMorph_] = btMax(morphWeights_[mouthMorph_], mouthOpenSmoothed_);
     }
 }
 

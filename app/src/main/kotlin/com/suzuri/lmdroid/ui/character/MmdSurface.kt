@@ -29,11 +29,14 @@ fun MmdSurface(
     zoom: Float = 1f,
     panX: Float = 0f,
     panY: Float = 0f,
+    // The TTS audio's live 0..1 loudness while characterState == Speaking (see AssistUiState) —
+    // defaults to 0 for callers with nothing to speak (e.g. the Settings preview, always Idle).
+    mouthAmplitude: Float = 0f,
 ) {
     val renderer = remember(pmxPath, vmdPath) { MmdNativeRenderer(pmxPath, vmdPath) }
     renderer.setState(characterState)
     renderer.lipSyncEnabled = lipSyncEnabled
-    renderer.setMouthOpen(if (characterState == CharacterUiState.Speaking && lipSyncEnabled) 1f else 0f)
+    renderer.setMouthOpen(if (characterState == CharacterUiState.Speaking && lipSyncEnabled) mouthAmplitude else 0f)
     renderer.setFraming(zoom, panX, panY)
 
     DisposableEffect(renderer) {

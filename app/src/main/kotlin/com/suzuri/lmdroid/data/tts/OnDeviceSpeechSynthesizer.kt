@@ -1,6 +1,7 @@
 package com.suzuri.lmdroid.data.tts
 
 import android.content.Context
+import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
@@ -45,14 +46,22 @@ class OnDeviceSpeechSynthesizer(private val context: Context) {
      * Suspends until the utterance finishes, successfully or not — the caller can await this to
      * know when it's safe to, e.g., re-enable the mic for a follow-up question. Never throws; a
      * device with no usable TTS voice at all just silently produces no audio.
+     *
+     * [audioSessionId], if given, asks the engine to route this utterance's output through that
+     * session (Engine.KEY_PARAM_SESSION_ID) so a Visualizer attached to the same id (see
+     * MouthAmplitudeTracker) can drive lip sync off the real audio. Not every engine honors this
+     * — if it doesn't, playback is unaffected, only the caller's amplitude tracking stays silent.
      */
-    suspend fun speak(text: String) {
+    suspend fun speak(text: String, audioSessionId: Int? = null) {
         val tts = ensureInitialized()
         if (tts == null) {
             Log.w(TAG, "speak: TextToSpeech unavailable, skipping")
             return
         }
         val utteranceId = UUID.randomUUID().toString()
+        val params = audioSessionId?.let {
+            Bundle().apply { putInt(TextToSpeech.Engine.KEY_PARAM_SESSION_ID, it) }
+        }
         suspendCancellableCoroutine { continuation ->
             fun finish() {
                 if (continuation.isActive) continuation.resume(Unit)
@@ -71,7 +80,7 @@ class OnDeviceSpeechSynthesizer(private val context: Context) {
                     }
                 },
             )
-            val result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+            val result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
             if (result == TextToSpeech.ERROR) {
                 Log.w(TAG, "speak: TextToSpeech.speak() returned ERROR")
                 finish()

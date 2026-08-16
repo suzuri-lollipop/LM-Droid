@@ -19,8 +19,10 @@ public:
     bool loadModel(const std::string& pmxPath, std::string* error);
     bool loadMotion(const std::string& vmdPath, const VmdNameDecoder& decoder, std::string* error);
 
-    // Advances animation + physics and re-skins. [characterState]/[mouthOpen]/[lipSync]
-    // come from the overlay (mouthOpen is 0..1 while TTS plays).
+    // Advances animation + physics and re-skins. [characterState]/[mouthOpen]/[lipSync] come
+    // from the overlay — mouthOpen is the current TTS audio's amplitude envelope (0..1, silence
+    // to loudest), resampled by the caller from the playing clip's actual waveform, not a fixed
+    // shape — so the mouth tracks what's actually being said instead of a canned loop.
     void update(float dt, CharacterState state, float mouthOpen, bool lipSync);
 
     const PmxModel& model() const { return model_; }
@@ -71,6 +73,10 @@ private:
     float timeFrames_ = 0.f;
     float blinkTimer_ = 0.f;
     float blinkValue_ = 0.f;
+    // Smoothed toward the caller's mouthOpen sample each frame (see sampleMorphWeights) — the
+    // Kotlin side updates that sample far slower than this runs, so smoothing here is what turns
+    // a staircase of envelope buckets into continuous mouth motion.
+    float mouthOpenSmoothed_ = 0.f;
 
     btVector3 boundsCenter_{0, 10, 0};
     float boundsHeight_ = 20.f;

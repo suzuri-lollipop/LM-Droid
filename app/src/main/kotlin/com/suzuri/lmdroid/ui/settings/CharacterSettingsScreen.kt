@@ -274,6 +274,26 @@ fun CharacterSettingsScreen(viewModel: CharacterSettingsViewModel, modifier: Mod
             },
             modifier = Modifier.clickable { viewModel.onToggleLipSync(!uiState.settings.lipSyncEnabled) },
         )
+        if (uiState.settings.lipSyncEnabled) {
+            HorizontalDivider()
+            var thresholdDraft by remember { mutableFloatStateOf(uiState.settings.lipSyncThreshold) }
+            LaunchedEffect(uiState.settings.lipSyncThreshold) { thresholdDraft = uiState.settings.lipSyncThreshold }
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.character_lip_sync_threshold_label)) },
+                supportingContent = {
+                    Column {
+                        Text(stringResource(R.string.character_lip_sync_threshold_description))
+                        Slider(
+                            value = thresholdDraft,
+                            onValueChange = { thresholdDraft = it },
+                            onValueChangeFinished = { viewModel.onLipSyncThresholdChanged(thresholdDraft) },
+                            valueRange = 5f..80f,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                },
+            )
+        }
         HorizontalDivider()
     }
 }
