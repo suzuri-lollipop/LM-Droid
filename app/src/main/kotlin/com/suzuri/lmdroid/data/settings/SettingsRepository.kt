@@ -10,6 +10,8 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.suzuri.lmdroid.data.audio.DEFAULT_MIC_INPUT_THRESHOLD
+import com.suzuri.lmdroid.data.audio.MIC_INPUT_THRESHOLD_MAX
 import com.suzuri.lmdroid.data.character.CharacterModelType
 import com.suzuri.lmdroid.data.character.CharacterSettings
 import com.suzuri.lmdroid.data.db.ApiProfileDao
@@ -290,6 +292,21 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs -> prefs[KEY_WAKE_WORD] = word }
     }
 
+    /**
+     * Noise gate for mic-driven listening: a normalized peak amplitude (fraction of
+     * Short.MAX_VALUE) below which captured audio is treated as silence/noise rather than
+     * speech. Applied by WakeWordService (background wake-word spotting) and LocalVoiceInputState
+     * (the assistant overlay's on-device STT, triggered by wake word or power-button long-press).
+     */
+    val micInputThreshold: Flow<Float> = context.settingsDataStore.data.map { it[KEY_MIC_INPUT_THRESHOLD] ?: DEFAULT_MIC_INPUT_THRESHOLD }
+
+    suspend fun currentMicInputThreshold(): Float = micInputThreshold.first()
+
+    suspend fun setMicInputThreshold(threshold: Float) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_MIC_INPUT_THRESHOLD] = threshold.coerceIn(0f, MIC_INPUT_THRESHOLD_MAX) }
+    }
+
+
     /** Which speech recognition model is used for voice input. */
     val selectedSttModelId: Flow<String> = context.settingsDataStore.data.map { it[KEY_SELECTED_STT_MODEL_ID] ?: "vosk-jp-small" }
 
@@ -479,6 +496,7 @@ class SettingsRepository(
         val KEY_SELECTED_YOUTUBE_DATA_API_PROFILE_ID = longPreferencesKey("selected_youtube_data_api_profile_id")
         val KEY_WAKE_WORD_ENABLED = booleanPreferencesKey("wake_word_enabled")
         val KEY_WAKE_WORD = stringPreferencesKey("wake_word")
+        val KEY_MIC_INPUT_THRESHOLD = floatPreferencesKey("mic_input_threshold")
         val KEY_SELECTED_STT_MODEL_ID = stringPreferencesKey("selected_stt_model_id")
         val KEY_SELECTED_STT_LANGUAGE = stringPreferencesKey("selected_stt_language")
         val KEY_CHARACTER_MODEL_TYPE = stringPreferencesKey("character_model_type")

@@ -52,7 +52,7 @@ class AssistantSettingsViewModel(
                 settingsRepository.wakeWord,
                 WakeWordDebugManager.status,
                 WakeWordDebugManager.lastResult,
-            ) { enabled, word, status, result -> 
+            ) { enabled, word, status, result ->
                 AssistantSettingsWakeWordState(enabled, word, status, result)
             }.collect { state ->
                 _uiState.update { it.copy(
@@ -62,6 +62,15 @@ class AssistantSettingsViewModel(
                     wakeWordLastResult = state.lastResult
                 ) }
             }
+        }
+        viewModelScope.launch {
+            combine(
+                settingsRepository.micInputThreshold,
+                WakeWordDebugManager.micLevel,
+            ) { threshold, level -> threshold to level }
+                .collect { (threshold, level) ->
+                    _uiState.update { it.copy(micInputThreshold = threshold, micLevel = level) }
+                }
         }
     }
 
@@ -84,6 +93,10 @@ class AssistantSettingsViewModel(
 
     fun onUpdateWakeWord(word: String) {
         viewModelScope.launch { settingsRepository.setWakeWord(word) }
+    }
+
+    fun onMicInputThresholdChanged(threshold: Float) {
+        viewModelScope.launch { settingsRepository.setMicInputThreshold(threshold) }
     }
 }
 

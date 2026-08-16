@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
 import com.suzuri.lmdroid.LmDroidApplication
+import com.suzuri.lmdroid.data.audio.normalizedPeakLevel
 import com.suzuri.lmdroid.data.settings.SettingsRepository
 import com.suzuri.lmdroid.data.stt.SpeechEngineType
 import com.suzuri.lmdroid.data.stt.SpeechModel
@@ -36,7 +37,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.Locale
-import kotlin.math.abs
 
 /**
  * Drives the composer's mic button. [isAvailable] reflects whether this device even has a speech
@@ -115,6 +115,9 @@ class LocalVoiceInputState(
             try {
                 val modelId = settingsRepository.currentSelectedSttModelId()
                 val speechModel = SpeechModel.ALL_MODELS.find { it.id == modelId } ?: SpeechModel.VOSK_SMALL_JP
+                // Snapshot once — a session lasts seconds, so it isn't worth reacting to a
+                // threshold change made mid-utterance the way WakeWordService does.
+                val micThreshold = settingsRepository.currentMicInputThreshold()
 
                 // Every failure path below just reports and returns — the finally block is what
                 // clears isPreparing/isListening, so no flag bookkeeping in between. The error is
@@ -184,7 +187,11 @@ class LocalVoiceInputState(
                 val buffer = ShortArray(bufferSize)
 
                 try {
-                    var buffersRead = 0
+                    // Gates out leading silence/noise below micThreshold so ambient sound alone
+                    // can't feed the engine — once real speech crosses the threshold once, every
+                    // subsequent buffer (silence included) is fed through as before, so the
+                    // engine's own end-of-utterance/finalization detection is untouched.
+                    var speechStarted = false
                     // The generation check covers a session stopped while still preparing (model
                     // loading takes seconds): this coroutine then flips isListening back on after
                     // stop() cleared it, and without this the mic would keep capturing for a
@@ -192,13 +199,9 @@ class LocalVoiceInputState(
                     while (isListening && sessionGeneration == generation) {
                         val read = recorder.read(buffer, 0, buffer.size)
                         if (read > 0) {
-                            if (buffersRead++ % 2 == 0) {
-                                var peak = 0
-                                for (i in 0 until read) {
-                                    val amplitude = abs(buffer[i].toInt())
-                                    if (amplitude > peak) peak = amplitude
-                                }
-                                Log.d("LocalVoiceInput", "Mic peak amplitude: $peak")
+                            if (!speechStarted) {
+                                speechStarted = normalizedPeakLevel(buffer, read) >= micThreshold
+                                if (!speechStarted) continue
                             }
                             if (engine.acceptAudio(buffer, read)) {
                                 val result = engine.getResult()
