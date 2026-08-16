@@ -14,6 +14,7 @@ import com.suzuri.lmdroid.data.character.CharacterModelType
 import com.suzuri.lmdroid.data.character.CharacterSettings
 import com.suzuri.lmdroid.data.db.ApiProfileDao
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
+import com.suzuri.lmdroid.data.tts.MouthAmplitudeTracker
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -357,6 +358,7 @@ class SettingsRepository(
             scale = prefs[KEY_CHARACTER_SCALE] ?: 1f,
             typewriterEnabled = prefs[KEY_CHARACTER_TYPWRITER_ENABLED] ?: true,
             lipSyncEnabled = prefs[KEY_CHARACTER_LIP_SYNC_ENABLED] ?: true,
+            lipSyncThreshold = prefs[KEY_CHARACTER_LIP_SYNC_THRESHOLD] ?: MouthAmplitudeTracker.DEFAULT_REFERENCE_RMS,
             mmdZoom = prefs[KEY_CHARACTER_MMD_ZOOM] ?: 1f,
             mmdPanX = prefs[KEY_CHARACTER_MMD_PAN_X] ?: 0f,
             mmdPanY = prefs[KEY_CHARACTER_MMD_PAN_Y] ?: 0f,
@@ -398,6 +400,10 @@ class SettingsRepository(
 
     suspend fun setCharacterLipSyncEnabled(enabled: Boolean) {
         context.settingsDataStore.edit { prefs -> prefs[KEY_CHARACTER_LIP_SYNC_ENABLED] = enabled }
+    }
+
+    suspend fun setCharacterLipSyncThreshold(threshold: Float) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_CHARACTER_LIP_SYNC_THRESHOLD] = threshold.coerceIn(5f, 80f) }
     }
 
     /** The MMD display range picked in the settings live preview (see CharacterSettingsScreen). */
@@ -482,6 +488,7 @@ class SettingsRepository(
         val KEY_CHARACTER_SCALE = floatPreferencesKey("character_scale")
         val KEY_CHARACTER_TYPWRITER_ENABLED = booleanPreferencesKey("character_typewriter_enabled")
         val KEY_CHARACTER_LIP_SYNC_ENABLED = booleanPreferencesKey("character_lip_sync_enabled")
+        val KEY_CHARACTER_LIP_SYNC_THRESHOLD = floatPreferencesKey("character_lip_sync_threshold")
         val KEY_CHARACTER_MMD_ZOOM = floatPreferencesKey("character_mmd_zoom")
         val KEY_CHARACTER_MMD_PAN_X = floatPreferencesKey("character_mmd_pan_x")
         val KEY_CHARACTER_MMD_PAN_Y = floatPreferencesKey("character_mmd_pan_y")

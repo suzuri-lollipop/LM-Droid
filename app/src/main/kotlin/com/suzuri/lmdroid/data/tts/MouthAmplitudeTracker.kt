@@ -26,8 +26,17 @@ class MouthAmplitudeTracker {
 
     private var visualizer: Visualizer? = null
 
-    /** Starts tracking [audioSessionId]'s output. Call [stop] once that session's audio ends. */
-    fun start(audioSessionId: Int) {
+    /**
+     * Starts tracking [audioSessionId]'s output. Call [stop] once that session's audio ends.
+     *
+     * [referenceRms] is the loudness (RMS of the 0..127 unsigned-PCM deviation from centre) that
+     * maps to a fully-open mouth — this is the "threshold" exposed as Settings →
+     * キャラクター's lip-sync sensitivity slider (see CharacterSettings.lipSyncThreshold). Lower
+     * values make the mouth react to quieter audio (more sensitive); higher values need louder
+     * audio before it opens. Defaults to [DEFAULT_REFERENCE_RMS], deliberately low (~15% of the
+     * 0..127 range) so ordinary speech reaches close to 1.0 rather than only clipped peaks doing so.
+     */
+    fun start(audioSessionId: Int, referenceRms: Float = DEFAULT_REFERENCE_RMS) {
         stop()
         visualizer = runCatching {
             Visualizer(audioSessionId).apply {
@@ -36,17 +45,13 @@ class MouthAmplitudeTracker {
                     object : Visualizer.OnDataCaptureListener {
                         override fun onWaveFormDataCapture(visualizer: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
                             if (waveform == null || waveform.isEmpty()) return
-                            // Waveform bytes are unsigned 8-bit PCM centered at 128; RMS of the
-                            // deviation from centre is this frame's loudness. The reference is
-                            // deliberately low (~15% of the 0..127 deviation range) so ordinary
-                            // speech reaches close to 1.0 rather than only clipped peaks doing so.
                             var sumSquares = 0.0
                             for (b in waveform) {
                                 val centered = (b.toInt() and 0xFF) - 128
                                 sumSquares += centered.toDouble() * centered.toDouble()
                             }
                             val rms = sqrt(sumSquares / waveform.size)
-                            _amplitude.value = (rms / REFERENCE_RMS).toFloat().coerceIn(0f, 1f)
+                            _amplitude.value = (rms / referenceRms).toFloat().coerceIn(0f, 1f)
                         }
 
                         override fun onFftDataCapture(visualizer: Visualizer?, fft: ByteArray?, samplingRate: Int) = Unit
@@ -72,8 +77,8 @@ class MouthAmplitudeTracker {
         _amplitude.value = 0f
     }
 
-    private companion object {
+    companion object {
         const val TAG = "MouthAmplitudeTracker"
-        const val REFERENCE_RMS = 32.0
+        const val DEFAULT_REFERENCE_RMS = 32f
     }
 }

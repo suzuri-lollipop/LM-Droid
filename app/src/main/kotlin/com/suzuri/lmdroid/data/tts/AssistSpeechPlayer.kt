@@ -124,7 +124,7 @@ class AssistSpeechPlayer(
                     // and speak() itself is unaffected — playback never depends on this succeeding.
                     val sessionId = audioManager?.generateAudioSessionId()
                         ?.takeIf { it != AudioManager.ERROR }
-                    if (sessionId != null) mouthAmplitudeTracker.start(sessionId)
+                    if (sessionId != null) mouthAmplitudeTracker.start(sessionId, lipSyncThreshold())
                     try {
                         onDeviceSpeechSynthesizer.speak(prepared.text, sessionId)
                     } finally {
@@ -138,8 +138,13 @@ class AssistSpeechPlayer(
         }
     }
 
+    /** The user's current lip-sync sensitivity (Settings → キャラクター) — see MouthAmplitudeTracker.start. */
+    private suspend fun lipSyncThreshold(): Float =
+        settingsRepository.currentCharacterSettings().lipSyncThreshold
+
     private suspend fun playWav(audioBytes: ByteArray) {
         val file = File.createTempFile("assist_tts_", ".wav", context.cacheDir)
+        val threshold = lipSyncThreshold()
         try {
             file.writeBytes(audioBytes)
             suspendCancellableCoroutine { continuation ->
@@ -169,7 +174,7 @@ class AssistSpeechPlayer(
                     player.setOnPreparedListener { p ->
                         val stillCurrent = synchronized(mediaPlayerLock) { mediaPlayer === p }
                         if (stillCurrent) {
-                            mouthAmplitudeTracker.start(p.audioSessionId)
+                            mouthAmplitudeTracker.start(p.audioSessionId, threshold)
                             p.start()
                         }
                     }

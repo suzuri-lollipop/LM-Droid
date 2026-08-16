@@ -1,5 +1,7 @@
 package com.suzuri.lmdroid.data.character
 
+import com.suzuri.lmdroid.data.tts.MouthAmplitudeTracker
+
 /**
  * Which renderer draws the assistant character on the overlay (see CharacterStage). NONE,
  * STATIC and MMD (NDK-native PMX/VMD renderer, Phase 4) are wired up; LIVE2D is reserved for
@@ -27,6 +29,10 @@ data class CharacterSettings(
     val scale: Float = 1f,
     val typewriterEnabled: Boolean = true,
     val lipSyncEnabled: Boolean = true,
+    // The RMS loudness (see MouthAmplitudeTracker) that maps to a fully-open mouth. Lower is more
+    // sensitive (quieter audio opens the mouth further); higher needs louder audio to react at
+    // all. Exposed as Settings → キャラクター's lip-sync sensitivity slider.
+    val lipSyncThreshold: Float = MouthAmplitudeTracker.DEFAULT_REFERENCE_RMS,
     // MMD only: the on-screen display range, set from the live preview in Settings →
     // キャラクター (see CharacterSettingsScreen/MmdRenderer::setFraming). mmdZoom > 1 crops the
     // camera in on the model (e.g. a bust shot instead of full body); mmdPanX/mmdPanY shift that
