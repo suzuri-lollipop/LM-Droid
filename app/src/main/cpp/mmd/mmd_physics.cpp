@@ -179,6 +179,19 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
     // computed target frames fight every step, showing up as velocity that never decays
     // (persistent jitter). Keep only the first joint seen for each pair.
     std::set<std::pair<int, int>> jointedPairs;
+    // Union-find over the bodies, grown as the constraints are created, so each joint can be
+    // asked whether its two bodies were ALREADY connected by the joints before it — see the
+    // redundant-closure handling further down.
+    std::vector<int> connected(bodyCount);
+    for (size_t i = 0; i < bodyCount; i++) connected[i] = static_cast<int>(i);
+    auto findRoot = [&connected](int x) {
+        while (connected[x] != x) {
+            connected[x] = connected[connected[x]];
+            x = connected[x];
+        }
+        return x;
+    };
+
     for (const auto& joint : model.joints) {
         if (joint.bodyA < 0 || joint.bodyA >= static_cast<int>(bodyCount)) continue;
         if (joint.bodyB < 0 || joint.bodyB >= static_cast<int>(bodyCount)) continue;
@@ -186,6 +199,42 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
         if (!jointedPairs.insert(pairKey).second) continue;
         btRigidBody* a = bodies_[joint.bodyA].get();
         btRigidBody* b = bodies_[joint.bodyB].get();
+
+        // A joint whose two bodies the constraint graph already connects adds a second, parallel
+        // path between them. That is fine when the joint has somewhere to give — the skirt and
+        // back-hair cross-links let their bodies travel (±0.5 and ±0.1 on their linear axes), so
+        // the two paths can both be satisfied. It is not fine when the closure is a RIGID pin:
+        // zero travel on all three linear axes means two independent rigid paths between the same
+        // pair, which sequential impulse cannot satisfy simultaneously, and the springs' authority
+        // becomes the loop gain of the resulting fight.
+        //
+        // In this project's test model exactly one joint is both: 左胸_J, which pins the left
+        // breast rigidly to the right one at the chest midline — 0.728 units from either body's
+        // centre, so its linear rows convert a small translation error into a large rotation of
+        // both bodies, while both are already spring-constrained to the same torso. Measured on
+        // the settle test (anchors still, released at bind, 20 s of gravity, mean second
+        // difference of pose over the last 7 s; every other part in the rig scores exactly 0),
+        // scaling just this joint's authored stiffness:
+        //
+        //     scale   1.0      0.8      0.7      0.6     0.5      0.35     0.2
+        //     breast  0.01226  0.00415  0.00199  0.00116 0.00085  0.00086  0.00102
+        //     cord    0.01297  0.00648  0.00380  0.00274 0.00211  0.00214  0.00261
+        //
+        // 0.5 is the minimum and sits in a flat basin (0.35-0.6 all within 40%), so it has margin
+        // on both sides. It also beats deleting the joint outright (which scores 0.00225) while
+        // keeping what the joint is there for: under an asymmetric torso twist the breasts' peak
+        // excursion and their left/right correlation are unchanged from the authored value
+        // (0.42/0.41 and -0.37, versus 0.43/0.41 and -0.36), whereas deleting it drops the
+        // excursion 19% and flips the correlation to +0.17.
+        int rootA = findRoot(joint.bodyA);
+        int rootB = findRoot(joint.bodyB);
+        bool closesLoop = rootA == rootB;
+        if (!closesLoop) connected[rootA] = rootB;
+        bool rigidPin = joint.linearLower.x() == joint.linearUpper.x() &&
+                        joint.linearLower.y() == joint.linearUpper.y() &&
+                        joint.linearLower.z() == joint.linearUpper.z();
+        constexpr float kRedundantClosureScale = 0.5f;
+        const float springScale = (closesLoop && rigidPin) ? kRedundantClosureScale : 1.f;
 
         btTransform jointWorld = offsetTransform(joint.position, joint.rotation);
         btTransform frameInA = a->getWorldTransform().inverse() * jointWorld;
@@ -342,16 +391,21 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
         auto springDamping = [&](float stiffness) {
             return std::min(kSpringDamping, kMaxSpringServoGain * iterations / stiffness);
         };
+        // springScale is 1 for every joint except a redundant rigid loop closure (see above).
+        // Scaling before springDamping() keeps the servo-gain bound consistent with the stiffness
+        // the constraint actually gets.
         for (int axis = 0; axis < 3; axis++) {
             if (joint.linearSpring[axis] > 0.f) {
+                const float stiffness = joint.linearSpring[axis] * springScale;
                 constraint->enableSpring(axis, true);
-                constraint->setStiffness(axis, joint.linearSpring[axis]);
-                constraint->setDamping(axis, springDamping(joint.linearSpring[axis]));
+                constraint->setStiffness(axis, stiffness);
+                constraint->setDamping(axis, springDamping(stiffness));
             }
             if (joint.angularSpring[axis] > 0.f) {
+                const float stiffness = joint.angularSpring[axis] * springScale;
                 constraint->enableSpring(axis + 3, true);
-                constraint->setStiffness(axis + 3, joint.angularSpring[axis]);
-                constraint->setDamping(axis + 3, springDamping(joint.angularSpring[axis]));
+                constraint->setStiffness(axis + 3, stiffness);
+                constraint->setDamping(axis + 3, springDamping(stiffness));
             }
         }
         world_->addConstraint(constraint.get(), true);
