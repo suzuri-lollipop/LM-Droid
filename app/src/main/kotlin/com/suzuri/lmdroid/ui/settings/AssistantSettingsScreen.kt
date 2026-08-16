@@ -213,8 +213,34 @@ fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Mod
             },
         )
 
+        // Governs both WakeWordService's background spotting and the assistant overlay's
+        // post-activation listening (power-button long-press included) — always adjustable, since
+        // the latter works even with the wake-word listener turned off. Only the live level bar
+        // needs WakeWordService actually running; without it the bar just stays flat.
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = stringResource(R.string.settings_mic_threshold_label),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.settings_mic_threshold_description),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        var micThresholdDraft by remember { mutableFloatStateOf(uiState.micInputThreshold) }
+        LaunchedEffect(uiState.micInputThreshold) { micThresholdDraft = uiState.micInputThreshold }
+        MicSensitivityMeter(
+            level = uiState.micLevel,
+            threshold = micThresholdDraft,
+            onThresholdChange = { micThresholdDraft = it },
+            onThresholdChangeFinished = { viewModel.onMicInputThresholdChanged(micThresholdDraft) },
+            valueRange = 0f..MIC_INPUT_THRESHOLD_MAX,
+            modifier = Modifier.fillMaxWidth(),
+        )
         if (!uiState.wakeWordEnabled) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = stringResource(R.string.settings_mic_threshold_disabled_hint),
                 style = MaterialTheme.typography.bodySmall,
@@ -230,7 +256,7 @@ fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Mod
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(16.dp))
             OutlinedTextField(
                 value = wakeWordDraft,
                 onValueChange = { wakeWordDraft = it },
@@ -249,29 +275,6 @@ fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Mod
             ) {
                 Text(stringResource(R.string.settings_save))
             }
-
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = stringResource(R.string.settings_mic_threshold_label),
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = stringResource(R.string.settings_mic_threshold_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            var micThresholdDraft by remember { mutableFloatStateOf(uiState.micInputThreshold) }
-            LaunchedEffect(uiState.micInputThreshold) { micThresholdDraft = uiState.micInputThreshold }
-            MicSensitivityMeter(
-                level = uiState.micLevel,
-                threshold = micThresholdDraft,
-                onThresholdChange = { micThresholdDraft = it },
-                onThresholdChangeFinished = { viewModel.onMicInputThresholdChanged(micThresholdDraft) },
-                valueRange = 0f..MIC_INPUT_THRESHOLD_MAX,
-                modifier = Modifier.fillMaxWidth(),
-            )
 
             Spacer(Modifier.height(16.dp))
             Surface(
