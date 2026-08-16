@@ -261,10 +261,53 @@ void MmdPhysics::init(const PmxModel& model, const std::vector<btTransform>& bon
         // threshold. Pairing it with a smaller CFM keeps the static-violation multiplier at
         // 0.05 — still better than the 0.067 that fixed the ornaments, and 10x better than the
         // 0.5 this started at.
+        // One class of joint needs more compliance than that, and it is identifiable from the
+        // authored data rather than by waiting for someone to report it. PMX almost always locks a
+        // joint's three linear axes (linearLower == linearUpper), which makes them three bilateral
+        // rows that simply pin a point: mutually consistent, consistent with the angular rows, and
+        // needing no compliance at all. A joint that instead gives a linear axis real travel AND a
+        // spring is a different animal — that axis's row is a motor and a unilateral stop at the
+        // same time, and because Bullet builds linear rows with the offset formulation
+        // (m_useOffsetForConstraintFrame) the row also carries an angular jacobian term relA x ax.
+        // So sprung translation is precisely the case where a joint's translational and rotational
+        // corrections are cross-coupled inside one joint and the row set can go inconsistent, and
+        // CFM — constraint force mixing, i.e. compliance — is the term that regularises exactly
+        // that. Here it is 21 of 160 joints: the two breast joints, the skirt and back-hair
+        // cross-links, and the front-hair strands.
+        //
+        // Measured on the chest (上半身2 -> 左胸/右胸, cross-pinned to each other, each carrying a
+        // cord), which is where this showed up: anchors held still, bodies released at bind, 20 s
+        // under gravity, scoring the mean second difference of pose over the last 7 s (0 == fully
+        // at rest). At a flat 0.005 the chest sustains a limit cycle at 0.0572 — about 1 rad/s of
+        // permanent angular velocity on both breast bodies. Giving just this class 0.02 takes it
+        // to 0.0130, a 4.4x reduction, while every other part measured (ahoge, hair ribbon, bell
+        // ribbon, hair bell, skirt loop, sleeve chain) stays at exactly 0.000000 because none of
+        // them is in the class and none of their values change. Raising the flat value to 0.02
+        // instead reaches a similar 0.0120, but it multiplies the static limit violation of
+        // everything else by four (the CFM/ERP term above: the ahoge would hang 10.5° outside its
+        // ±5° cone instead of 2.6°), which is why this is keyed per joint and not global.
+        //
+        // Two candidate explanations were tested and refuted rather than assumed: clamping each
+        // spring's equilibrium into its own authored range (the breast joint's linear Y range is
+        // [0.010, 0.502], which excludes the equilibrium at 0) changes the result in no digit; and
+        // treating this as classic over-constraint from the closed 上半身2 -> 左胸 -> 右胸 loop,
+        // giving loop-closing joints (16 of 112 after dedup, found by union-find over the joint
+        // graph) extra CFM, does nothing at all across 0.005 to 0.8. The breast-to-breast pin
+        // amplifies the problem — removing it drops the residual 140x — but the compliance that
+        // settles it belongs on the two torso-to-breast joints, which is what this keys on.
         constexpr float kStopCfm = 0.005f;
+        constexpr float kSprungTranslationCfm = 0.02f;
         constexpr float kStopErp = 0.1f;
+        bool sprungTranslation = false;
+        for (int axis = 0; axis < 3; axis++) {
+            if (joint.linearSpring[axis] > 0.f && joint.linearUpper[axis] > joint.linearLower[axis]) {
+                sprungTranslation = true;
+                break;
+            }
+        }
+        const float stopCfm = sprungTranslation ? kSprungTranslationCfm : kStopCfm;
         for (int axis = 0; axis < 6; axis++) {
-            constraint->setParam(BT_CONSTRAINT_STOP_CFM, kStopCfm, axis);
+            constraint->setParam(BT_CONSTRAINT_STOP_CFM, stopCfm, axis);
             constraint->setParam(BT_CONSTRAINT_STOP_ERP, kStopErp, axis);
         }
         // btGeneric6DofSpringConstraint's damping scale is inverted from what its name suggests
