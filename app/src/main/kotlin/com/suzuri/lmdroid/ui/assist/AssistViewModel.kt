@@ -113,6 +113,12 @@ class AssistViewModel(
         }
 
         viewModelScope.launch {
+            assistSpeechPlayer.mouthAmplitude.collect { amplitude ->
+                _uiState.update { it.copy(mouthAmplitude = amplitude) }
+            }
+        }
+
+        viewModelScope.launch {
             conversationId.filterNotNull().flatMapLatest { id ->
                 conversationRepository.observeMessages(id)
             }.collect { entities ->

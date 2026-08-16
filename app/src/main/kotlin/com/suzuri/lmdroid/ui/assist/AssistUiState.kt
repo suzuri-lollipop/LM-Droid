@@ -35,4 +35,7 @@ data class AssistUiState(
     // Mirrors AssistSpeechPlayer.isSpeaking so the character can show its "speaking" state /
     // lip-sync while the reply is being read aloud.
     val isSpeaking: Boolean = false,
+    // Mirrors AssistSpeechPlayer.mouthAmplitude — the current TTS audio's live loudness (0..1),
+    // so the character's mouth tracks the actual voice instead of a fixed open/close loop.
+    val mouthAmplitude: Float = 0f,
 )

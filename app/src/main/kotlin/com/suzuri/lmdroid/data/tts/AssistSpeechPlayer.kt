@@ -1,6 +1,7 @@
 package com.suzuri.lmdroid.data.tts
 
 import android.content.Context
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.util.Log
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
@@ -51,6 +52,13 @@ class AssistSpeechPlayer(
     // to count overlapping chunks.
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
+
+    // Live 0..1 lip-sync amplitude off whatever's actually playing — see MouthAmplitudeTracker.
+    // One shared instance: play() is strictly sequential, so only ever one backend is tracked at
+    // a time, and reusing it means start() on the next chunk implicitly stops the previous one.
+    private val mouthAmplitudeTracker = MouthAmplitudeTracker()
+    val mouthAmplitude: StateFlow<Float> = mouthAmplitudeTracker.amplitude
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
 
     /** What [play] needs to actually speak a chunk — the result of whatever synthesis [prepare] did (or didn't need to do). */
     sealed class PreparedSpeech {
@@ -109,7 +117,20 @@ class AssistSpeechPlayer(
         _isSpeaking.value = true
         try {
             when (prepared) {
-                is PreparedSpeech.OnDevice -> onDeviceSpeechSynthesizer.speak(prepared.text)
+                is PreparedSpeech.OnDevice -> {
+                    // generateAudioSessionId() needs API 21+ (this app's minSdk is 26) and can
+                    // still fail on a device with no audio session slots free; either way a null
+                    // id just means the engine won't have anything for the tracker to attach to,
+                    // and speak() itself is unaffected — playback never depends on this succeeding.
+                    val sessionId = audioManager?.generateAudioSessionId()
+                        ?.takeIf { it != AudioManager.ERROR }
+                    if (sessionId != null) mouthAmplitudeTracker.start(sessionId)
+                    try {
+                        onDeviceSpeechSynthesizer.speak(prepared.text, sessionId)
+                    } finally {
+                        mouthAmplitudeTracker.stop()
+                    }
+                }
                 is PreparedSpeech.Wav -> playWav(prepared.audioBytes)
             }
         } finally {
@@ -131,7 +152,10 @@ class AssistSpeechPlayer(
                         mediaPlayer = null
                         true
                     }
-                    if (claimed) runCatching { player.release() }
+                    if (claimed) {
+                        mouthAmplitudeTracker.stop()
+                        runCatching { player.release() }
+                    }
                     if (continuation.isActive) continuation.resume(Unit)
                 }
 
@@ -144,7 +168,10 @@ class AssistSpeechPlayer(
                     // already-released player is what let speech survive the overlay closing.
                     player.setOnPreparedListener { p ->
                         val stillCurrent = synchronized(mediaPlayerLock) { mediaPlayer === p }
-                        if (stillCurrent) p.start()
+                        if (stillCurrent) {
+                            mouthAmplitudeTracker.start(p.audioSessionId)
+                            p.start()
+                        }
                     }
                     player.setOnCompletionListener { finish(it) }
                     player.setOnErrorListener { mp, what, extra ->
@@ -167,6 +194,7 @@ class AssistSpeechPlayer(
     /** Stops any in-progress speech from either backend — called when the user dismisses the overlay or starts a follow-up question, so playback never keeps going after the user has moved on. */
     fun stop() {
         _isSpeaking.value = false
+        mouthAmplitudeTracker.stop()
         onDeviceSpeechSynthesizer.stop()
         // Atomically takes ownership of whatever mediaPlayer currently is (if anything) so
         // finish()'s own claim check above sees it already cleared and won't also try to release
