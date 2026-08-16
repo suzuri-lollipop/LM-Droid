@@ -24,6 +24,8 @@ import androidx.core.content.ContextCompat
 import com.suzuri.lmdroid.AssistActivity
 import com.suzuri.lmdroid.LmDroidApplication
 import com.suzuri.lmdroid.R
+import com.suzuri.lmdroid.data.audio.DEFAULT_MIC_INPUT_THRESHOLD
+import com.suzuri.lmdroid.data.audio.normalizedPeakLevel
 import com.suzuri.lmdroid.data.settings.SettingsRepository
 import com.suzuri.lmdroid.data.stt.SpeechModel
 import com.suzuri.lmdroid.data.vosk.VoskRepository
@@ -58,6 +60,11 @@ class WakeWordService : Service() {
     private lateinit var audioManager: AudioManager
 
     private var isPausedByAssistant = false
+
+    // Read from the capture loop (Dispatchers.IO) but written from the settings collector below —
+    // volatile so a threshold change made while listening takes effect on the very next buffer.
+    @Volatile
+    private var micThreshold = DEFAULT_MIC_INPUT_THRESHOLD
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -120,6 +127,12 @@ class WakeWordService : Service() {
                 }
             }
         }
+        // Separate from the enabled/word collector above so that adjusting the threshold while
+        // listening never restarts the recognizer — it just changes what the running capture loop
+        // gates on for the next buffer.
+        serviceScope.launch {
+            settingsRepository.micInputThreshold.collect { threshold -> micThreshold = threshold }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -172,6 +185,10 @@ class WakeWordService : Service() {
                         while (listeningJob?.isActive == true) {
                             val read = recorder.read(buffer, 0, buffer.size)
                             if (read > 0) {
+                                val peak = normalizedPeakLevel(buffer, read)
+                                WakeWordDebugManager.updateMicLevel(peak)
+                                if (peak < micThreshold) continue
+
                                 if (recognizer.acceptWaveForm(buffer, read)) {
                                     val result = recognizer.result
                                     val text = parseVoskText(result)

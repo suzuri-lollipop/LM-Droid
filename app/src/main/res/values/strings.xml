@@ -225,6 +225,10 @@
     <string name="settings_wake_word_placeholder">例: エルエムドロイド</string>
     <string name="settings_wake_word_hint">3〜5音節の、特徴的なひらがな・カタカナでの入力が安定します。</string>
 
+    <string name="settings_mic_threshold_label">マイク感度のしきい値</string>
+    <string name="settings_mic_threshold_description">バーが示す音量がしきい値（縦線）を超えたときだけ、ウェイクアップワードの検知やアシスタント起動後の音声入力を認識します。雑音による誤検知が多い場合はしきい値を上げてください。ドラッグしてバーの位置を調整できます。</string>
+    <string name="settings_mic_threshold_disabled_hint">ウェイクアップワードを有効にすると、マイクレベルを確認しながら調整できます。</string>
+
     <string name="wake_word_notification_channel">ウェイクアップワード監視</string>
     <string name="wake_word_notification_description">ウェイクアップワードの検知に必要なバックグラウンド処理です。</string>
     <string name="wake_word_notification_title">ウェイクアップワード待機中</string>

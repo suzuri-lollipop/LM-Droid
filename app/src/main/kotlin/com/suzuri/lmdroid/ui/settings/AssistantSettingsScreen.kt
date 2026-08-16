@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,8 +44,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.core.content.ContextCompat
 import com.suzuri.lmdroid.R
+import com.suzuri.lmdroid.data.audio.MIC_INPUT_THRESHOLD_MAX
 import com.suzuri.lmdroid.data.settings.AssistantToolLaunchTiming
 import com.suzuri.lmdroid.service.WakeWordStatus
+import com.suzuri.lmdroid.ui.settings.components.MicSensitivityMeter
 /**
  * Settings → アシスタント: registers this app as the device's assist app, so the system assist
  * gesture opens AssistActivity. On Android 10+ this goes through RoleManager's system picker;
@@ -210,6 +213,15 @@ fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Mod
             },
         )
 
+        if (!uiState.wakeWordEnabled) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.settings_mic_threshold_disabled_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         if (uiState.wakeWordEnabled) {
             var wakeWordDraft by remember { mutableStateOf(uiState.wakeWord) }
             LaunchedEffect(uiState.wakeWord) {
@@ -237,6 +249,29 @@ fun AssistantSettingsScreen(viewModel: AssistantSettingsViewModel, modifier: Mod
             ) {
                 Text(stringResource(R.string.settings_save))
             }
+
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = stringResource(R.string.settings_mic_threshold_label),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.settings_mic_threshold_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            var micThresholdDraft by remember { mutableFloatStateOf(uiState.micInputThreshold) }
+            LaunchedEffect(uiState.micInputThreshold) { micThresholdDraft = uiState.micInputThreshold }
+            MicSensitivityMeter(
+                level = uiState.micLevel,
+                threshold = micThresholdDraft,
+                onThresholdChange = { micThresholdDraft = it },
+                onThresholdChangeFinished = { viewModel.onMicInputThresholdChanged(micThresholdDraft) },
+                valueRange = 0f..MIC_INPUT_THRESHOLD_MAX,
+                modifier = Modifier.fillMaxWidth(),
+            )
 
             Spacer(Modifier.height(16.dp))
             Surface(
