@@ -2,6 +2,7 @@ package com.suzuri.lmdroid.ui.chat
 
 import com.suzuri.lmdroid.data.db.MessageRole
 import com.suzuri.lmdroid.data.db.ModelOptionRow
+import com.suzuri.lmdroid.data.db.ThinkingEffort
 import com.suzuri.lmdroid.data.db.ThinkingTimelineEntry
 import com.suzuri.lmdroid.data.settings.SelectedModel
 
@@ -66,7 +67,8 @@ data class ChatUiState(
     val apiKeyMissing: Boolean = false,
     val errorMessage: String? = null,
     val markdownEnabled: Boolean = true,
-    val thinkingEnabled: Boolean = true,
+    val thinkingEffort: ThinkingEffort = ThinkingEffort.MEDIUM,
+    val memoryEnabled: Boolean = true,
     val suggestionsState: SuggestionsUiState = SuggestionsUiState.Loading,
     // Every model offered by every *enabled* profile — the chat-screen model switcher's choices.
     val availableModels: List<ModelOptionRow> = emptyList(),

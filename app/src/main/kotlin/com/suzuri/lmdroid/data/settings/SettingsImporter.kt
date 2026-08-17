@@ -86,7 +86,8 @@ class SettingsImporter(
                     voicevoxSpeakerId = profile.voicevoxSpeakerId,
                     openaiTtsModel = profile.openaiTtsModel,
                     openaiTtsVoice = profile.openaiTtsVoice,
-                    defaultThinkingEnabled = profile.defaultThinkingEnabled,
+                    defaultThinkingEffort = profile.defaultThinkingEffort,
+                    defaultMemoryEnabled = profile.defaultMemoryEnabled,
                 ),
             )
             profileIdMap[profile.id] = newId
@@ -143,7 +144,8 @@ class SettingsImporter(
         }
 
         settingsRepository.saveMarkdownEnabled(export.markdownEnabled)
-        settingsRepository.saveThinkingEnabled(export.thinkingEnabled)
+        settingsRepository.saveThinkingEffort(export.thinkingEffort)
+        settingsRepository.saveMemoryEnabled(export.memoryEnabled)
         settingsRepository.setSelectedSystemPromptIds(export.selectedSystemPromptIds.mapNotNull { promptIdMap[it] }.toSet())
         settingsRepository.setSelectedSkillIds(export.selectedSkillIds.mapNotNull { skillIdMap[it] }.toSet())
 

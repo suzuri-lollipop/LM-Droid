@@ -22,8 +22,8 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,6 +44,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.db.ModelOptionRow
+import com.suzuri.lmdroid.data.db.ThinkingEffort
 import com.suzuri.lmdroid.data.settings.SelectedModel
 import com.suzuri.lmdroid.ui.chat.PendingAttachmentUiModel
 import kotlinx.coroutines.withTimeoutOrNull
@@ -53,8 +54,9 @@ import kotlinx.coroutines.withTimeoutOrNull
  * between a row of icons), then — below it — a row of staged image/voice-message previews (when
  * any are attached) and a chip for [forcedSkillName] (when the user explicitly picked a skill to
  * force into the next message, see SkillDialog), then a single toolbar row with every action:
- * file-attach, system-prompt, skill, the model switcher (with the 思考/thinking toggle right next
- * to it, since it's a per-model concern), mic, and send/stop. The mic button is
+ * file-attach, system-prompt, skill, the model switcher (with the 思考/thinking effort selector
+ * and 記憶/memory toggle right next to it, since they're per-model concerns), mic, and send/stop.
+ * The mic button is
  * dual-purpose: a quick tap dictates speech to text (see [onVoiceInput]), while pressing and
  * holding records a voice message to attach and send as audio (see [onStartVoiceRecording]/
  * [onStopVoiceRecording]) — mirroring how voice-message apps use the same gesture split.
@@ -71,10 +73,14 @@ fun ChatInputBar(
     availableModels: List<ModelOptionRow>,
     selectedModel: SelectedModel?,
     onSelectModel: (ModelOptionRow) -> Unit,
-    // See AppSettings.thinkingEnabled — shown as a brain icon right next to the model switcher
-    // since it's a per-model concern (only reasoning-capable models like Qwen3/Gemma act on it).
-    thinkingEnabled: Boolean,
-    onThinkingEnabledChange: (Boolean) -> Unit,
+    // See AppSettings.thinkingEffort — shown as a brain icon right next to the model switcher
+    // since it's a per-model concern (only reasoning-capable models like Qwen3.8/Gemma act on it).
+    thinkingEffort: ThinkingEffort,
+    onThinkingEffortChange: (ThinkingEffort) -> Unit,
+    // See AppSettings.memoryEnabled — shown right next to the thinking effort selector since it's
+    // also a per-model concern (only models with persistent-memory support, e.g. Qwen3.8, act on it).
+    memoryEnabled: Boolean,
+    onMemoryEnabledChange: (Boolean) -> Unit,
     pendingAttachments: List<PendingAttachmentUiModel>,
     onAttachFile: () -> Unit,
     onOpenSystemPrompt: () -> Unit,
@@ -225,11 +231,12 @@ fun ChatInputBar(
                             .widthIn(max = 120.dp)
                             .padding(start = 4.dp),
                     )
-                    IconToggleButton(checked = thinkingEnabled, onCheckedChange = onThinkingEnabledChange) {
+                    ThinkingEffortButton(effort = thinkingEffort, onSelect = onThinkingEffortChange)
+                    IconToggleButton(checked = memoryEnabled, onCheckedChange = onMemoryEnabledChange) {
                         Icon(
-                            imageVector = Icons.Filled.Psychology,
-                            contentDescription = stringResource(R.string.chat_thinking_toggle_label),
-                            tint = if (thinkingEnabled) {
+                            imageVector = Icons.Filled.Memory,
+                            contentDescription = stringResource(R.string.chat_memory_toggle_label),
+                            tint = if (memoryEnabled) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant

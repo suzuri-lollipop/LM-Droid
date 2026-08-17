@@ -1,5 +1,6 @@
 package com.suzuri.lmdroid.ui.settings
 
+import com.suzuri.lmdroid.data.db.ThinkingEffort
 import com.suzuri.lmdroid.data.settings.AppSettings
 
 sealed class TestConnectionState {
@@ -19,7 +20,9 @@ data class SettingsUiState(
     // typed in by hand.
     val models: List<String> = emptyList(),
     val saved: Boolean = false,
-    // This profile's configured default for the chat screen's 思考 toggle — see
-    // ApiProfileEntity.defaultThinkingEnabled. null = サーバー既定 (no configured default).
-    val defaultThinkingEnabled: Boolean? = null,
+    // This profile's configured default for the chat screen's 思考 effort selector — see
+    // ApiProfileEntity.defaultThinkingEffort. null = サーバー既定 (no configured default).
+    val defaultThinkingEffort: ThinkingEffort? = null,
+    // Same idea for the chat screen's 記憶 toggle — see ApiProfileEntity.defaultMemoryEnabled.
+    val defaultMemoryEnabled: Boolean? = null,
 )

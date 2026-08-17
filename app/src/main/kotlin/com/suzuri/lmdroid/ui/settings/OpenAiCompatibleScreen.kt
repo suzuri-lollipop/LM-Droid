@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,7 +34,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
+import com.suzuri.lmdroid.data.db.ThinkingEffort
 import com.suzuri.lmdroid.data.settings.AppSettings
+import com.suzuri.lmdroid.ui.chat.components.label
 
 /** API設定 → profile list → this profile's edit form (API key/base URL) for an OpenAI-compatible endpoint. */
 @Composable
@@ -100,10 +103,39 @@ fun OpenAiCompatibleScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 20.dp),
         )
-        // Seeds the chat screen's 思考 toggle whenever the user switches to one of this profile's
-        // models (ChatViewModel.onSelectModel) — e.g. off by default for a Gemma profile run
-        // without thinking, on for a Qwen3 profile that reasons by default. サーバー既定 (null)
-        // leaves the toggle exactly as the user last set it.
+        // Seeds the chat screen's 思考 effort selector whenever the user switches to one of this
+        // profile's models (ChatViewModel.onSelectModel) — e.g. OFF by default for a Gemma profile
+        // run without thinking, MEDIUM for a Qwen3.8 profile that reasons by default. サーバー既定
+        // (null) leaves the selector exactly as the user last set it.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FilterChip(
+                selected = uiState.defaultThinkingEffort == null,
+                onClick = { viewModel.onDefaultThinkingEffortChange(null) },
+                label = { Text(stringResource(R.string.settings_default_unset)) },
+            )
+            ThinkingEffort.entries.forEach { effort ->
+                FilterChip(
+                    selected = uiState.defaultThinkingEffort == effort,
+                    onClick = { viewModel.onDefaultThinkingEffortChange(effort) },
+                    label = { Text(effort.label()) },
+                )
+            }
+        }
+
+        Text(
+            text = stringResource(R.string.api_profile_memory_default_label),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 20.dp),
+        )
+        // Same idea as the 思考 row above, but for the chat screen's 記憶 toggle — see
+        // ApiProfileEntity.defaultMemoryEnabled.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -111,19 +143,19 @@ fun OpenAiCompatibleScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             FilterChip(
-                selected = uiState.defaultThinkingEnabled == null,
-                onClick = { viewModel.onDefaultThinkingEnabledChange(null) },
-                label = { Text(stringResource(R.string.api_profile_thinking_default_unset)) },
+                selected = uiState.defaultMemoryEnabled == null,
+                onClick = { viewModel.onDefaultMemoryEnabledChange(null) },
+                label = { Text(stringResource(R.string.settings_default_unset)) },
             )
             FilterChip(
-                selected = uiState.defaultThinkingEnabled == true,
-                onClick = { viewModel.onDefaultThinkingEnabledChange(true) },
-                label = { Text(stringResource(R.string.api_profile_thinking_default_on)) },
+                selected = uiState.defaultMemoryEnabled == true,
+                onClick = { viewModel.onDefaultMemoryEnabledChange(true) },
+                label = { Text(stringResource(R.string.settings_default_on)) },
             )
             FilterChip(
-                selected = uiState.defaultThinkingEnabled == false,
-                onClick = { viewModel.onDefaultThinkingEnabledChange(false) },
-                label = { Text(stringResource(R.string.api_profile_thinking_default_off)) },
+                selected = uiState.defaultMemoryEnabled == false,
+                onClick = { viewModel.onDefaultMemoryEnabledChange(false) },
+                label = { Text(stringResource(R.string.settings_default_off)) },
             )
         }
 

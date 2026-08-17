@@ -16,6 +16,7 @@ import com.suzuri.lmdroid.data.character.CharacterModelType
 import com.suzuri.lmdroid.data.character.CharacterSettings
 import com.suzuri.lmdroid.data.db.ApiProfileDao
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
+import com.suzuri.lmdroid.data.db.ThinkingEffort
 import com.suzuri.lmdroid.data.tts.MouthAmplitudeTracker
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -64,9 +65,16 @@ class SettingsRepository(
     private val markdownEnabledFlow: Flow<Boolean> =
         context.settingsDataStore.data.map { it[KEY_MARKDOWN_ENABLED] ?: true }
 
-    /** See [AppSettings.thinkingEnabled]. */
-    private val thinkingEnabledFlow: Flow<Boolean> =
-        context.settingsDataStore.data.map { it[KEY_THINKING_ENABLED] ?: true }
+    /** See [AppSettings.thinkingEffort]. */
+    private val thinkingEffortFlow: Flow<ThinkingEffort> =
+        context.settingsDataStore.data.map { prefs ->
+            prefs[KEY_THINKING_EFFORT]?.let { runCatching { ThinkingEffort.valueOf(it) }.getOrNull() }
+                ?: ThinkingEffort.MEDIUM
+        }
+
+    /** See [AppSettings.memoryEnabled]. */
+    private val memoryEnabledFlow: Flow<Boolean> =
+        context.settingsDataStore.data.map { it[KEY_MEMORY_ENABLED] ?: true }
 
     val chatSettings: Flow<AppSettings> = selectedChatModel.flatMapLatest { selected -> resolve(selected) }
 
@@ -123,8 +131,12 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs -> prefs[KEY_MARKDOWN_ENABLED] = enabled }
     }
 
-    suspend fun saveThinkingEnabled(enabled: Boolean) {
-        context.settingsDataStore.edit { prefs -> prefs[KEY_THINKING_ENABLED] = enabled }
+    suspend fun saveThinkingEffort(effort: ThinkingEffort) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_THINKING_EFFORT] = effort.name }
+    }
+
+    suspend fun saveMemoryEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_MEMORY_ENABLED] = enabled }
     }
 
     /** Whether the Brave Search harness (see ConversationRepository) is forced on for every message. */
@@ -460,23 +472,28 @@ class SettingsRepository(
     }
 
     private fun resolve(selected: SelectedModel?): Flow<AppSettings> {
-        val preferencesFlow = combine(markdownEnabledFlow, thinkingEnabledFlow) { markdownEnabled, thinkingEnabled ->
-            markdownEnabled to thinkingEnabled
+        val preferencesFlow = combine(
+            markdownEnabledFlow,
+            thinkingEffortFlow,
+            memoryEnabledFlow,
+        ) { markdownEnabled, thinkingEffort, memoryEnabled ->
+            Triple(markdownEnabled, thinkingEffort, memoryEnabled)
         }
         if (selected == null) {
-            return preferencesFlow.map { (markdownEnabled, thinkingEnabled) ->
+            return preferencesFlow.map { (markdownEnabled, thinkingEffort, memoryEnabled) ->
                 AppSettings(
                     apiKey = null,
                     model = AppSettings.DEFAULT_MODEL,
                     baseUrl = AppSettings.DEFAULT_BASE_URL,
                     markdownEnabled = markdownEnabled,
-                    thinkingEnabled = thinkingEnabled,
+                    thinkingEffort = thinkingEffort,
+                    memoryEnabled = memoryEnabled,
                 )
             }
         }
         return apiProfileDao.observeById(selected.profileId).flatMapLatest { profile ->
-            preferencesFlow.map { (markdownEnabled, thinkingEnabled) ->
-                profile.toAppSettings(selected.model, markdownEnabled, thinkingEnabled)
+            preferencesFlow.map { (markdownEnabled, thinkingEffort, memoryEnabled) ->
+                profile.toAppSettings(selected.model, markdownEnabled, thinkingEffort, memoryEnabled)
             }
         }
     }
@@ -490,14 +507,20 @@ class SettingsRepository(
         return SelectedModel(profileId, model)
     }
 
-    private fun ApiProfileEntity?.toAppSettings(model: String, markdownEnabled: Boolean, thinkingEnabled: Boolean): AppSettings {
+    private fun ApiProfileEntity?.toAppSettings(
+        model: String,
+        markdownEnabled: Boolean,
+        thinkingEffort: ThinkingEffort,
+        memoryEnabled: Boolean,
+    ): AppSettings {
         if (this == null) {
             return AppSettings(
                 apiKey = null,
                 model = model,
                 baseUrl = AppSettings.DEFAULT_BASE_URL,
                 markdownEnabled = markdownEnabled,
-                thinkingEnabled = thinkingEnabled,
+                thinkingEffort = thinkingEffort,
+                memoryEnabled = memoryEnabled,
             )
         }
         val ciphertext = apiKeyCiphertext
@@ -512,7 +535,8 @@ class SettingsRepository(
             model = model,
             baseUrl = baseUrl,
             markdownEnabled = markdownEnabled,
-            thinkingEnabled = thinkingEnabled,
+            thinkingEffort = thinkingEffort,
+            memoryEnabled = memoryEnabled,
             profileName = name,
         )
     }
@@ -525,7 +549,8 @@ class SettingsRepository(
         val KEY_ASSISTANT_PROFILE_ID = longPreferencesKey("assistant_profile_id")
         val KEY_ASSISTANT_MODEL = stringPreferencesKey("assistant_model")
         val KEY_MARKDOWN_ENABLED = booleanPreferencesKey("markdown_enabled")
-        val KEY_THINKING_ENABLED = booleanPreferencesKey("thinking_enabled")
+        val KEY_THINKING_EFFORT = stringPreferencesKey("thinking_effort")
+        val KEY_MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
         val KEY_BRAVE_SEARCH_ENABLED = booleanPreferencesKey("brave_search_enabled")
         val KEY_SELECTED_WEB_SEARCH_PROFILE_ID = longPreferencesKey("selected_web_search_profile_id")
         val KEY_WEB_SEARCH_MAX_TOOL_ROUNDS = intPreferencesKey("web_search_max_tool_rounds")

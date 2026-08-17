@@ -9,6 +9,7 @@ import com.suzuri.lmdroid.data.attachment.AudioRecorder
 import com.suzuri.lmdroid.data.attachment.SavedAttachment
 import com.suzuri.lmdroid.data.db.MessageWithAttachments
 import com.suzuri.lmdroid.data.db.ModelOptionRow
+import com.suzuri.lmdroid.data.db.ThinkingEffort
 import com.suzuri.lmdroid.data.db.ThinkingTimelineEntry
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
 import com.suzuri.lmdroid.data.repository.ConversationRepository
@@ -84,7 +85,8 @@ class ChatViewModel(
                     state.copy(
                         apiKeyMissing = settings.apiKey.isNullOrBlank(),
                         markdownEnabled = settings.markdownEnabled,
-                        thinkingEnabled = settings.thinkingEnabled,
+                        thinkingEffort = settings.thinkingEffort,
+                        memoryEnabled = settings.memoryEnabled,
                     )
                 }
             }
@@ -291,10 +293,16 @@ class ChatViewModel(
         viewModelScope.launch { settingsRepository.saveMarkdownEnabled(enabled) }
     }
 
-    /** Same immediate-update-then-persist pattern as [onMarkdownEnabledChange] — see [com.suzuri.lmdroid.data.settings.AppSettings.thinkingEnabled]. */
-    fun onThinkingEnabledChange(enabled: Boolean) {
-        _uiState.update { it.copy(thinkingEnabled = enabled) }
-        viewModelScope.launch { settingsRepository.saveThinkingEnabled(enabled) }
+    /** Same immediate-update-then-persist pattern as [onMarkdownEnabledChange] — see [com.suzuri.lmdroid.data.settings.AppSettings.thinkingEffort]. */
+    fun onThinkingEffortChange(effort: ThinkingEffort) {
+        _uiState.update { it.copy(thinkingEffort = effort) }
+        viewModelScope.launch { settingsRepository.saveThinkingEffort(effort) }
+    }
+
+    /** Same immediate-update-then-persist pattern as [onMarkdownEnabledChange] — see [com.suzuri.lmdroid.data.settings.AppSettings.memoryEnabled]. */
+    fun onMemoryEnabledChange(enabled: Boolean) {
+        _uiState.update { it.copy(memoryEnabled = enabled) }
+        viewModelScope.launch { settingsRepository.saveMemoryEnabled(enabled) }
     }
 
     /** Toggles whether a saved system prompt is active, from [com.suzuri.lmdroid.ui.chat.components.SystemPromptDialog] — several may be active simultaneously. */
@@ -323,14 +331,16 @@ class ChatViewModel(
 
     /**
      * Switches which enabled profile/model pair chat uses, from the switcher shown on this
-     * screen. Also seeds the 思考 toggle from the newly selected profile's configured default
-     * (see ApiProfileEntity.defaultThinkingEnabled) — e.g. a Gemma profile the user runs without
-     * thinking flips the toggle off automatically, a Qwen3 profile that reasons by default flips
-     * it on. A profile with no configured default (null) leaves the toggle as the user last set it.
+     * screen. Also seeds the 思考 effort selector and 記憶 toggle from the newly selected
+     * profile's configured defaults (see ApiProfileEntity.defaultThinkingEffort/
+     * defaultMemoryEnabled) — e.g. a Gemma profile the user runs without thinking flips the
+     * selector to OFF automatically, a Qwen3.8 profile that reasons by default flips it to MEDIUM.
+     * A profile with no configured default (null) leaves the selector/toggle as the user last set it.
      */
     fun onSelectModel(option: ModelOptionRow) {
         viewModelScope.launch { settingsRepository.setSelectedChatModel(option.profileId, option.modelId) }
-        option.defaultThinkingEnabled?.let(::onThinkingEnabledChange)
+        option.defaultThinkingEffort?.let(::onThinkingEffortChange)
+        option.defaultMemoryEnabled?.let(::onMemoryEnabledChange)
     }
 
     private fun launchGeneration(block: suspend () -> ConversationRepository.SendResult) {

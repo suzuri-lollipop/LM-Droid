@@ -10,9 +10,11 @@ data class ModelOptionRow(
     val profileId: Long,
     val profileName: String,
     val modelId: String,
-    // See ApiProfileEntity.defaultThinkingEnabled — carried along so selecting this option (see
-    // ChatViewModel.onSelectModel) can seed the chat screen's 思考 toggle without a separate lookup.
-    val defaultThinkingEnabled: Boolean? = null,
+    // See ApiProfileEntity.defaultThinkingEffort/defaultMemoryEnabled — carried along so
+    // selecting this option (see ChatViewModel.onSelectModel) can seed the chat screen's 思考
+    // effort selector and 記憶 toggle without a separate lookup.
+    val defaultThinkingEffort: ThinkingEffort? = null,
+    val defaultMemoryEnabled: Boolean? = null,
 )
 
 @Dao
@@ -28,7 +30,8 @@ interface ApiModelDao {
 
     @Query(
         "SELECT api_models.profileId AS profileId, api_profiles.name AS profileName, api_models.modelId AS modelId, " +
-            "api_profiles.defaultThinkingEnabled AS defaultThinkingEnabled " +
+            "api_profiles.defaultThinkingEffort AS defaultThinkingEffort, " +
+            "api_profiles.defaultMemoryEnabled AS defaultMemoryEnabled " +
             "FROM api_models INNER JOIN api_profiles ON api_models.profileId = api_profiles.id " +
             "WHERE api_profiles.enabled = 1 AND api_profiles.providerType = 'openai_compatible' " +
             "ORDER BY api_profiles.createdAt ASC, api_models.modelId ASC",

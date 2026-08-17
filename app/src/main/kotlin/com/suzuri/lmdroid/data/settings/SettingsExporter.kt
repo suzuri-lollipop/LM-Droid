@@ -7,6 +7,7 @@ import com.suzuri.lmdroid.data.db.ApiProfileDao
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import com.suzuri.lmdroid.data.db.SkillDao
 import com.suzuri.lmdroid.data.db.SystemPromptDao
+import com.suzuri.lmdroid.data.db.ThinkingEffort
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -73,7 +74,8 @@ class SettingsExporter(
                 voicevoxSpeakerId = profile.voicevoxSpeakerId,
                 openaiTtsModel = profile.openaiTtsModel,
                 openaiTtsVoice = profile.openaiTtsVoice,
-                defaultThinkingEnabled = profile.defaultThinkingEnabled,
+                defaultThinkingEffort = profile.defaultThinkingEffort,
+                defaultMemoryEnabled = profile.defaultMemoryEnabled,
             )
         }
         val profileNameById = profiles.associate { it.id to it.name }
@@ -93,7 +95,8 @@ class SettingsExporter(
             systemSelection = systemSelection?.toExported(profileNameById),
             assistantSelection = assistantSelection?.toExported(profileNameById),
             markdownEnabled = chatSettings.markdownEnabled,
-            thinkingEnabled = chatSettings.thinkingEnabled,
+            thinkingEffort = chatSettings.thinkingEffort,
+            memoryEnabled = chatSettings.memoryEnabled,
             systemPrompts = systemPrompts.map { ExportedSystemPrompt(id = it.id, name = it.name, content = it.content) },
             selectedSystemPromptIds = settingsRepository.currentSelectedSystemPromptIds().sorted(),
             skills = skills.map { ExportedSkill(id = it.id, name = it.name, description = it.description, content = it.content) },
@@ -159,9 +162,10 @@ data class SettingsExport(
     val systemSelection: ExportedModelSelection? = null,
     val assistantSelection: ExportedModelSelection? = null,
     val markdownEnabled: Boolean,
-    // Defaulted (unlike markdownEnabled) so an export from before this toggle existed still
+    // Defaulted (unlike markdownEnabled) so an export from before this selector existed still
     // decodes instead of failing on a "required field missing" error.
-    val thinkingEnabled: Boolean = true,
+    val thinkingEffort: ThinkingEffort = ThinkingEffort.MEDIUM,
+    val memoryEnabled: Boolean = true,
     val systemPrompts: List<ExportedSystemPrompt> = emptyList(),
     val selectedSystemPromptIds: List<Long> = emptyList(),
     val skills: List<ExportedSkill> = emptyList(),
@@ -211,8 +215,10 @@ data class ExportedApiProfile(
     // Only meaningful for PROVIDER_OPENAI_TTS.
     val openaiTtsModel: String? = null,
     val openaiTtsVoice: String? = null,
-    // Only meaningful for PROVIDER_OPENAI_COMPATIBLE — see ApiProfileEntity.defaultThinkingEnabled.
-    val defaultThinkingEnabled: Boolean? = null,
+    // Only meaningful for PROVIDER_OPENAI_COMPATIBLE — see ApiProfileEntity.defaultThinkingEffort.
+    val defaultThinkingEffort: ThinkingEffort? = null,
+    // Only meaningful for PROVIDER_OPENAI_COMPATIBLE — see ApiProfileEntity.defaultMemoryEnabled.
+    val defaultMemoryEnabled: Boolean? = null,
 )
 
 @Serializable

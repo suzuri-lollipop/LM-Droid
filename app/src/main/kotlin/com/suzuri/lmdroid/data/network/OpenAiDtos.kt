@@ -128,10 +128,17 @@ data class ChatCompletionRequest(
     // every single request just because the feature happens to exist in this app.
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val tools: List<ToolDefinitionDto>? = null,
-    // Only non-null when the user has explicitly turned the chat screen's 思考 toggle off — left
-    // absent (rather than sent as {"enable_thinking": true}) whenever thinking is left at its
-    // default so plain OpenAI and other servers that don't recognize this llama.cpp-specific field
-    // never see it. See OpenAiApiClient.streamChatCompletion.
+    // Only non-null when the chat screen's 思考(thinking) effort selector is set to LOW/MEDIUM/
+    // XHIGH — left absent for OFF (which instead forces chat_template_kwargs.enable_thinking=
+    // false, below) and for plain OpenAI-style models that never set this at all, so servers that
+    // don't recognize the field never see it. See OpenAiApiClient.streamChatCompletion.
+    @SerialName("reasoning_effort")
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val reasoningEffort: String? = null,
+    // Only non-null when the user has explicitly turned the chat screen's 思考 effort selector to
+    // OFF and/or the 記憶(memory) toggle off — left absent entirely whenever both are left at
+    // their defaults so plain OpenAI and other servers that don't recognize this llama.cpp-specific
+    // field never see it. See OpenAiApiClient.streamChatCompletion.
     @SerialName("chat_template_kwargs")
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val chatTemplateKwargs: ChatTemplateKwargsDto? = null,
@@ -140,12 +147,19 @@ data class ChatCompletionRequest(
 /**
  * llama-server (llama.cpp) forwards this object's fields straight into the model's Jinja chat
  * template as kwargs. `enable_thinking` is the switch reasoning-capable templates (e.g. Qwen3,
- * Gemma) branch on to suppress their `<think>...</think>` preamble; a template that doesn't
- * reference it simply ignores it.
+ * Gemma) branch on to suppress their `<think>...</think>` preamble; `enable_memory` is the
+ * analogous switch for Qwen3.8-style templates that support persistent conversation memory. A
+ * template that doesn't reference either simply ignores it. Each field is independently omittable
+ * (EncodeDefault.Mode.NEVER) so forcing one off doesn't force the other to also be sent.
  */
 @Serializable
 data class ChatTemplateKwargsDto(
-    @SerialName("enable_thinking") val enableThinking: Boolean,
+    @SerialName("enable_thinking")
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val enableThinking: Boolean? = null,
+    @SerialName("enable_memory")
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val enableMemory: Boolean? = null,
 )
 
 /** One function the model may call, in OpenAI's tool-calling request shape. */

@@ -1,6 +1,7 @@
 package com.suzuri.lmdroid.data.network
 
 import android.util.Log
+import com.suzuri.lmdroid.data.db.ThinkingEffort
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -43,12 +44,30 @@ class OpenAiApiClient(
         // (see ConversationRepository's round cap) — offering the model a way to call out on its
         // own, rather than the app deciding unconditionally what to feed it ahead of time.
         tools: List<ToolDefinitionDto>? = null,
-        // Null leaves the model/server at its own default (most reasoning models think by
-        // default); false explicitly asks the server to suppress it via chat_template_kwargs —
-        // see ChatTemplateKwargsDto. There's no "force true" distinct from "leave at default"
-        // since no server-side default actually needs overriding upward.
-        enableThinking: Boolean? = null,
+        // OFF explicitly asks the server to suppress thinking via chat_template_kwargs (see
+        // ChatTemplateKwargsDto); LOW/MEDIUM/XHIGH are instead sent as the top-level
+        // reasoning_effort field, leaving the model/server free to think at that level by
+        // whatever mechanism it actually supports.
+        thinkingEffort: ThinkingEffort = ThinkingEffort.MEDIUM,
+        // True (default) leaves the model/server at its own default memory behavior; false
+        // explicitly asks it to suppress persistent memory via chat_template_kwargs — see
+        // ChatTemplateKwargsDto. There's no "force true" distinct from "leave at default" since no
+        // server-side default actually needs overriding upward.
+        memoryEnabled: Boolean = true,
     ): Flow<StreamEvent> = callbackFlow {
+        val enableThinkingKwarg = if (thinkingEffort == ThinkingEffort.OFF) false else null
+        val enableMemoryKwarg = if (memoryEnabled) null else false
+        val kwargs = if (enableThinkingKwarg != null || enableMemoryKwarg != null) {
+            ChatTemplateKwargsDto(enableThinking = enableThinkingKwarg, enableMemory = enableMemoryKwarg)
+        } else {
+            null
+        }
+        val reasoningEffort = when (thinkingEffort) {
+            ThinkingEffort.OFF -> null
+            ThinkingEffort.LOW -> "low"
+            ThinkingEffort.MEDIUM -> "medium"
+            ThinkingEffort.XHIGH -> "xhigh"
+        }
         val requestJson = json.encodeToString(
             ChatCompletionRequest.serializer(),
             ChatCompletionRequest(
@@ -56,7 +75,8 @@ class OpenAiApiClient(
                 messages = messages,
                 stream = true,
                 tools = tools,
-                chatTemplateKwargs = enableThinking?.let { ChatTemplateKwargsDto(enableThinking = it) },
+                reasoningEffort = reasoningEffort,
+                chatTemplateKwargs = kwargs,
             ),
         )
         // Deliberately just the tool names, not the full request body — the latter can carry a

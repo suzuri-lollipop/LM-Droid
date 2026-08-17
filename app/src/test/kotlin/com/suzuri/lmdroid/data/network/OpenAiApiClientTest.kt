@@ -1,6 +1,7 @@
 package com.suzuri.lmdroid.data.network
 
 import app.cash.turbine.test
+import com.suzuri.lmdroid.data.db.ThinkingEffort
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -96,7 +97,7 @@ class OpenAiApiClientTest {
     fun `streamChatCompletion omits chat_template_kwargs when thinking is left at its default`() = runTest {
         // A plain OpenAI (or other) server that has never heard of llama.cpp's
         // chat_template_kwargs extension must not see it on every request just because this app's
-        // 思考 toggle exists — only an explicit override (enableThinking = false) should send it.
+        // 思考 effort selector exists — only an explicit OFF (or memory disabled) should send it.
         server.enqueue(
             MockResponse()
                 .setHeader("Content-Type", "text/event-stream")
@@ -121,7 +122,7 @@ class OpenAiApiClientTest {
         )
 
         client.streamChatCompletion(
-            "test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl, enableThinking = false,
+            "test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl, thinkingEffort = ThinkingEffort.OFF,
         ).test {
             awaitItem() // Done
             awaitComplete()
@@ -129,6 +130,47 @@ class OpenAiApiClientTest {
 
         val requestBody = server.takeRequest().body.readUtf8()
         assertTrue(requestBody.contains("\"chat_template_kwargs\":{\"enable_thinking\":false}"))
+    }
+
+    @Test
+    fun `streamChatCompletion sends top-level reasoning_effort for LOW, MEDIUM and XHIGH`() = runTest {
+        for (effort in listOf(ThinkingEffort.LOW, ThinkingEffort.MEDIUM, ThinkingEffort.XHIGH)) {
+            server.enqueue(
+                MockResponse()
+                    .setHeader("Content-Type", "text/event-stream")
+                    .setBody("data: [DONE]\n\n"),
+            )
+
+            client.streamChatCompletion(
+                "test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl, thinkingEffort = effort,
+            ).test {
+                awaitItem() // Done
+                awaitComplete()
+            }
+
+            val requestBody = server.takeRequest().body.readUtf8()
+            assertTrue(requestBody.contains("\"reasoning_effort\":\"${effort.name.lowercase()}\""))
+            assertTrue(!requestBody.contains("chat_template_kwargs"))
+        }
+    }
+
+    @Test
+    fun `streamChatCompletion sends chat_template_kwargs enable_memory=false when memory is disabled`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+
+        client.streamChatCompletion(
+            "test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl, memoryEnabled = false,
+        ).test {
+            awaitItem() // Done
+            awaitComplete()
+        }
+
+        val requestBody = server.takeRequest().body.readUtf8()
+        assertTrue(requestBody.contains("\"chat_template_kwargs\":{\"enable_memory\":false}"))
     }
 
     @Test

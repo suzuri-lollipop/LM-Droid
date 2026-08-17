@@ -2,6 +2,7 @@ package com.suzuri.lmdroid.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.suzuri.lmdroid.data.db.ThinkingEffort
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.network.OpenAiException
 import com.suzuri.lmdroid.data.repository.ApiProfileRepository
@@ -62,7 +63,8 @@ class SettingsViewModel(
                     isKeyVisible = false,
                     testState = TestConnectionState.Idle,
                     saved = false,
-                    defaultThinkingEnabled = profile.defaultThinkingEnabled,
+                    defaultThinkingEffort = profile.defaultThinkingEffort,
+                    defaultMemoryEnabled = profile.defaultMemoryEnabled,
                 )
             }
         }
@@ -84,9 +86,14 @@ class SettingsViewModel(
         _uiState.update { it.copy(isKeyVisible = !it.isKeyVisible) }
     }
 
-    /** null = サーバー既定 (no configured default) — see ApiProfileEntity.defaultThinkingEnabled. */
-    fun onDefaultThinkingEnabledChange(value: Boolean?) {
-        _uiState.update { it.copy(defaultThinkingEnabled = value, saved = false) }
+    /** null = サーバー既定 (no configured default) — see ApiProfileEntity.defaultThinkingEffort. */
+    fun onDefaultThinkingEffortChange(value: ThinkingEffort?) {
+        _uiState.update { it.copy(defaultThinkingEffort = value, saved = false) }
+    }
+
+    /** null = サーバー既定 (no configured default) — see ApiProfileEntity.defaultMemoryEnabled. */
+    fun onDefaultMemoryEnabledChange(value: Boolean?) {
+        _uiState.update { it.copy(defaultMemoryEnabled = value, saved = false) }
     }
 
     fun onSave() {
@@ -100,7 +107,8 @@ class SettingsViewModel(
                 name = state.profileName,
                 apiKey = apiKey,
                 baseUrl = baseUrl,
-                defaultThinkingEnabled = state.defaultThinkingEnabled,
+                defaultThinkingEffort = state.defaultThinkingEffort,
+                defaultMemoryEnabled = state.defaultMemoryEnabled,
             )
             _uiState.update { it.copy(saved = true) }
 

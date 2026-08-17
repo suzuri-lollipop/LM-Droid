@@ -5,6 +5,7 @@ import com.suzuri.lmdroid.data.db.ApiModelEntity
 import com.suzuri.lmdroid.data.db.ApiProfileDao
 import com.suzuri.lmdroid.data.db.ApiProfileEntity
 import com.suzuri.lmdroid.data.db.ModelOptionRow
+import com.suzuri.lmdroid.data.db.ThinkingEffort
 import com.suzuri.lmdroid.data.network.OpenAiApiClient
 import com.suzuri.lmdroid.data.settings.ApiKeyCipher
 import com.suzuri.lmdroid.data.settings.AppSettings
@@ -67,16 +68,17 @@ class ApiProfileRepository(
 
     /**
      * Blank [apiKey] clears the profile's stored key, matching the old single-profile "clear the
-     * field to forget the key" behavior. [defaultThinkingEnabled] is only meaningful for
-     * PROVIDER_OPENAI_COMPATIBLE — defaults to null (サーバー既定) since the other provider types
-     * that also call this (Brave Search, YouTube Data API) never set it.
+     * field to forget the key" behavior. [defaultThinkingEffort]/[defaultMemoryEnabled] are only
+     * meaningful for PROVIDER_OPENAI_COMPATIBLE — default to null (サーバー既定) since the other
+     * provider types that also call this (Brave Search, YouTube Data API) never set them.
      */
     suspend fun updateProfile(
         id: Long,
         name: String,
         apiKey: String,
         baseUrl: String,
-        defaultThinkingEnabled: Boolean? = null,
+        defaultThinkingEffort: ThinkingEffort? = null,
+        defaultMemoryEnabled: Boolean? = null,
     ) {
         val existing = apiProfileDao.getById(id) ?: return
         val encrypted = apiKey.takeIf { it.isNotBlank() }?.let { cipher.encrypt(it) }
@@ -86,7 +88,8 @@ class ApiProfileRepository(
                 apiKeyCiphertext = encrypted?.ciphertextBase64,
                 apiKeyIv = encrypted?.ivBase64,
                 baseUrl = baseUrl.ifBlank { AppSettings.DEFAULT_BASE_URL },
-                defaultThinkingEnabled = defaultThinkingEnabled,
+                defaultThinkingEffort = defaultThinkingEffort,
+                defaultMemoryEnabled = defaultMemoryEnabled,
             ),
         )
     }

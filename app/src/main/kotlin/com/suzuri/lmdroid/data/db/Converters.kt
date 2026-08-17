@@ -8,4 +8,10 @@ class Converters {
 
     @TypeConverter
     fun toRole(value: String): MessageRole = MessageRole.valueOf(value)
+
+    @TypeConverter
+    fun fromThinkingEffort(effort: ThinkingEffort): String = effort.name
+
+    @TypeConverter
+    fun toThinkingEffort(value: String): ThinkingEffort = ThinkingEffort.valueOf(value)
 }
