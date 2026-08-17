@@ -1,14 +1,20 @@
 package com.suzuri.lmdroid.ui.chat.components
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.ToneGenerator
+import android.os.Build
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -23,6 +29,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.suzuri.lmdroid.LmDroidApplication
 import com.suzuri.lmdroid.data.audio.normalizedPeakLevel
 import com.suzuri.lmdroid.data.settings.SettingsRepository
@@ -36,8 +43,45 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
+
+// How long the "start listening" beep plays (see LocalVoiceInputState.start) — also used as the
+// delay before the mic actually starts capturing, so the beep can't leak into the recognized audio.
+private const val START_LISTENING_BEEP_DURATION_MS = 150
+
+/**
+ * Suspends until the Bluetooth SCO link [android.media.AudioManager.startBluetoothSco] just
+ * requested is actually up (ACTION_SCO_AUDIO_STATE_UPDATED / SCO_AUDIO_STATE_CONNECTED), or
+ * [timeoutMs] elapses — establishing SCO is asynchronous and takes up to ~2s, and audio
+ * (recording or playback) started before it connects can be silently dropped or misrouted.
+ */
+private suspend fun awaitBluetoothScoConnected(context: Context, timeoutMs: Long = 2000L): Boolean {
+    return withTimeoutOrNull(timeoutMs) {
+        suspendCancellableCoroutine<Unit> { cont ->
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(receiverContext: Context?, intent: Intent?) {
+                    if (intent?.getIntExtra(AudioManager.EXTRA_SCO_AUDIO_STATE, -1) == AudioManager.SCO_AUDIO_STATE_CONNECTED) {
+                        context.unregisterReceiver(this)
+                        if (cont.isActive) cont.resume(Unit, onCancellation = null)
+                    }
+                }
+            }
+            ContextCompat.registerReceiver(
+                context,
+                receiver,
+                IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+            cont.invokeOnCancellation {
+                try { context.unregisterReceiver(receiver) } catch (e: IllegalArgumentException) { /* already unregistered */ }
+            }
+        }
+    } != null
+}
 
 /**
  * Drives the composer's mic button. [isAvailable] reflects whether this device even has a speech
@@ -153,15 +197,41 @@ class LocalVoiceInputState(
                     return@launch
                 }
                 
+                // TEMP DIAGNOSTIC LOGGING — remove once the Bluetooth beep/mic-routing issue is fixed.
+                Log.d("LocalVoiceInput", "DIAG input devices: " + audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                    .joinToString { "type=${it.type} name=${it.productName}" })
+                Log.d("LocalVoiceInput", "DIAG output devices: " + audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                    .joinToString { "type=${it.type} name=${it.productName}" })
+
                 // Route to a Bluetooth headset mic only while one is actually connected.
                 // Starting SCO unconditionally leaves the built-in mic silent on devices
                 // (e.g. the emulator) that report SCO as available without a headset.
-                val btScoConnected = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
-                    .any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
-                if (btScoConnected) {
-                    Log.d("LocalVoiceInput", "Starting Bluetooth SCO for UI listening")
-                    audioManager.startBluetoothSco()
-                    audioManager.isBluetoothScoOn = true
+                val bluetoothScoDevice = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                    .find { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+                val btScoConnected = bluetoothScoDevice != null
+                Log.d("LocalVoiceInput", "DIAG btScoConnected=$btScoConnected")
+                var usingBluetoothCommunicationDevice = false
+                if (bluetoothScoDevice != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        // setCommunicationDevice (API 31+) is the modern replacement for the
+                        // legacy startBluetoothSco()/isBluetoothScoOn pair below, and — unlike
+                        // it — actually reports success/failure synchronously. The legacy path's
+                        // ACTION_SCO_AUDIO_STATE_UPDATED broadcast has proven unreliable on at
+                        // least one real device (Samsung/One UI): it never fired, silently
+                        // leaving capture on the phone's own built-in mic instead of the headset.
+                        usingBluetoothCommunicationDevice = audioManager.setCommunicationDevice(bluetoothScoDevice)
+                        Log.d("LocalVoiceInput", "DIAG setCommunicationDevice result=$usingBluetoothCommunicationDevice")
+                    } else {
+                        Log.d("LocalVoiceInput", "Starting Bluetooth SCO for UI listening")
+                        audioManager.startBluetoothSco()
+                        audioManager.isBluetoothScoOn = true
+                        // The SCO link takes up to ~2s to actually come up — without waiting for
+                        // it, both the start-listening beep below and the first captured audio
+                        // can be dropped or silently routed to the wrong device because the link
+                        // isn't ready yet. Best-effort: if it never connects, fall through anyway.
+                        usingBluetoothCommunicationDevice = awaitBluetoothScoConnected(context)
+                        Log.d("LocalVoiceInput", "DIAG scoConnectedInTime=$usingBluetoothCommunicationDevice isBluetoothScoOn=${audioManager.isBluetoothScoOn}")
+                    }
                 }
 
                 val bufferSize = 8000
@@ -172,14 +242,69 @@ class LocalVoiceInputState(
                     return@launch
                 }
 
-                val recorder = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minBufSize.coerceAtLeast(bufferSize))
+                // AudioSource.VOICE_RECOGNITION is deliberately "raw" (no AGC/NS/AEC) for best
+                // recognition quality, but on-device testing showed it never actually routes to a
+                // Bluetooth SCO mic — audio stayed on the phone's built-in mic even with
+                // setCommunicationDevice()/preferredDevice both pointed at the headset. SCO
+                // routing in practice is tied to sources meant for call-style communication, so
+                // once a Bluetooth communication device is active, switch to
+                // VOICE_COMMUNICATION — that does add call-oriented processing, but it's the
+                // source that actually reaches the headset.
+                val audioSource = if (usingBluetoothCommunicationDevice) MediaRecorder.AudioSource.VOICE_COMMUNICATION else MediaRecorder.AudioSource.VOICE_RECOGNITION
+                Log.d("LocalVoiceInput", "DIAG audioSource=$audioSource (VOICE_RECOGNITION=${MediaRecorder.AudioSource.VOICE_RECOGNITION} VOICE_COMMUNICATION=${MediaRecorder.AudioSource.VOICE_COMMUNICATION})")
+                val recorder = AudioRecord(audioSource, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minBufSize.coerceAtLeast(bufferSize))
+                // Belt-and-suspenders: explicitly pin capture to the Bluetooth mic rather than
+                // relying solely on the communication-device/SCO state to steer default routing.
+                if (usingBluetoothCommunicationDevice && bluetoothScoDevice != null) {
+                    recorder.preferredDevice = bluetoothScoDevice
+                }
 
                 if (recorder.state != AudioRecord.STATE_INITIALIZED) {
                     launch(Dispatchers.Main) { if (sessionGeneration == generation) onError(context.getString(com.suzuri.lmdroid.R.string.chat_voice_input_error_mic)) }
                     return@launch
                 }
 
+                // Cue the user that it's safe to speak now — unlike the system recognizer
+                // (Google's, on most devices), which plays its own start tone, on-device
+                // recognition otherwise gives no signal that listening actually began. The mic
+                // isn't recording yet at this point (recorder.startRecording() below), so the
+                // beep itself can't leak into the captured audio.
+                //
+                // Stream choice matters for Bluetooth: by default Android only routes
+                // STREAM_MUSIC (and STREAM_VOICE_CALL while SCO is active) to a connected
+                // Bluetooth headset — STREAM_NOTIFICATION/STREAM_RING/STREAM_SYSTEM stay on the
+                // phone's own speaker regardless of what's connected. The system recognizer's own
+                // start tone plays over STREAM_MUSIC for this reason, so this mirrors it: without
+                // an active SCO/communication link, use STREAM_MUSIC; once that link is actually
+                // up, only STREAM_VOICE_CALL reaches the headset over it.
+                try {
+                    val toneStreamType = if (usingBluetoothCommunicationDevice) AudioManager.STREAM_VOICE_CALL else AudioManager.STREAM_MUSIC
+                    Log.d("LocalVoiceInput", "DIAG toneStreamType=$toneStreamType (STREAM_VOICE_CALL=${AudioManager.STREAM_VOICE_CALL} STREAM_MUSIC=${AudioManager.STREAM_MUSIC})")
+                    val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                        .setAudioAttributes(
+                            AudioAttributes.Builder()
+                                .setUsage(if (usingBluetoothCommunicationDevice) AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING else AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build()
+                        )
+                        .build()
+                    val focusResult = audioManager.requestAudioFocus(focusRequest)
+                    Log.d("LocalVoiceInput", "DIAG requestAudioFocus result=$focusResult (GRANTED=${AudioManager.AUDIOFOCUS_REQUEST_GRANTED})")
+
+                    val toneGenerator = ToneGenerator(toneStreamType, 80)
+                    toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, START_LISTENING_BEEP_DURATION_MS)
+                    delay(START_LISTENING_BEEP_DURATION_MS.toLong())
+                    toneGenerator.release()
+                    audioManager.abandonAudioFocusRequest(focusRequest)
+                } catch (e: RuntimeException) {
+                    // ToneGenerator can fail to allocate on some devices/emulators — not worth aborting listening for.
+                    Log.w("LocalVoiceInput", "Failed to play start-listening beep", e)
+                }
+
+                if (sessionGeneration != generation) return@launch
+
                 recorder.startRecording()
+                Log.d("LocalVoiceInput", "DIAG recorder started, preferredDevice=${recorder.preferredDevice?.let { "type=${it.type} name=${it.productName}" }}")
                 // Only now — mic actually capturing — is it honest to prompt the user to speak.
                 // Set synchronously (not via Dispatchers.Main): the capture loop below checks
                 // isListening on this thread and would exit at once if it had to wait for Main.
@@ -193,6 +318,7 @@ class LocalVoiceInputState(
                     // subsequent buffer (silence included) is fed through as before, so the
                     // engine's own end-of-utterance/finalization detection is untouched.
                     var speechStarted = false
+                    var routedDeviceLogged = false
                     // The generation check covers a session stopped while still preparing (model
                     // loading takes seconds): this coroutine then flips isListening back on after
                     // stop() cleared it, and without this the mic would keep capturing for a
@@ -200,6 +326,10 @@ class LocalVoiceInputState(
                     while (isListening && sessionGeneration == generation) {
                         val read = recorder.read(buffer, 0, buffer.size)
                         if (read > 0) {
+                            if (!routedDeviceLogged) {
+                                routedDeviceLogged = true
+                                Log.d("LocalVoiceInput", "DIAG first read: routedDevice=${recorder.routedDevice?.let { "type=${it.type} name=${it.productName}" }} peak=${normalizedPeakLevel(buffer, read)}")
+                            }
                             if (!speechStarted) {
                                 speechStarted = normalizedPeakLevel(buffer, read) >= micThreshold
                                 if (!speechStarted) continue
@@ -231,7 +361,11 @@ class LocalVoiceInputState(
                         }
                     }
                 } finally {
-                    if (audioManager.isBluetoothScoOn) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        if (usingBluetoothCommunicationDevice) {
+                            audioManager.clearCommunicationDevice()
+                        }
+                    } else if (audioManager.isBluetoothScoOn) {
                         Log.d("LocalVoiceInput", "Stopping Bluetooth SCO")
                         audioManager.stopBluetoothSco()
                         audioManager.isBluetoothScoOn = false

@@ -150,6 +150,21 @@ fun AssistScreen(
     // Used to avoid showing "not detected" during the initial stabilization delay.
     var hasStartedListening by remember(uiState.triggerCount) { mutableStateOf(false) }
 
+    // Bundled into the same request as RECORD_AUDIO below on a first-ever grant — see ChatScreen's
+    // voicePermissions for why it matters for Bluetooth mic routing. Deliberately NOT required to
+    // start listening (see hasRecordAudioPermission-gated checks below): this overlay can be
+    // hosted by a VoiceInteractionSession (assist-gesture trigger) rather than a plain Activity,
+    // and requesting a permission there — even one already granted moments earlier via ChatScreen
+    // — was observed to silently never resolve, leaving the overlay stuck showing "preparing"
+    // forever. RECORD_AUDIO alone is enough to start; BLUETOOTH_CONNECT is best-effort.
+    val voicePermissions: Array<String> =
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            arrayOf(Manifest.permission.RECORD_AUDIO)
+        }
+    fun hasRecordAudioPermission() = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
     fun beginListening() {
         // The initial start is delayed a beat (see the LaunchedEffect below); never let it fire
         // if the overlay went to the background in the meantime. Read the live state rather
@@ -159,23 +174,23 @@ fun AssistScreen(
         hasStartedListening = true
         when {
             !voiceInputState.isAvailable -> viewModel.onListeningError(voiceUnavailableMessage)
-            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> voiceInputState.start(scope)
+            hasRecordAudioPermission() -> voiceInputState.start(scope)
             else -> {} // Handled by permission launcher
         }
     }
 
     val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) beginListening() else viewModel.onListeningError(voicePermissionDeniedMessage)
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        if (results[Manifest.permission.RECORD_AUDIO] == true) beginListening() else viewModel.onListeningError(voicePermissionDeniedMessage)
     }
 
     // Re-check permission and launch either recognition or permission request
     fun requestOrStartListening() {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+        if (hasRecordAudioPermission()) {
             beginListening()
         } else if (voiceInputState.isAvailable) {
-            recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            recordAudioPermissionLauncher.launch(voicePermissions)
         } else {
             viewModel.onListeningError(voiceUnavailableMessage)
         }

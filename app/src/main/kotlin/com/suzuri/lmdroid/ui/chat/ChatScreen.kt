@@ -99,13 +99,31 @@ fun ChatScreen(
     fun hasRecordAudioPermission() =
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
+    // Requested alongside RECORD_AUDIO (not just when a headset happens to be connected) since a
+    // permission prompt can't be shown mid-recognition — without it, AudioManager silently keeps
+    // routing capture to the phone's own mic even when a Bluetooth headset is connected and
+    // setCommunicationDevice() reports success, because BLUETOOTH_CONNECT (a runtime "nearby
+    // devices" permission since Android 12) gates actually using a paired device, not just
+    // enumerating it. No-op below S, where it isn't a runtime permission.
+    val voicePermissions: Array<String> =
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            arrayOf(Manifest.permission.RECORD_AUDIO)
+        }
+    // RECORD_AUDIO alone can already be granted from before this permission was added — re-check
+    // all of them so a mic tap still offers the BLUETOOTH_CONNECT prompt in that case, instead of
+    // silently skipping straight to voiceInputState.start() below.
+    fun hasAllVoicePermissions() = voicePermissions.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+
     // Both dictation (tap) and voice-message recording (long-press) need RECORD_AUDIO — whichever
-    // one triggered the request is resumed once the user grants it.
+    // one triggered the request is resumed once the user grants it. A denied BLUETOOTH_CONNECT
+    // doesn't block either (mic capture still works via the phone's built-in mic).
     var pendingAfterPermission by remember { mutableStateOf<(() -> Unit)?>(null) }
     val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) {
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        if (results[Manifest.permission.RECORD_AUDIO] == true) {
             pendingAfterPermission?.invoke()
         } else {
             coroutineScope.launch { snackbarHostState.showSnackbar(voicePermissionDeniedMessage) }
@@ -117,10 +135,10 @@ fun ChatScreen(
             voiceInputState.isListening -> voiceInputState.stop()
             !voiceInputState.isAvailable ->
                 coroutineScope.launch { snackbarHostState.showSnackbar(voiceUnavailableMessage) }
-            hasRecordAudioPermission() -> voiceInputState.start(coroutineScope)
+            hasAllVoicePermissions() -> voiceInputState.start(coroutineScope)
             else -> {
                 pendingAfterPermission = { voiceInputState.start(coroutineScope) }
-                recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                recordAudioPermissionLauncher.launch(voicePermissions)
             }
         }
     }
@@ -133,7 +151,7 @@ fun ChatScreen(
             viewModel.onVoiceRecordingStart()
         } else {
             pendingAfterPermission = { viewModel.onVoiceRecordingStart() }
-            recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            recordAudioPermissionLauncher.launch(voicePermissions)
         }
     }
     val onStopVoiceRecording: () -> Unit = { viewModel.onVoiceRecordingStop() }
