@@ -22,6 +22,11 @@ data class VoiceSettingsUiState(
 
     // The language Whisper listens for (see SettingsRepository.selectedSttLanguage) — "ja", "en" or "auto".
     val selectedSttLanguage: String = "ja",
+
+    // Whether mic-driven dictation (chat composer + assistant overlay) uses the on-device
+    // Vosk/Whisper pipeline above, or the OS's default (usually Google) recognizer — see
+    // SettingsRepository.voiceInputUseLocalEngine.
+    val voiceInputUseLocalEngine: Boolean = true,
 )
 
 data class SpeechModelUiModel(

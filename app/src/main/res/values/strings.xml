@@ -278,6 +278,11 @@
     <string name="history_move_to_folder">フォルダに追加</string>
     <string name="history_no_folder">フォルダなし</string>
 
+    <string name="stt_engine_label">音声認識エンジン</string>
+    <string name="stt_engine_description">チャットのマイク入力とアシスタントオーバーレイで使う音声認識エンジンを選択します。ウェイクワード検出には常にローカルのVoskが使われます。</string>
+    <string name="stt_engine_local">端末内で認識 (Vosk / Whisper)</string>
+    <string name="stt_engine_google">端末の標準音声認識サービス (通常はGoogle)</string>
+
     <string name="settings_stt_category_title">音声認識 (STT)</string>
     <string name="stt_model_label">使用するモデル</string>
     <string name="stt_model_download">ダウンロード</string>

@@ -364,6 +364,22 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs -> prefs[KEY_SELECTED_STT_LANGUAGE] = code }
     }
 
+    /**
+     * Whether mic-driven dictation (the chat composer's mic button and the assistant overlay)
+     * uses the on-device Vosk/Whisper pipeline ([selectedSttModelId]) instead of the OS's default
+     * [android.speech.SpeechRecognizer] service — which on most devices resolves to Google's
+     * cloud speech recognizer. Defaults to the on-device engine. The background wake word
+     * listener (WakeWordService) always uses Vosk regardless of this setting: it listens
+     * continuously for a custom phrase, which the one-shot system recognizer isn't built for.
+     */
+    val voiceInputUseLocalEngine: Flow<Boolean> = context.settingsDataStore.data.map { it[KEY_VOICE_INPUT_USE_LOCAL_ENGINE] ?: true }
+
+    suspend fun currentVoiceInputUseLocalEngine(): Boolean = voiceInputUseLocalEngine.first()
+
+    suspend fun setVoiceInputUseLocalEngine(useLocal: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_VOICE_INPUT_USE_LOCAL_ENGINE] = useLocal }
+    }
+
     /** Which installed app's package name (see DeviceMusicController.installedMusicApps) the "play_music" tool targets directly — null lets the system resolve it itself (its own disambiguation dialog if more than one app can handle it and none is set as default). */
     val preferredMusicAppPackage: Flow<String?> = context.settingsDataStore.data.map { it[KEY_PREFERRED_MUSIC_APP_PACKAGE] }
 
@@ -572,6 +588,7 @@ class SettingsRepository(
         val KEY_MIC_INPUT_THRESHOLD = floatPreferencesKey("mic_input_threshold")
         val KEY_SELECTED_STT_MODEL_ID = stringPreferencesKey("selected_stt_model_id")
         val KEY_SELECTED_STT_LANGUAGE = stringPreferencesKey("selected_stt_language")
+        val KEY_VOICE_INPUT_USE_LOCAL_ENGINE = booleanPreferencesKey("voice_input_use_local_engine")
         val KEY_CHARACTER_MODEL_TYPE = stringPreferencesKey("character_model_type")
         val KEY_CHARACTER_MODEL_PATH = stringPreferencesKey("character_model_path")
         val KEY_CHARACTER_MOTION_PATH = stringPreferencesKey("character_motion_path")

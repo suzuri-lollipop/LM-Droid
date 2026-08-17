@@ -33,6 +33,7 @@ import com.suzuri.lmdroid.data.stt.WhisperEngine
 import com.suzuri.lmdroid.data.vosk.VoskEngine
 import com.suzuri.lmdroid.data.vosk.VoskRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -343,6 +344,60 @@ fun rememberVoiceInputState(
     }
 
     return state
+}
+
+/**
+ * Common shape mic-button callers need, regardless of which engine backs it — see
+ * [rememberComposerVoiceInputState]. [isPreparing]/[isFinalizing] are always false for the system
+ * recognizer ([VoiceInputState]), which has no equivalent wind-up/finalization phase.
+ */
+interface ComposerVoiceInputState {
+    val isListening: Boolean
+    val isPreparing: Boolean get() = false
+    val isFinalizing: Boolean get() = false
+    val isAvailable: Boolean
+    fun start(scope: CoroutineScope)
+    fun stop()
+}
+
+/**
+ * Picks between [VoiceInputState] (the OS's default [SpeechRecognizer] service — Google's cloud
+ * recognizer on most devices) and [LocalVoiceInputState] (on-device Vosk/Whisper), based on
+ * [useLocal] (see SettingsRepository.voiceInputUseLocalEngine), behind the single interface a mic
+ * button needs. Both underlying `remember*VoiceInputState` calls already manage their own
+ * lifecycle (recognizer creation/teardown), so switching [useLocal] tears down the previous
+ * engine and spins up the other one.
+ */
+@Composable
+fun rememberComposerVoiceInputState(
+    useLocal: Boolean,
+    onResult: (String) -> Unit,
+    onError: (String) -> Unit,
+    onPartialResult: (String) -> Unit = {},
+): ComposerVoiceInputState {
+    return if (useLocal) {
+        val local = rememberLocalVoiceInputState(onResult = onResult, onError = onError, onPartialResult = onPartialResult)
+        remember(local) {
+            object : ComposerVoiceInputState {
+                override val isListening get() = local.isListening
+                override val isPreparing get() = local.isPreparing
+                override val isFinalizing get() = local.isFinalizing
+                override val isAvailable get() = local.isAvailable
+                override fun start(scope: CoroutineScope) = local.start(scope)
+                override fun stop() = local.stop()
+            }
+        }
+    } else {
+        val system = rememberVoiceInputState(onResult = onResult, onError = onError, onPartialResult = onPartialResult)
+        remember(system) {
+            object : ComposerVoiceInputState {
+                override val isListening get() = system.isListening
+                override val isAvailable get() = system.isAvailable
+                override fun start(scope: CoroutineScope) = system.start()
+                override fun stop() = system.stop()
+            }
+        }
+    }
 }
 
 @Composable

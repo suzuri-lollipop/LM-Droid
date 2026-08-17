@@ -38,7 +38,8 @@ class VoiceSettingsViewModel(
                 settingsRepository.selectedTtsProfileId,
                 settingsRepository.selectedSttModelId,
                 settingsRepository.selectedSttLanguage,
-            ) { profiles, selectedTtsId, selectedSttId, selectedSttLanguage ->
+                settingsRepository.voiceInputUseLocalEngine,
+            ) { profiles, selectedTtsId, selectedSttId, selectedSttLanguage, voiceInputUseLocalEngine ->
                 val ttsProfiles = profiles
                     .filter {
                         it.providerType == ApiProfileEntity.PROVIDER_VOICEVOX_COMPATIBLE ||
@@ -51,6 +52,7 @@ class VoiceSettingsViewModel(
                     selectedProfileId = selectedTtsId,
                     selectedSttModelId = selectedSttId,
                     selectedSttLanguage = selectedSttLanguage,
+                    voiceInputUseLocalEngine = voiceInputUseLocalEngine,
                     sttModels = SpeechModel.ALL_MODELS.map { model ->
                         SpeechModelUiModel(
                             model = model,
@@ -77,6 +79,10 @@ class VoiceSettingsViewModel(
 
     fun onSelectSttLanguage(code: String) {
         viewModelScope.launch { settingsRepository.setSelectedSttLanguage(code) }
+    }
+
+    fun onSelectVoiceInputEngine(useLocal: Boolean) {
+        viewModelScope.launch { settingsRepository.setVoiceInputUseLocalEngine(useLocal) }
     }
 
     fun onDownloadModel(model: SpeechModel) {

@@ -86,6 +86,42 @@ fun VoiceSettingsScreen(viewModel: VoiceSettingsViewModel, modifier: Modifier = 
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 24.dp))
 
+        Text(stringResource(R.string.stt_engine_label), style = MaterialTheme.typography.titleSmall)
+        Text(
+            text = stringResource(R.string.stt_engine_description),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { viewModel.onSelectVoiceInputEngine(true) },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(
+                selected = uiState.voiceInputUseLocalEngine,
+                onClick = { viewModel.onSelectVoiceInputEngine(true) },
+            )
+            Text(stringResource(R.string.stt_engine_local))
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { viewModel.onSelectVoiceInputEngine(false) },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(
+                selected = !uiState.voiceInputUseLocalEngine,
+                onClick = { viewModel.onSelectVoiceInputEngine(false) },
+            )
+            Text(stringResource(R.string.stt_engine_google))
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 24.dp))
+
         Text(stringResource(R.string.settings_stt_category_title), style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(8.dp))
 

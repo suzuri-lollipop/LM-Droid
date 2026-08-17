@@ -79,7 +79,8 @@ import com.suzuri.lmdroid.ui.assist.components.rememberTypewriterState
 import com.suzuri.lmdroid.ui.character.CharacterStage
 import com.suzuri.lmdroid.ui.character.decodeDownsampled
 import com.suzuri.lmdroid.ui.character.deriveCharacterState
-import com.suzuri.lmdroid.ui.chat.components.rememberLocalVoiceInputState
+import com.suzuri.lmdroid.LmDroidApplication
+import com.suzuri.lmdroid.ui.chat.components.rememberComposerVoiceInputState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -115,7 +116,10 @@ fun AssistScreen(
     val voicePermissionDeniedMessage = stringResource(R.string.chat_voice_input_permission_denied)
 
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    val voiceInputState = rememberLocalVoiceInputState(
+    val settingsRepository = (context.applicationContext as LmDroidApplication).container.settingsRepository
+    val voiceInputUseLocal by settingsRepository.voiceInputUseLocalEngine.collectAsState(initial = true)
+    val voiceInputState = rememberComposerVoiceInputState(
+        useLocal = voiceInputUseLocal,
         onResult = viewModel::onFinalTranscript,
         onPartialResult = viewModel::onPartialTranscript,
         onError = viewModel::onListeningError,

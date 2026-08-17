@@ -52,7 +52,8 @@ import com.suzuri.lmdroid.ui.chat.components.ImagePreviewDialog
 import com.suzuri.lmdroid.ui.chat.components.MessageBubble
 import com.suzuri.lmdroid.ui.chat.components.SkillDialog
 import com.suzuri.lmdroid.ui.chat.components.SystemPromptDialog
-import com.suzuri.lmdroid.ui.chat.components.rememberVoiceInputState
+import com.suzuri.lmdroid.ui.chat.components.rememberComposerVoiceInputState
+import com.suzuri.lmdroid.LmDroidApplication
 import kotlinx.coroutines.launch
 
 // Far more than any realistic conversation's total scrollable height, so a single scrollBy call
@@ -79,13 +80,18 @@ fun ChatScreen(
     }
     val onAttachFile: () -> Unit = { imagePickerLauncher.launch("image/*") }
 
-    // On-device speech-to-text for the mic button: recognized speech is fed straight into the
-    // input field as plain text, so it works the same regardless of which model is selected for
-    // chat — there's no "model doesn't support this" case, only "this device has no speech
-    // recognition service" (voiceInputState.isAvailable), which some devices genuinely lack.
+    // Speech-to-text for the mic button: recognized speech is fed straight into the input field
+    // as plain text, so it works the same regardless of which model is selected for chat —
+    // there's no "model doesn't support this" case, only "this device has no speech recognition
+    // service" (voiceInputState.isAvailable), which some devices genuinely lack. Whether this uses
+    // the on-device Vosk/Whisper pipeline or the OS's default (usually Google) recognizer is
+    // controlled by Settings → 音声 (SettingsRepository.voiceInputUseLocalEngine).
+    val settingsRepository = (context.applicationContext as LmDroidApplication).container.settingsRepository
+    val voiceInputUseLocal by settingsRepository.voiceInputUseLocalEngine.collectAsState(initial = true)
     val voiceUnavailableMessage = stringResource(R.string.chat_voice_input_unavailable)
     val voicePermissionDeniedMessage = stringResource(R.string.chat_voice_input_permission_denied)
-    val voiceInputState = rememberVoiceInputState(
+    val voiceInputState = rememberComposerVoiceInputState(
+        useLocal = voiceInputUseLocal,
         onResult = viewModel::onVoiceInputResult,
         onError = { message -> coroutineScope.launch { snackbarHostState.showSnackbar(message) } },
     )
@@ -111,9 +117,9 @@ fun ChatScreen(
             voiceInputState.isListening -> voiceInputState.stop()
             !voiceInputState.isAvailable ->
                 coroutineScope.launch { snackbarHostState.showSnackbar(voiceUnavailableMessage) }
-            hasRecordAudioPermission() -> voiceInputState.start()
+            hasRecordAudioPermission() -> voiceInputState.start(coroutineScope)
             else -> {
-                pendingAfterPermission = { voiceInputState.start() }
+                pendingAfterPermission = { voiceInputState.start(coroutineScope) }
                 recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             }
         }
