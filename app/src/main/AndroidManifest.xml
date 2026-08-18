@@ -10,6 +10,12 @@
         android:maxSdkVersion="28" />
     <!-- For the composer's mic button (on-device speech-to-text via SpeechRecognizer). -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- For AudioManager.setMode(MODE_IN_COMMUNICATION) around Bluetooth SCO listening sessions
+         (LocalVoiceInputState.start) — without it, setMode() is silently denied by the system
+         (logged as "Missing permission for setMode()"), leaving the start-listening beep
+         unrouted to a connected Bluetooth headset. Normal (install-time) permission — no runtime
+         request needed. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- For the "get_current_location" tool (Settings → Web検索 → 位置情報を使用する). -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />

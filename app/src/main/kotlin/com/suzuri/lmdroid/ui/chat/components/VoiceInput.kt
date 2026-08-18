@@ -211,7 +211,20 @@ class LocalVoiceInputState(
                 val btScoConnected = bluetoothScoDevice != null
                 Log.d("LocalVoiceInput", "DIAG btScoConnected=$btScoConnected")
                 var usingBluetoothCommunicationDevice = false
+                // Tracks only whether setCommunicationDevice(true) actually succeeded, so the
+                // finally block below knows whether clearCommunicationDevice() needs calling —
+                // independent of usingBluetoothCommunicationDevice, which (see below) also
+                // requires the SCO link to have actually come up.
+                var communicationDeviceSet = false
                 if (bluetoothScoDevice != null) {
+                    // Bluetooth SCO audio only reliably routes while the app is actually in a
+                    // communication-style audio mode. Without this, the mic capture below still
+                    // reaches the headset (it's pinned there explicitly via preferredDevice/
+                    // AudioSource further down), but STREAM_VOICE_CALL audio — the start-listening
+                    // beep — has no such explicit pin and depends on the audio policy routing tied
+                    // to this mode; left at MODE_NORMAL it can be silently dropped or fall back to
+                    // the phone's own earpiece instead of the headset. Restored in the finally block.
+                    audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         // setCommunicationDevice (API 31+) is the modern replacement for the
                         // legacy startBluetoothSco()/isBluetoothScoOn pair below, and — unlike
@@ -219,8 +232,15 @@ class LocalVoiceInputState(
                         // ACTION_SCO_AUDIO_STATE_UPDATED broadcast has proven unreliable on at
                         // least one real device (Samsung/One UI): it never fired, silently
                         // leaving capture on the phone's own built-in mic instead of the headset.
-                        usingBluetoothCommunicationDevice = audioManager.setCommunicationDevice(bluetoothScoDevice)
-                        Log.d("LocalVoiceInput", "DIAG setCommunicationDevice result=$usingBluetoothCommunicationDevice")
+                        communicationDeviceSet = audioManager.setCommunicationDevice(bluetoothScoDevice)
+                        Log.d("LocalVoiceInput", "DIAG setCommunicationDevice result=$communicationDeviceSet")
+                        // A synchronous true here only means the routing *request* was accepted —
+                        // confirmed via on-device logcat, the underlying SCO audio link is still
+                        // asynchronous (same ~2s as the legacy path below) and until it's actually
+                        // up, AudioPolicyManager keeps routing STREAM_VOICE_CALL (the beep) to the
+                        // phone's own earpiece instead of the headset. Wait for it here too.
+                        usingBluetoothCommunicationDevice = communicationDeviceSet && awaitBluetoothScoConnected(context)
+                        Log.d("LocalVoiceInput", "DIAG scoConnectedInTime=$usingBluetoothCommunicationDevice")
                     } else {
                         Log.d("LocalVoiceInput", "Starting Bluetooth SCO for UI listening")
                         audioManager.startBluetoothSco()
@@ -362,13 +382,16 @@ class LocalVoiceInputState(
                     }
                 } finally {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        if (usingBluetoothCommunicationDevice) {
+                        if (communicationDeviceSet) {
                             audioManager.clearCommunicationDevice()
                         }
                     } else if (audioManager.isBluetoothScoOn) {
                         Log.d("LocalVoiceInput", "Stopping Bluetooth SCO")
                         audioManager.stopBluetoothSco()
                         audioManager.isBluetoothScoOn = false
+                    }
+                    if (bluetoothScoDevice != null) {
+                        audioManager.mode = AudioManager.MODE_NORMAL
                     }
                     recorder.stop()
                     recorder.release()
