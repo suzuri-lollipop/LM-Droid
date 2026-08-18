@@ -26,9 +26,10 @@ fun SettingsRootScreen(
     onNavigateToSkills: () -> Unit,
     onNavigateToAssistant: () -> Unit,
     onNavigateToCharacter: () -> Unit,
+    onNavigateToDeveloper: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Scrollable so every category stays reachable even in landscape, where the 12 rows
+    // Scrollable so every category stays reachable even in landscape, where the 13 rows
     // together are taller than the screen.
     Column(
         modifier = modifier
@@ -86,6 +87,10 @@ fun SettingsRootScreen(
         SettingsMenuRow(
             title = stringResource(R.string.settings_character_category_title),
             onClick = onNavigateToCharacter,
+        )
+        SettingsMenuRow(
+            title = stringResource(R.string.settings_developer_category_title),
+            onClick = onNavigateToDeveloper,
         )
     }
 }

@@ -29,6 +29,7 @@ enum class SettingsRoute {
     SkillEdit,
     Assistant,
     Character,
+    Developer,
 }
 
 fun SettingsRoute.parent(): SettingsRoute? = when (this) {
@@ -54,4 +55,5 @@ fun SettingsRoute.parent(): SettingsRoute? = when (this) {
     SettingsRoute.SkillEdit -> SettingsRoute.SkillList
     SettingsRoute.Assistant -> SettingsRoute.Root
     SettingsRoute.Character -> SettingsRoute.Root
+    SettingsRoute.Developer -> SettingsRoute.Root
 }

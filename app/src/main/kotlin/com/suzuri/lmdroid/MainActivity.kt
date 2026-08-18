@@ -70,6 +70,8 @@ import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditScreen
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.CharacterSettingsScreen
 import com.suzuri.lmdroid.ui.settings.CharacterSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.DeveloperSettingsScreen
+import com.suzuri.lmdroid.ui.settings.DeveloperSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.ImageGenerationProfileEditScreen
 import com.suzuri.lmdroid.ui.settings.ImageGenerationProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.LocationSettingsScreen
@@ -175,6 +177,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
     val skillEditViewModel: SkillEditViewModel = viewModel(factory = viewModelFactory)
     val assistantSettingsViewModel: AssistantSettingsViewModel = viewModel(factory = viewModelFactory)
     val characterSettingsViewModel: CharacterSettingsViewModel = viewModel(factory = viewModelFactory)
+    val developerSettingsViewModel: DeveloperSettingsViewModel = viewModel(factory = viewModelFactory)
     val historyViewModel: HistoryViewModel = viewModel(factory = viewModelFactory)
     val settingsExportViewModel: SettingsExportViewModel = viewModel(factory = viewModelFactory)
     val settingsImportViewModel: SettingsImportViewModel = viewModel(factory = viewModelFactory)
@@ -333,6 +336,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                     SettingsRoute.SkillEdit -> stringResource(R.string.settings_skill_category_title)
                                     SettingsRoute.Assistant -> stringResource(R.string.settings_assistant_category_title)
                                     SettingsRoute.Character -> stringResource(R.string.settings_character_category_title)
+                                    SettingsRoute.Developer -> stringResource(R.string.settings_developer_category_title)
                                 }
                             },
                             maxLines = 1,
@@ -425,6 +429,7 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                                 onNavigateToSkills = { settingsRoute = SettingsRoute.SkillList },
                                 onNavigateToAssistant = { settingsRoute = SettingsRoute.Assistant },
                                 onNavigateToCharacter = { settingsRoute = SettingsRoute.Character },
+                                onNavigateToDeveloper = { settingsRoute = SettingsRoute.Developer },
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }
@@ -607,6 +612,12 @@ private fun LmDroidApp(viewModelFactory: ViewModelFactory) {
                         SettingsRoute.Character -> {
                             CharacterSettingsScreen(
                                 viewModel = characterSettingsViewModel,
+                                modifier = Modifier.padding(innerPadding),
+                            )
+                        }
+                        SettingsRoute.Developer -> {
+                            DeveloperSettingsScreen(
+                                viewModel = developerSettingsViewModel,
                                 modifier = Modifier.padding(innerPadding),
                             )
                         }

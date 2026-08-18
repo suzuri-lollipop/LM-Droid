@@ -298,4 +298,17 @@
     <string name="stt_language_ja">日本語</string>
     <string name="stt_language_en">英語</string>
     <string name="stt_language_auto">自動検出</string>
+
+    <string name="settings_developer_category_title">開発者向け</string>
+    <string name="developer_settings_description">開発用のオプションです。音声認識(端末内エンジン)のBluetoothルーティングや、取得音声をWAVで保存する診断機能など、挙動を調べるときに使います。普段は触る必要はありません。</string>
+    <string name="developer_bt_routing_label">Bluetoothルーティング</string>
+    <string name="developer_bt_routing_description">Bluetoothイヤホンで音声入力するときの音の回り込み方(ルーティング)を決めます。「無効」はBluetooth対応追加前の動作(素のマイク入力)に戻します。</string>
+    <string name="developer_bt_routing_auto">自動 (通信モードを使う)</string>
+    <string name="developer_bt_routing_disabled">無効 (素のマイク入力)</string>
+    <string name="developer_stt_capture_label">取得音声を保存 (WAV)</string>
+    <string name="developer_stt_capture_description">端末内音声入力でマイクから取得した生の音声をWAVファイルに保存します。ファイルはアプリのキャッシュに置き、認識品質の問題を切り分けるために後から確認できます。</string>
+    <string name="developer_stt_captured_files">保存されたファイル</string>
+    <string name="developer_stt_captured_refresh">更新</string>
+    <string name="developer_stt_captured_empty">保存されたファイルはありません。音声入力を一度行いますと一覧に表示されます。</string>
+    <string name="developer_stt_captured_delete_all">すべて削除</string>
 </resources>

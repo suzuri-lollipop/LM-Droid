@@ -396,6 +396,36 @@ class SettingsRepository(
         context.settingsDataStore.edit { prefs -> prefs[KEY_BLUETOOTH_SCO_MAX_ATTEMPTS] = attempts.coerceIn(1, 10) }
     }
 
+    /**
+     * Bluetooth routing strategy for the local voice-input engine (LocalVoiceInputState), a
+     * developer-only knob (see Settings → 開発者向け). "auto" keeps the explicit communication-mode
+     * routing (MODE_IN_COMMUNICATION + setCommunicationDevice/SCO + VOICE_COMMUNICATION source);
+     * "disabled" skips all of that and captures with the plain VOICE_RECOGNITION source — the
+     * pre-BT-support behavior. Defaults to "auto" (the current behavior).
+     */
+    val bluetoothRoutingMode: Flow<String> =
+        context.settingsDataStore.data.map { it[KEY_BT_ROUTING_MODE] ?: "auto" }
+
+    suspend fun currentBluetoothRoutingMode(): String = bluetoothRoutingMode.first()
+
+    suspend fun setBluetoothRoutingMode(mode: String) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_BT_ROUTING_MODE] = mode }
+    }
+
+    /**
+     * Whether the local voice-input engine should dump its raw captured mic audio to a WAV file
+     * for offline inspection (see SttCaptureStore / WavFileWriter) — a developer-only diagnostic
+     * for telling an audio-quality problem apart from a model problem. Defaults to off.
+     */
+    val sttCaptureDebug: Flow<Boolean> =
+        context.settingsDataStore.data.map { it[KEY_STT_CAPTURE_DEBUG] ?: false }
+
+    suspend fun currentSttCaptureDebug(): Boolean = sttCaptureDebug.first()
+
+    suspend fun setSttCaptureDebug(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_STT_CAPTURE_DEBUG] = enabled }
+    }
+
     /** Which installed app's package name (see DeviceMusicController.installedMusicApps) the "play_music" tool targets directly — null lets the system resolve it itself (its own disambiguation dialog if more than one app can handle it and none is set as default). */
     val preferredMusicAppPackage: Flow<String?> = context.settingsDataStore.data.map { it[KEY_PREFERRED_MUSIC_APP_PACKAGE] }
 
@@ -606,6 +636,8 @@ class SettingsRepository(
         val KEY_SELECTED_STT_LANGUAGE = stringPreferencesKey("selected_stt_language")
         val KEY_VOICE_INPUT_USE_LOCAL_ENGINE = booleanPreferencesKey("voice_input_use_local_engine")
         val KEY_BLUETOOTH_SCO_MAX_ATTEMPTS = intPreferencesKey("bluetooth_sco_max_attempts")
+        val KEY_BT_ROUTING_MODE = stringPreferencesKey("bt_routing_mode")
+        val KEY_STT_CAPTURE_DEBUG = booleanPreferencesKey("stt_capture_debug")
         val KEY_CHARACTER_MODEL_TYPE = stringPreferencesKey("character_model_type")
         val KEY_CHARACTER_MODEL_PATH = stringPreferencesKey("character_model_path")
         val KEY_CHARACTER_MOTION_PATH = stringPreferencesKey("character_motion_path")

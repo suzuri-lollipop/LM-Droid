@@ -11,6 +11,7 @@ import com.suzuri.lmdroid.ui.settings.ApiProfileListViewModel
 import com.suzuri.lmdroid.ui.settings.AssistantSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.BraveSearchProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.CharacterSettingsViewModel
+import com.suzuri.lmdroid.ui.settings.DeveloperSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.ImageGenerationProfileEditViewModel
 import com.suzuri.lmdroid.ui.settings.LocationSettingsViewModel
 import com.suzuri.lmdroid.ui.settings.MessagingSettingsViewModel
@@ -68,6 +69,9 @@ class ViewModelFactory(private val container: AppContainer) : ViewModelProvider.
 
         modelClass.isAssignableFrom(VoiceSettingsViewModel::class.java) ->
             VoiceSettingsViewModel(container.settingsRepository, container.apiProfileRepository, container.speechModelManager) as T
+
+        modelClass.isAssignableFrom(DeveloperSettingsViewModel::class.java) ->
+            DeveloperSettingsViewModel(container.appContext, container.settingsRepository) as T
 
         modelClass.isAssignableFrom(HistoryViewModel::class.java) ->
             HistoryViewModel(container.conversationRepository) as T
