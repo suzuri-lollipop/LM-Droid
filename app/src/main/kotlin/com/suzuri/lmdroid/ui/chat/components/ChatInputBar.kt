@@ -1,16 +1,19 @@
 package com.suzuri.lmdroid.ui.chat.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -19,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Extension
@@ -27,18 +31,27 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -54,15 +67,19 @@ import kotlinx.coroutines.withTimeoutOrNull
  * between a row of icons), then — below it — a row of staged image/voice-message previews (when
  * any are attached) and a chip for [forcedSkillName] (when the user explicitly picked a skill to
  * force into the next message, see SkillDialog), then a single toolbar row with every action:
- * file-attach, system-prompt, skill, the model switcher (with the 思考/thinking effort selector
- * and 記憶/memory toggle right next to it, since they're per-model concerns), mic, and send/stop.
+ * the "+" add button (which opens a bottom sheet of the former attach-file / system-prompt /
+ * skill buttons, Claude-style), the model switcher (with the 思考/thinking effort selector and
+ * 記憶/memory toggle right next to it, since they're per-model concerns), mic, and send/stop.
  * The mic button is
  * dual-purpose: a quick tap dictates speech to text (see [onVoiceInput]), while pressing and
  * holding records a voice message to attach and send as audio (see [onStartVoiceRecording]/
  * [onStopVoiceRecording]) — mirroring how voice-message apps use the same gesture split.
  * [onOpenSystemPrompt] opens a dialog (see SystemPromptDialog) to edit the app-wide system
- * prompt; [onOpenSkill] opens the analogous dialog for skills (see SkillDialog).
+ * prompt; [onOpenSkill] opens the analogous dialog for skills (see SkillDialog). Both of those,
+ * plus [onAttachFile], are now reached through the single "+" button's bottom sheet rather than
+ * as their own toolbar icons.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatInputBar(
     input: String,
@@ -98,6 +115,12 @@ fun ChatInputBar(
     onStopVoiceRecording: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // The single "+" (Claude-style) add button's bottom sheet — consolidates the former
+    // attach-file / system-prompt / skill toolbar buttons behind one entry point. Kept here
+    // (not in the caller) so ChatScreen's two call sites need no signature changes.
+    var isPlusMenuOpen by rememberSaveable { mutableStateOf(false) }
+    val plusMenuSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -187,7 +210,7 @@ fun ChatInputBar(
                 }
             }
 
-            // One toolbar row for every action: attach/system-prompt icons and the model switcher
+            // One toolbar row for every action: the "+" add button and the model switcher
             // cluster on the left, mic/send on the right, with a flexible gap between them.
             Row(
                 modifier = Modifier
@@ -195,24 +218,12 @@ fun ChatInputBar(
                     .padding(start = 4.dp, end = 8.dp, top = 2.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onAttachFile) {
+                // A single "+" (Claude-style) button that opens a bottom sheet offering the
+                // former three separate toolbar actions: attach file, system prompt, skill.
+                IconButton(onClick = { isPlusMenuOpen = true }) {
                     Icon(
-                        imageVector = Icons.Filled.AttachFile,
-                        contentDescription = stringResource(R.string.chat_attach_file),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconButton(onClick = onOpenSystemPrompt) {
-                    Icon(
-                        imageVector = Icons.Filled.Tune,
-                        contentDescription = stringResource(R.string.chat_system_prompt_title),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconButton(onClick = onOpenSkill) {
-                    Icon(
-                        imageVector = Icons.Filled.Extension,
-                        contentDescription = stringResource(R.string.chat_skill_title),
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = stringResource(R.string.chat_plus_menu),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -321,5 +332,73 @@ fun ChatInputBar(
                 }
             }
         }
+    }
+
+    // The "+" add button's bottom sheet — slides up from the bottom and offers the three former
+    // toolbar actions as labeled rows. Selecting one dismisses the sheet and then performs the
+    // same action the old button did (picker / system-prompt dialog / skill dialog).
+    if (isPlusMenuOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { isPlusMenuOpen = false },
+            sheetState = plusMenuSheetState,
+        ) {
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+            ) {
+                PlusSheetItem(
+                    icon = Icons.Filled.AttachFile,
+                    label = stringResource(R.string.chat_attach_file),
+                    onClick = { isPlusMenuOpen = false; onAttachFile() },
+                )
+                PlusSheetItem(
+                    icon = Icons.Filled.Tune,
+                    label = stringResource(R.string.chat_system_prompt_title),
+                    onClick = { isPlusMenuOpen = false; onOpenSystemPrompt() },
+                )
+                PlusSheetItem(
+                    icon = Icons.Filled.Extension,
+                    label = stringResource(R.string.chat_skill_title),
+                    onClick = { isPlusMenuOpen = false; onOpenSkill() },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A single tappable row in the "+" add button's bottom sheet: a leading [icon] plus a [label],
+ * full-width and vertically centered. Selecting it calls [onClick].
+ */
+@Composable
+private fun PlusSheetItem(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(start = 20.dp),
+        )
     }
 }
