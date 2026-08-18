@@ -1,8 +1,10 @@
 package com.suzuri.lmdroid
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModelProvider
@@ -38,6 +40,23 @@ class AssistActivity : ComponentActivity() {
         }
 
         super.onCreate(savedInstanceState)
+
+        // Triggered while the device is asleep/locked (wake word, assist gesture, headset
+        // button), this activity otherwise launches behind the keyguard and doesn't reach
+        // Lifecycle.State.STARTED until the user manually unlocks — confirmed via on-device
+        // logcat, leaving AssistScreen stuck showing "準備中" for however long that takes.
+        // Showing over the keyguard (without dismissing it — the device stays locked) and
+        // waking the screen restores hands-free lock-screen usage instead.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+
         Log.d("AssistActivity", "onCreate: intent=$intent")
         Log.d("AssistActivity", "onCreate: Pausing wake word")
         sendBroadcast(Intent(WakeWordService.ACTION_PAUSE))

@@ -89,6 +89,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
@@ -202,6 +203,14 @@ fun AssistScreen(
     // while the overlay is already open will restart the listening process.
     LaunchedEffect(uiState.triggerCount) {
         delay(300)
+        // Triggering while the device is asleep/locked launches this activity behind the
+        // keyguard: it can sit below Lifecycle.State.STARTED for as long as the user takes to
+        // unlock, not just for the odd background flicker beginListening()'s own guard was
+        // written for. Waiting here (rather than bailing once and never retrying) means the
+        // overlay still starts listening as soon as it's actually shown, instead of getting
+        // stuck on "準備中" forever — confirmed via on-device logcat: the activity didn't regain
+        // top-resumed until ~12s after this trigger fired.
+        lifecycleOwner.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.STARTED) }
         requestOrStartListening()
     }
 
