@@ -16,17 +16,23 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.data.stt.SpeechModel
+import kotlin.math.roundToInt
 
 /**
  * Settings → 音声: which backend speaks the assistant overlay's replies aloud — this device's own
@@ -118,6 +124,35 @@ fun VoiceSettingsScreen(viewModel: VoiceSettingsViewModel, modifier: Modifier = 
                 onClick = { viewModel.onSelectVoiceInputEngine(false) },
             )
             Text(stringResource(R.string.stt_engine_google))
+        }
+
+        if (uiState.voiceInputUseLocalEngine) {
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = stringResource(R.string.bluetooth_sco_retry_label),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                text = stringResource(R.string.bluetooth_sco_retry_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Text(
+                text = stringResource(R.string.bluetooth_sco_retry_value, uiState.bluetoothScoMaxAttempts),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            var bluetoothScoMaxAttemptsDraft by remember { mutableFloatStateOf(uiState.bluetoothScoMaxAttempts.toFloat()) }
+            LaunchedEffect(uiState.bluetoothScoMaxAttempts) { bluetoothScoMaxAttemptsDraft = uiState.bluetoothScoMaxAttempts.toFloat() }
+            Slider(
+                value = bluetoothScoMaxAttemptsDraft,
+                onValueChange = { bluetoothScoMaxAttemptsDraft = it },
+                onValueChangeFinished = { viewModel.onBluetoothScoMaxAttemptsChanged(bluetoothScoMaxAttemptsDraft.roundToInt()) },
+                valueRange = 1f..10f,
+                steps = 8,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 24.dp))

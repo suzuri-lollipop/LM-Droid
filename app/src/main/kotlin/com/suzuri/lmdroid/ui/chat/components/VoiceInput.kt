@@ -53,11 +53,6 @@ import java.util.Locale
 // delay before the mic actually starts capturing, so the beep can't leak into the recognized audio.
 private const val START_LISTENING_BEEP_DURATION_MS = 150
 
-// How many times LocalVoiceInputState.start retries connecting Bluetooth SCO audio (each attempt
-// can take up to ~2s to time out — see awaitBluetoothScoConnected) before giving up and falling
-// back to the phone's own mic/speaker.
-private const val BLUETOOTH_SCO_MAX_ATTEMPTS = 3
-
 /**
  * Suspends until the Bluetooth SCO link [android.media.AudioManager.startBluetoothSco] just
  * requested is actually up (ACTION_SCO_AUDIO_STATE_UPDATED / SCO_AUDIO_STATE_CONNECTED), or
@@ -168,6 +163,7 @@ class LocalVoiceInputState(
                 // Snapshot once — a session lasts seconds, so it isn't worth reacting to a
                 // threshold change made mid-utterance the way WakeWordService does.
                 val micThreshold = settingsRepository.currentMicInputThreshold()
+                val bluetoothScoMaxAttempts = settingsRepository.currentBluetoothScoMaxAttempts()
 
                 // Every failure path below just reports and returns — the finally block is what
                 // clears isPreparing/isListening, so no flag bookkeeping in between. The error is
@@ -226,7 +222,7 @@ class LocalVoiceInputState(
                     // enable" — as well as simply time out) even though a retry moments later
                     // succeeds, so give it a few attempts before accepting defeat and falling
                     // back to the phone's own mic/speaker.
-                    for (attempt in 1..BLUETOOTH_SCO_MAX_ATTEMPTS) {
+                    for (attempt in 1..bluetoothScoMaxAttempts) {
                         val communicationDeviceRequested: Boolean
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             // setCommunicationDevice (API 31+) is the modern replacement for the

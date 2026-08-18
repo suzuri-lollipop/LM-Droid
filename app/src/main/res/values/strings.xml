@@ -283,6 +283,10 @@
     <string name="stt_engine_local">端末内で認識 (Vosk / Whisper)</string>
     <string name="stt_engine_google">端末の標準音声認識サービス (通常はGoogle)</string>
 
+    <string name="bluetooth_sco_retry_label">Bluetooth接続のリトライ回数</string>
+    <string name="bluetooth_sco_retry_description">端末内認識でBluetoothイヤホンに接続する際、接続に失敗した場合に再試行する回数です。回数を増やすと接続の成功率が上がりますが、聞き取り開始までの待ち時間が長くなることがあります。</string>
+    <string name="bluetooth_sco_retry_value">%d回</string>
+
     <string name="settings_stt_category_title">音声認識 (STT)</string>
     <string name="stt_model_label">使用するモデル</string>
     <string name="stt_model_download">ダウンロード</string>

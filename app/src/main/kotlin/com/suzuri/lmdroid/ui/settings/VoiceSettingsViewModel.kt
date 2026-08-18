@@ -62,6 +62,11 @@ class VoiceSettingsViewModel(
                 ) }
             }.collect { }
         }
+        viewModelScope.launch {
+            settingsRepository.bluetoothScoMaxAttempts.collect { attempts ->
+                _uiState.update { it.copy(bluetoothScoMaxAttempts = attempts) }
+            }
+        }
     }
 
     /** This device's own built-in text-to-speech — always available, unlike any one specific profile which might be unreachable. */
@@ -83,6 +88,10 @@ class VoiceSettingsViewModel(
 
     fun onSelectVoiceInputEngine(useLocal: Boolean) {
         viewModelScope.launch { settingsRepository.setVoiceInputUseLocalEngine(useLocal) }
+    }
+
+    fun onBluetoothScoMaxAttemptsChanged(attempts: Int) {
+        viewModelScope.launch { settingsRepository.setBluetoothScoMaxAttempts(attempts) }
     }
 
     fun onDownloadModel(model: SpeechModel) {

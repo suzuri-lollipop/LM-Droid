@@ -27,6 +27,10 @@ data class VoiceSettingsUiState(
     // Vosk/Whisper pipeline above, or the OS's default (usually Google) recognizer — see
     // SettingsRepository.voiceInputUseLocalEngine.
     val voiceInputUseLocalEngine: Boolean = true,
+
+    // How many times the local engine retries connecting Bluetooth SCO audio before falling back
+    // to the phone's own mic/speaker — see SettingsRepository.bluetoothScoMaxAttempts.
+    val bluetoothScoMaxAttempts: Int = 3,
 )
 
 data class SpeechModelUiModel(
