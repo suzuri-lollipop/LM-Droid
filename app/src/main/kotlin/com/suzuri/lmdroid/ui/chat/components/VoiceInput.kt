@@ -202,19 +202,11 @@ class LocalVoiceInputState(
                     return@launch
                 }
                 
-                // TEMP DIAGNOSTIC LOGGING — remove once the Bluetooth beep/mic-routing issue is fixed.
-                Log.d("LocalVoiceInput", "DIAG input devices: " + audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
-                    .joinToString { "type=${it.type} name=${it.productName}" })
-                Log.d("LocalVoiceInput", "DIAG output devices: " + audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                    .joinToString { "type=${it.type} name=${it.productName}" })
-
                 // Route to a Bluetooth headset mic only while one is actually connected.
                 // Starting SCO unconditionally leaves the built-in mic silent on devices
                 // (e.g. the emulator) that report SCO as available without a headset.
                 val bluetoothScoDevice = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
                     .find { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
-                val btScoConnected = bluetoothScoDevice != null
-                Log.d("LocalVoiceInput", "DIAG btScoConnected=$btScoConnected")
                 // Also doubles as "we're still holding the communication-mode/device/SCO
                 // resources claimed below" — false means they've already been fully released,
                 // whether because there was no Bluetooth device to begin with or because the
@@ -245,9 +237,7 @@ class LocalVoiceInputState(
                             // fired, silently leaving capture on the phone's own built-in mic
                             // instead of the headset.
                             communicationDeviceRequested = audioManager.setCommunicationDevice(bluetoothScoDevice)
-                            Log.d("LocalVoiceInput", "DIAG setCommunicationDevice result=$communicationDeviceRequested (attempt $attempt/$BLUETOOTH_SCO_MAX_ATTEMPTS)")
                         } else {
-                            Log.d("LocalVoiceInput", "Starting Bluetooth SCO for UI listening (attempt $attempt/$BLUETOOTH_SCO_MAX_ATTEMPTS)")
                             audioManager.startBluetoothSco()
                             audioManager.isBluetoothScoOn = true
                             communicationDeviceRequested = true
@@ -258,7 +248,6 @@ class LocalVoiceInputState(
                         // AudioPolicyManager keeps routing STREAM_VOICE_CALL (the beep) and mic
                         // capture to the phone's own earpiece/mic instead of the headset.
                         usingBluetoothCommunicationDevice = communicationDeviceRequested && awaitBluetoothScoConnected(context)
-                        Log.d("LocalVoiceInput", "DIAG scoConnectedInTime=$usingBluetoothCommunicationDevice (attempt $attempt/$BLUETOOTH_SCO_MAX_ATTEMPTS)")
                         if (usingBluetoothCommunicationDevice) break
                         // Release before the next retry (or before falling back for good below) —
                         // re-requesting from a clean slate rather than layering another
@@ -300,7 +289,6 @@ class LocalVoiceInputState(
                 // VOICE_COMMUNICATION — that does add call-oriented processing, but it's the
                 // source that actually reaches the headset.
                 val audioSource = if (usingBluetoothCommunicationDevice) MediaRecorder.AudioSource.VOICE_COMMUNICATION else MediaRecorder.AudioSource.VOICE_RECOGNITION
-                Log.d("LocalVoiceInput", "DIAG audioSource=$audioSource (VOICE_RECOGNITION=${MediaRecorder.AudioSource.VOICE_RECOGNITION} VOICE_COMMUNICATION=${MediaRecorder.AudioSource.VOICE_COMMUNICATION})")
                 val recorder = AudioRecord(audioSource, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minBufSize.coerceAtLeast(bufferSize))
                 // Belt-and-suspenders: explicitly pin capture to the Bluetooth mic rather than
                 // relying solely on the communication-device/SCO state to steer default routing.
@@ -328,7 +316,6 @@ class LocalVoiceInputState(
                 // up, only STREAM_VOICE_CALL reaches the headset over it.
                 try {
                     val toneStreamType = if (usingBluetoothCommunicationDevice) AudioManager.STREAM_VOICE_CALL else AudioManager.STREAM_MUSIC
-                    Log.d("LocalVoiceInput", "DIAG toneStreamType=$toneStreamType (STREAM_VOICE_CALL=${AudioManager.STREAM_VOICE_CALL} STREAM_MUSIC=${AudioManager.STREAM_MUSIC})")
                     val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                         .setAudioAttributes(
                             AudioAttributes.Builder()
@@ -337,8 +324,7 @@ class LocalVoiceInputState(
                                 .build()
                         )
                         .build()
-                    val focusResult = audioManager.requestAudioFocus(focusRequest)
-                    Log.d("LocalVoiceInput", "DIAG requestAudioFocus result=$focusResult (GRANTED=${AudioManager.AUDIOFOCUS_REQUEST_GRANTED})")
+                    audioManager.requestAudioFocus(focusRequest)
 
                     val toneGenerator = ToneGenerator(toneStreamType, 80)
                     toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, START_LISTENING_BEEP_DURATION_MS)
@@ -353,7 +339,6 @@ class LocalVoiceInputState(
                 if (sessionGeneration != generation) return@launch
 
                 recorder.startRecording()
-                Log.d("LocalVoiceInput", "DIAG recorder started, preferredDevice=${recorder.preferredDevice?.let { "type=${it.type} name=${it.productName}" }}")
                 // Only now — mic actually capturing — is it honest to prompt the user to speak.
                 // Set synchronously (not via Dispatchers.Main): the capture loop below checks
                 // isListening on this thread and would exit at once if it had to wait for Main.
@@ -367,7 +352,6 @@ class LocalVoiceInputState(
                     // subsequent buffer (silence included) is fed through as before, so the
                     // engine's own end-of-utterance/finalization detection is untouched.
                     var speechStarted = false
-                    var routedDeviceLogged = false
                     // The generation check covers a session stopped while still preparing (model
                     // loading takes seconds): this coroutine then flips isListening back on after
                     // stop() cleared it, and without this the mic would keep capturing for a
@@ -375,10 +359,6 @@ class LocalVoiceInputState(
                     while (isListening && sessionGeneration == generation) {
                         val read = recorder.read(buffer, 0, buffer.size)
                         if (read > 0) {
-                            if (!routedDeviceLogged) {
-                                routedDeviceLogged = true
-                                Log.d("LocalVoiceInput", "DIAG first read: routedDevice=${recorder.routedDevice?.let { "type=${it.type} name=${it.productName}" }} peak=${normalizedPeakLevel(buffer, read)}")
-                            }
                             if (!speechStarted) {
                                 speechStarted = normalizedPeakLevel(buffer, read) >= micThreshold
                                 if (!speechStarted) continue
