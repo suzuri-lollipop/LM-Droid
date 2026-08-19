@@ -142,6 +142,14 @@ data class ChatCompletionRequest(
     @SerialName("chat_template_kwargs")
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val chatTemplateKwargs: ChatTemplateKwargsDto? = null,
+    // llama-server (llama.cpp)'s own top-level cap on how many tokens a reasoning-capable model
+    // may spend in its thinking block. Only non-null when the user has raised the chat screen's
+    // 思考予算(thinking budget) slider above 0 — left absent for 0 ("no explicit cap") and for
+    // servers that never set this at all, so servers that don't recognize this llama-server-
+    // specific field never see it. See OpenAiApiClient.streamChatCompletion.
+    @SerialName("reasoning_budget_tokens")
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val reasoningBudgetTokens: Int? = null,
 )
 
 /**

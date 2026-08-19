@@ -98,6 +98,10 @@ fun ChatInputBar(
     // also a per-model concern (only models with persistent-memory support, e.g. Qwen3.8, act on it).
     memoryEnabled: Boolean,
     onMemoryEnabledChange: (Boolean) -> Unit,
+    // See AppSettings.thinkingBudget — shown right next to the memory toggle since it's also a
+    // per-model concern (only reasoning-capable models act on it).
+    thinkingBudget: Int,
+    onThinkingBudgetChange: (Int) -> Unit,
     pendingAttachments: List<PendingAttachmentUiModel>,
     onAttachFile: () -> Unit,
     onOpenSystemPrompt: () -> Unit,
@@ -254,6 +258,7 @@ fun ChatInputBar(
                             },
                         )
                     }
+                    ThinkingBudgetButton(budget = thinkingBudget, onChange = onThinkingBudgetChange)
                 }
 
                 Spacer(modifier = Modifier.weight(1f))

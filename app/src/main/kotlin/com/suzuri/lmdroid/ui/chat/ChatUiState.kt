@@ -69,6 +69,8 @@ data class ChatUiState(
     val markdownEnabled: Boolean = true,
     val thinkingEffort: ThinkingEffort = ThinkingEffort.MEDIUM,
     val memoryEnabled: Boolean = true,
+    // See AppSettings.thinkingBudget — 0 (default) means "no explicit cap (server default)".
+    val thinkingBudget: Int = 0,
     val suggestionsState: SuggestionsUiState = SuggestionsUiState.Loading,
     // Every model offered by every *enabled* profile — the chat-screen model switcher's choices.
     val availableModels: List<ModelOptionRow> = emptyList(),

@@ -174,6 +174,44 @@ class OpenAiApiClientTest {
     }
 
     @Test
+    fun `streamChatCompletion omits reasoning_budget_tokens when the thinking budget is left at 0`() = runTest {
+        // 0 means "no explicit cap" and must stay entirely absent so a server that's never heard
+        // of llama-server's reasoning_budget_tokens field never sees it.
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+
+        client.streamChatCompletion("test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl).test {
+            awaitItem() // Done
+            awaitComplete()
+        }
+
+        val requestBody = server.takeRequest().body.readUtf8()
+        assertTrue(!requestBody.contains("reasoning_budget_tokens"))
+    }
+
+    @Test
+    fun `streamChatCompletion sends top-level reasoning_budget_tokens when the thinking budget is set`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+
+        client.streamChatCompletion(
+            "test-key", "gpt-4o-mini", listOf(chatMessage("user", "hi")), baseUrl, thinkingBudget = 4096,
+        ).test {
+            awaitItem() // Done
+            awaitComplete()
+        }
+
+        val requestBody = server.takeRequest().body.readUtf8()
+        assertTrue(requestBody.contains("\"reasoning_budget_tokens\":4096"))
+    }
+
+    @Test
     fun `streamChatCompletion serializes a multimodal message as a content parts array`() = runTest {
         // Regression test for MessageContentSerializer: a text-only message's "content" must stay
         // a plain JSON string (unchanged wire format), but a message with an image attachment

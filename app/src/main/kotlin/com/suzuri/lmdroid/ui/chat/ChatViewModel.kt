@@ -87,6 +87,7 @@ class ChatViewModel(
                         markdownEnabled = settings.markdownEnabled,
                         thinkingEffort = settings.thinkingEffort,
                         memoryEnabled = settings.memoryEnabled,
+                        thinkingBudget = settings.thinkingBudget,
                     )
                 }
             }
@@ -303,6 +304,12 @@ class ChatViewModel(
     fun onMemoryEnabledChange(enabled: Boolean) {
         _uiState.update { it.copy(memoryEnabled = enabled) }
         viewModelScope.launch { settingsRepository.saveMemoryEnabled(enabled) }
+    }
+
+    /** Same immediate-update-then-persist pattern as [onMarkdownEnabledChange] — see [com.suzuri.lmdroid.data.settings.AppSettings.thinkingBudget]. */
+    fun onThinkingBudgetChange(tokens: Int) {
+        _uiState.update { it.copy(thinkingBudget = tokens) }
+        viewModelScope.launch { settingsRepository.saveThinkingBudget(tokens) }
     }
 
     /** Toggles whether a saved system prompt is active, from [com.suzuri.lmdroid.ui.chat.components.SystemPromptDialog] — several may be active simultaneously. */

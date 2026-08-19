@@ -18,6 +18,12 @@ data class AppSettings(
     // chat_template_kwargs.enable_memory=false. A template that doesn't support this simply
     // ignores it.
     val memoryEnabled: Boolean = true,
+    // Global 思考予算(thinking budget) — the maximum number of tokens a reasoning-capable model
+    // may spend in its thinking block, forwarded as the request's top-level
+    // reasoning_budget_tokens field (llama-server / llama.cpp). 0 (default) means "no explicit
+    // cap" and the field is left off entirely so servers that don't know it never see it. See
+    // OpenAiApiClient.streamChatCompletion.
+    val thinkingBudget: Int = 0,
     // The registered ApiProfileEntity's own display name (e.g. "ローカルサーバー") — null when no
     // profile backs this AppSettings at all (nothing configured yet). Lets a UI show which profile
     // is actually active (see AssistScreen's title) without having to look the profile back up.

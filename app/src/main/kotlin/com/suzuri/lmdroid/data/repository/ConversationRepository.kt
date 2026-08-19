@@ -752,6 +752,7 @@ class ConversationRepository(
                     tools = if (offerTools) tools else null,
                     thinkingEffort = settings.thinkingEffort,
                     memoryEnabled = settings.memoryEnabled,
+                    thinkingBudget = settings.thinkingBudget,
                 ).collect { event ->
                     when (event) {
                         is StreamEvent.Delta -> {

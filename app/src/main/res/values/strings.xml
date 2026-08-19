@@ -21,6 +21,10 @@
     <string name="chat_thinking_effort_medium">中 (Medium)</string>
     <string name="chat_thinking_effort_xhigh">最高 (XHigh)</string>
     <string name="chat_memory_toggle_label">記憶を保持</string>
+    <string name="chat_thinking_budget_label">思考予算</string>
+    <string name="chat_thinking_budget_title">思考予算</string>
+    <string name="chat_thinking_budget_value">最大 %1$d トークン</string>
+    <string name="chat_thinking_budget_default">上限なし（サーバー既定）</string>
     <string name="api_profile_thinking_default_label">思考(Thinking)の既定値</string>
     <string name="api_profile_memory_default_label">記憶保持の既定値</string>
     <string name="settings_default_unset">サーバー既定</string>

@@ -54,6 +54,10 @@ class OpenAiApiClient(
         // ChatTemplateKwargsDto. There's no "force true" distinct from "leave at default" since no
         // server-side default actually needs overriding upward.
         memoryEnabled: Boolean = true,
+        // 0 (default) means "no explicit cap" and is left off the request entirely; > 0 is sent
+        // as the top-level reasoning_budget_tokens field (llama-server/llama.cpp) capping how many
+        // tokens a reasoning-capable model may spend in its thinking block. See AppSettings.thinkingBudget.
+        thinkingBudget: Int = 0,
     ): Flow<StreamEvent> = callbackFlow {
         val enableThinkingKwarg = if (thinkingEffort == ThinkingEffort.OFF) false else null
         val enableMemoryKwarg = if (memoryEnabled) null else false
@@ -77,6 +81,7 @@ class OpenAiApiClient(
                 tools = tools,
                 reasoningEffort = reasoningEffort,
                 chatTemplateKwargs = kwargs,
+                reasoningBudgetTokens = thinkingBudget.takeIf { it > 0 },
             ),
         )
         // Deliberately just the tool names, not the full request body — the latter can carry a

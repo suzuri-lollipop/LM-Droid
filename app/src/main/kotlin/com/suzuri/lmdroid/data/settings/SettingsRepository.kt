@@ -76,6 +76,10 @@ class SettingsRepository(
     private val memoryEnabledFlow: Flow<Boolean> =
         context.settingsDataStore.data.map { it[KEY_MEMORY_ENABLED] ?: true }
 
+    /** See [AppSettings.thinkingBudget]. */
+    private val thinkingBudgetFlow: Flow<Int> =
+        context.settingsDataStore.data.map { it[KEY_THINKING_BUDGET] ?: 0 }
+
     val chatSettings: Flow<AppSettings> = selectedChatModel.flatMapLatest { selected -> resolve(selected) }
 
     /** Falls back to the chat selection when no system-specific override has been chosen. */
@@ -137,6 +141,10 @@ class SettingsRepository(
 
     suspend fun saveMemoryEnabled(enabled: Boolean) {
         context.settingsDataStore.edit { prefs -> prefs[KEY_MEMORY_ENABLED] = enabled }
+    }
+
+    suspend fun saveThinkingBudget(tokens: Int) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_THINKING_BUDGET] = tokens.coerceAtLeast(0) }
     }
 
     /** Whether the Brave Search harness (see ConversationRepository) is forced on for every message. */
@@ -538,27 +546,42 @@ class SettingsRepository(
             markdownEnabledFlow,
             thinkingEffortFlow,
             memoryEnabledFlow,
-        ) { markdownEnabled, thinkingEffort, memoryEnabled ->
-            Triple(markdownEnabled, thinkingEffort, memoryEnabled)
+            thinkingBudgetFlow,
+        ) { markdownEnabled, thinkingEffort, memoryEnabled, thinkingBudget ->
+            PreferencesSnapshot(markdownEnabled, thinkingEffort, memoryEnabled, thinkingBudget)
         }
         if (selected == null) {
-            return preferencesFlow.map { (markdownEnabled, thinkingEffort, memoryEnabled) ->
+            return preferencesFlow.map { snapshot ->
                 AppSettings(
                     apiKey = null,
                     model = AppSettings.DEFAULT_MODEL,
                     baseUrl = AppSettings.DEFAULT_BASE_URL,
-                    markdownEnabled = markdownEnabled,
-                    thinkingEffort = thinkingEffort,
-                    memoryEnabled = memoryEnabled,
+                    markdownEnabled = snapshot.markdownEnabled,
+                    thinkingEffort = snapshot.thinkingEffort,
+                    memoryEnabled = snapshot.memoryEnabled,
+                    thinkingBudget = snapshot.thinkingBudget,
                 )
             }
         }
         return apiProfileDao.observeById(selected.profileId).flatMapLatest { profile ->
-            preferencesFlow.map { (markdownEnabled, thinkingEffort, memoryEnabled) ->
-                profile.toAppSettings(selected.model, markdownEnabled, thinkingEffort, memoryEnabled)
+            preferencesFlow.map { snapshot ->
+                profile.toAppSettings(
+                    selected.model,
+                    snapshot.markdownEnabled,
+                    snapshot.thinkingEffort,
+                    snapshot.memoryEnabled,
+                    snapshot.thinkingBudget,
+                )
             }
         }
     }
+
+    private data class PreferencesSnapshot(
+        val markdownEnabled: Boolean,
+        val thinkingEffort: ThinkingEffort,
+        val memoryEnabled: Boolean,
+        val thinkingBudget: Int,
+    )
 
     private fun Preferences.toSelectedModel(
         profileKey: Preferences.Key<Long>,
@@ -574,6 +597,7 @@ class SettingsRepository(
         markdownEnabled: Boolean,
         thinkingEffort: ThinkingEffort,
         memoryEnabled: Boolean,
+        thinkingBudget: Int,
     ): AppSettings {
         if (this == null) {
             return AppSettings(
@@ -583,6 +607,7 @@ class SettingsRepository(
                 markdownEnabled = markdownEnabled,
                 thinkingEffort = thinkingEffort,
                 memoryEnabled = memoryEnabled,
+                thinkingBudget = thinkingBudget,
             )
         }
         val ciphertext = apiKeyCiphertext
@@ -599,6 +624,7 @@ class SettingsRepository(
             markdownEnabled = markdownEnabled,
             thinkingEffort = thinkingEffort,
             memoryEnabled = memoryEnabled,
+            thinkingBudget = thinkingBudget,
             profileName = name,
         )
     }
@@ -613,6 +639,7 @@ class SettingsRepository(
         val KEY_MARKDOWN_ENABLED = booleanPreferencesKey("markdown_enabled")
         val KEY_THINKING_EFFORT = stringPreferencesKey("thinking_effort")
         val KEY_MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
+        val KEY_THINKING_BUDGET = intPreferencesKey("thinking_budget")
         val KEY_BRAVE_SEARCH_ENABLED = booleanPreferencesKey("brave_search_enabled")
         val KEY_SELECTED_WEB_SEARCH_PROFILE_ID = longPreferencesKey("selected_web_search_profile_id")
         val KEY_WEB_SEARCH_MAX_TOOL_ROUNDS = intPreferencesKey("web_search_max_tool_rounds")
