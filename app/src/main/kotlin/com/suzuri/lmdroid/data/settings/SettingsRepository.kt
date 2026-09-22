@@ -41,7 +41,7 @@ enum class AssistantToolLaunchTiming { WHILE_SPEAKING, AFTER_SPEAKING }
 
 /**
  * Resolves which (profile, model) pair is used for (a) the chat screen — adjustable there —
- * (b) background "system" tasks (auto-titling, prompt suggestions) — adjustable from Settings →
+ * (b) background "system" tasks (auto-titling) — adjustable from Settings →
  * システム — and (c) the assistant overlay (Settings → アシスタント), all falling back to the chat
  * selection when not explicitly overridden. Also tracks app-wide preferences unrelated to any one
  * profile, like [AppSettings.markdownEnabled], the Web検索 on/off toggle, and which registered

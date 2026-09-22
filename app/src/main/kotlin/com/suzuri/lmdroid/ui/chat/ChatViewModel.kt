@@ -132,23 +132,6 @@ class ChatViewModel(
                     }
                 }
         }
-
-        // Best-effort, once per app session: personalizes the empty-conversation suggestion rows
-        // from past conversation topics. Starts at Loading (shown as a skeleton animation) and
-        // resolves to Generated on success, or Fallback (static starter prompts) on failure or
-        // when there's no history yet to base them on.
-        viewModelScope.launch {
-            val suggestions = conversationRepository.generateSuggestedPrompts()
-            _uiState.update { state ->
-                state.copy(
-                    suggestionsState = if (!suggestions.isNullOrEmpty()) {
-                        SuggestionsUiState.Generated(suggestions)
-                    } else {
-                        SuggestionsUiState.Fallback
-                    },
-                )
-            }
-        }
     }
 
     fun onInputChange(value: String) {
@@ -343,14 +326,46 @@ class ChatViewModel(
      * defaultMemoryEnabled) — e.g. a Gemma profile the user runs without thinking flips the
      * selector to OFF automatically, a Qwen3.8 profile that reasons by default flips it to MEDIUM.
      * A profile with no configured default (null) leaves the selector/toggle as the user last set it.
+     * Finally, clamps whatever selection (seeded or carried over) the new model can't honor — see
+     * [clampThinkingControlsTo].
      */
     fun onSelectModel(option: ModelOptionRow) {
         viewModelScope.launch { settingsRepository.setSelectedChatModel(option.profileId, option.modelId) }
         option.defaultThinkingEffort?.let(::onThinkingEffortChange)
         option.defaultMemoryEnabled?.let(::onMemoryEnabledChange)
+        clampThinkingControlsTo(option)
+    }
+
+    /**
+     * Repairs selections the selected model demonstrably can't honor, so the controls
+     * [com.suzuri.lmdroid.ui.chat.components.ModelSelectorButton] has just hidden for this model
+     * never keep a stale, now-unpickable value riding along on every request (e.g. 思考 OFF
+     * persisted from a previous model whose template supported enable_thinking, switched onto a
+     * model whose template ignores it). Only a definite false clamps — a null (never advertised)
+     * capability leaves the value alone, same as the menu's show/hide rule.
+     */
+    private fun clampThinkingControlsTo(option: ModelOptionRow) {
+        val state = _uiState.value
+        when {
+            state.thinkingEffort == ThinkingEffort.OFF && option.supportsThinking == false ->
+                if (option.supportsReasoningEffort != false) onThinkingEffortChange(ThinkingEffort.MEDIUM)
+            state.thinkingEffort != ThinkingEffort.OFF && option.supportsReasoningEffort == false ->
+                if (option.supportsThinking != false) onThinkingEffortChange(ThinkingEffort.OFF)
+        }
+        // memoryEnabled=true means "leave the server's own default alone" (the kwarg is only ever
+        // sent for false), so a model without memory support falls back to the inert true rather
+        // than to a false that would keep sending enable_memory=false into the void.
+        if (option.supportsMemory == false && state.memoryEnabled.not()) onMemoryEnabledChange(true)
+        // thinkingBudget=0 likewise means "no explicit cap", the field being sent only when > 0.
+        if (option.supportsThinkingBudget == false && state.thinkingBudget > 0) onThinkingBudgetChange(0)
     }
 
     private fun launchGeneration(block: suspend () -> ConversationRepository.SendResult) {
+        // Anchor for the send-path timings ConversationRepository logs as "+Nms" (see its
+        // logSendTiming): with `logcat -v usec`, the gap between this line and the first "+Nms"
+        // line is the main thread not getting to the job at all — everything after that is
+        // measured against the repository's own clock.
+        Log.d(TAG, "generation requested")
         _uiState.update { it.copy(isStreaming = true) }
         sendJob = viewModelScope.launch {
             try {

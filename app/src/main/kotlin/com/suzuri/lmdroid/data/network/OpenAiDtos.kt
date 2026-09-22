@@ -38,6 +38,49 @@ data class ChatMessageDto(
 /** Convenience for the common case of a plain-text message (no image attachments). */
 fun chatMessage(role: String, text: String): ChatMessageDto = ChatMessageDto(role = role, content = MessageContent.Text(text))
 
+/**
+ * Folds every "system" message in [messages] into a single one at the very front, keeping the
+ * order their contents appeared in and leaving every other message exactly as it was.
+ *
+ * Several system messages in one request are legal per OpenAI's spec, and this app does produce
+ * them: the date-grounding line, one per active system prompt (Settings → システムプロンプト), plus
+ * the forced-skill and skill-catalog lines. But a number of self-hosted OpenAI-compatible servers
+ * accept a system message only as the request's one and only first entry and reject anything else
+ * — LM Studio's local server answers `could not encode request: System message must be at the
+ * beginning`, which the user saw as a reply that never started. One leading system message carries
+ * the same content under both readings, so normalizing costs nothing and keeps the request
+ * acceptable everywhere; it happens at the request-encoding boundary rather than in the caller so
+ * no call site can forget it.
+ */
+fun collapseSystemMessages(messages: List<ChatMessageDto>): List<ChatMessageDto> {
+    if (messages.none { it.role == SYSTEM_ROLE }) return messages
+    val systemTexts = messages.mapNotNull(ChatMessageDto::systemText)
+    val rest = messages.filterNot { it.role == SYSTEM_ROLE }
+    return buildList {
+        // An all-blank set still gets dropped rather than left in place out of order — the point
+        // is that no system message may sit anywhere but at the front.
+        if (systemTexts.isNotEmpty()) add(chatMessage(SYSTEM_ROLE, systemTexts.joinToString("\n\n")))
+        addAll(rest)
+    }
+}
+
+/** This message's text when it's a system message; null for any other role, or one carrying no text. */
+private fun ChatMessageDto.systemText(): String? {
+    if (role != SYSTEM_ROLE) return null
+    return when (val body = content) {
+        null -> null
+        is MessageContent.Text -> body.text.takeIf { it.isNotBlank() }
+        // Attachments on a system message have no meaning inside a merged preamble (nothing in this
+        // app sends any today, but a SYSTEM row saved into an older conversation could) — and a
+        // content *array* is itself a shape some of the servers above reject, so keep the text only.
+        is MessageContent.Parts -> body.parts.filterIsInstance<ContentPart.TextPart>()
+            .joinToString("\n\n") { it.text }
+            .takeIf { it.isNotBlank() }
+    }
+}
+
+private const val SYSTEM_ROLE = "system"
+
 /** Echoes back a tool call the model previously requested — required by the OpenAI tool-calling protocol before the matching "tool" result message(s) below it. */
 @Serializable
 data class ToolCallDto(
@@ -229,9 +272,46 @@ data class ModelListResponse(
     val data: List<ModelInfo> = emptyList(),
 )
 
+/**
+ * One entry of a `GET /models` response. Beyond [id], a number of servers also advertise which
+ * request parameters the model actually accepts — used to decide, at registration time, which of
+ * the chat screen's per-model controls (思考 effort / 思考予算 / 記憶) are meaningful for this
+ * model (see [ModelCapabilities] and ApiModelEntity's supports* columns):
+ *  - `supported_parameters` (string array): OpenRouter and a growing set of proxies/servers
+ *    (vLLM, new-api, ...) list the request fields a model accepts;
+ *  - `capabilities` (string→bool object): OpenAI's own model listing uses this shape.
+ * Both are absent from plain OpenAI-style listings and from most self-hosted servers, in which
+ * case caps fall back to the server's own report (see [ServerPropsDto]) or stay unknown.
+ *
+ * [capabilities] is deliberately a raw [JsonElement]: some servers (e.g. llama.cpp's LM
+ * Studio-compatibility shape) use the same key for a *string array* instead, which a typed
+ * `Map<String, Boolean>` would fail to parse — taking it raw keeps one oddball field from
+ * breaking the whole model list.
+ */
 @Serializable
 data class ModelInfo(
     val id: String,
+    @SerialName("supported_parameters") val supportedParameters: List<String>? = null,
+    val capabilities: JsonElement? = null,
+)
+
+/**
+ * The subset of llama.cpp's `GET /props` we read when a server's `/models` entries carry no
+ * per-model `supported_parameters`. llama-server serves `/props` at its root (not under `/v1`)
+ * and describes the loaded model — which is exactly one model on a normal single-model server, so
+ * its chat-template capabilities can be attributed to that model; router mode serves it per model
+ * via `?model=`. Non-llama.cpp servers 404 (or answer something else entirely), which callers
+ * treat as "no capability information".
+ */
+@Serializable
+data class ServerPropsDto(
+    // The loaded model's chat template source. A template that never references `enable_thinking`
+    // / `enable_memory` ignores those chat_template_kwargs outright, so their presence in this
+    // text is the only way to tell whether the 思考-OFF / 記憶 switches can do anything at all.
+    @SerialName("chat_template") val chatTemplate: String? = null,
+    // jinja::caps as reported by llama.cpp: keys like "supports_reasoning_effort" and
+    // "supports_preserve_reasoning" mapped to booleans.
+    @SerialName("chat_template_caps") val chatTemplateCaps: Map<String, Boolean>? = null,
 )
 
 @Serializable

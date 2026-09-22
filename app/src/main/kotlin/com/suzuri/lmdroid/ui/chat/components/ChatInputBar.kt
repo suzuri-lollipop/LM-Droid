@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
@@ -34,7 +33,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -68,8 +66,9 @@ import kotlinx.coroutines.withTimeoutOrNull
  * any are attached) and a chip for [forcedSkillName] (when the user explicitly picked a skill to
  * force into the next message, see SkillDialog), then a single toolbar row with every action:
  * the "+" add button (which opens a bottom sheet of the former attach-file / system-prompt /
- * skill buttons, Claude-style), the model switcher (with the 思考/thinking effort selector and
- * 記憶/memory toggle right next to it, since they're per-model concerns), mic, and send/stop.
+ * skill buttons, Claude-style), the model switcher (whose bottom sheet also holds the per-model
+ * 思考/thinking effort, 思考予算/thinking budget and 記憶/memory controls, ChatGPT/Claude-app
+ * style — see ModelSelectorButton), mic, and send/stop.
  * The mic button is
  * dual-purpose: a quick tap dictates speech to text (see [onVoiceInput]), while pressing and
  * holding records a voice message to attach and send as audio (see [onStartVoiceRecording]/
@@ -90,16 +89,16 @@ fun ChatInputBar(
     availableModels: List<ModelOptionRow>,
     selectedModel: SelectedModel?,
     onSelectModel: (ModelOptionRow) -> Unit,
-    // See AppSettings.thinkingEffort — shown as a brain icon right next to the model switcher
-    // since it's a per-model concern (only reasoning-capable models like Qwen3.8/Gemma act on it).
+    // See AppSettings.thinkingEffort — a per-model concern (only reasoning-capable models like
+    // Qwen3.8/Gemma act on it), so it's edited from inside the model switcher's bottom sheet.
     thinkingEffort: ThinkingEffort,
     onThinkingEffortChange: (ThinkingEffort) -> Unit,
-    // See AppSettings.memoryEnabled — shown right next to the thinking effort selector since it's
-    // also a per-model concern (only models with persistent-memory support, e.g. Qwen3.8, act on it).
+    // See AppSettings.memoryEnabled — also a per-model concern (only models with persistent-
+    // memory support, e.g. Qwen3.8, act on it), edited from the same sheet.
     memoryEnabled: Boolean,
     onMemoryEnabledChange: (Boolean) -> Unit,
-    // See AppSettings.thinkingBudget — shown right next to the memory toggle since it's also a
-    // per-model concern (only reasoning-capable models act on it).
+    // See AppSettings.thinkingBudget — also a per-model concern (only reasoning-capable models
+    // act on it), edited from the same sheet (which hands off to a Slider sheet).
     thinkingBudget: Int,
     onThinkingBudgetChange: (Int) -> Unit,
     pendingAttachments: List<PendingAttachmentUiModel>,
@@ -214,8 +213,8 @@ fun ChatInputBar(
                 }
             }
 
-            // One toolbar row for every action: the "+" add button and the model switcher
-            // cluster on the left, mic/send on the right, with a flexible gap between them.
+            // One toolbar row for every action: the "+" add button and the model switcher on the
+            // left, mic/send on the right, with a flexible gap between them.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -238,27 +237,22 @@ fun ChatInputBar(
                     // child is placed at its own (small) measured width, not its full allotted
                     // share, so it doesn't reserve any trailing gap and the following Spacer ends
                     // up right next to it instead of at the row's true right edge.
+                    // The former standalone 思考/記憶/思考予算 toolbar icons now live inside this
+                    // one bottom sheet, ChatGPT/Claude-app style (see ModelSelectorButton's KDoc).
                     ModelSelectorButton(
                         options = availableModels,
                         selected = selectedModel,
                         onSelect = onSelectModel,
+                        thinkingEffort = thinkingEffort,
+                        onThinkingEffortChange = onThinkingEffortChange,
+                        thinkingBudget = thinkingBudget,
+                        onThinkingBudgetChange = onThinkingBudgetChange,
+                        memoryEnabled = memoryEnabled,
+                        onMemoryEnabledChange = onMemoryEnabledChange,
                         modifier = Modifier
                             .widthIn(max = 120.dp)
                             .padding(start = 4.dp),
                     )
-                    ThinkingEffortButton(effort = thinkingEffort, onSelect = onThinkingEffortChange)
-                    IconToggleButton(checked = memoryEnabled, onCheckedChange = onMemoryEnabledChange) {
-                        Icon(
-                            imageVector = Icons.Filled.Memory,
-                            contentDescription = stringResource(R.string.chat_memory_toggle_label),
-                            tint = if (memoryEnabled) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                    }
-                    ThinkingBudgetButton(budget = thinkingBudget, onChange = onThinkingBudgetChange)
                 }
 
                 Spacer(modifier = Modifier.weight(1f))

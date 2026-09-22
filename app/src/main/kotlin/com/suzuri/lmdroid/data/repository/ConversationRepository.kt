@@ -181,28 +181,6 @@ class ConversationRepository(
         conversationDao.setFolder(conversationId, folderId)
     }
 
-    /**
-     * Generates prompt-suggestion chips from the topics of past conversations (their titles), for
-     * the empty/new-conversation screen. Returns null when there's no API key, no conversation
-     * history to base suggestions on, or generation fails — callers should fall back to static
-     * suggestions in that case.
-     */
-    suspend fun generateSuggestedPrompts(): List<String>? {
-        val settings = settingsRepository.currentSystemSettings()
-        val apiKey = settings.apiKey
-        if (apiKey.isNullOrBlank()) return null
-
-        val topics = conversationDao.getRecent(RECENT_CONVERSATIONS_FOR_SUGGESTIONS)
-            .map { it.title }
-            .filter { it.isNotBlank() && it != DEFAULT_TITLE }
-            .distinct()
-        if (topics.isEmpty()) return null
-
-        return openAiApiClient.generateSuggestedPrompts(apiKey, settings.model, topics, settings.baseUrl)
-            .onFailure { e -> Log.w(TAG, "Suggested prompt generation failed, falling back to static suggestions", e) }
-            .getOrNull()
-    }
-
     suspend fun sendUserMessage(
         conversationId: Long,
         userText: String,
@@ -218,13 +196,18 @@ class ConversationRepository(
         // where the model decides for itself from the active skills' catalog.
         forcedSkillId: Long? = null,
     ): SendResult {
+        val startedAt = System.currentTimeMillis()
         val settings = settingsOverride ?: settingsRepository.currentChatSettings()
         val apiKey = settings.apiKey
         if (apiKey.isNullOrBlank()) {
             return SendResult.ApiKeyMissing
         }
+        logSendTiming(startedAt, "settings resolved")
 
-        val isFirstMessage = messageDao.getMessages(conversationId).isEmpty()
+        // COUNT(*) rather than reading every row: this only ever asks "is this the first message",
+        // but getMessages() materialized the whole conversation (contents included) on the way to
+        // answering it, right in the middle of the send path's critical section.
+        val isFirstMessage = messageDao.countMessages(conversationId) == 0
 
         val sentAt = System.currentTimeMillis()
         val messageId = messageDao.insert(
@@ -246,11 +229,19 @@ class ConversationRepository(
         // No fallback title set here: the conversation keeps its DEFAULT_TITLE ("新しい会話")
         // until the LLM-generated title lands below. It's now shown live in the Chat top bar, so
         // briefly echoing the user's own message back at them as the "title" reads as a glitch.
-        if (isFirstMessage) {
-            generateTitleInBackground(conversationId, userText)
-        }
+        //
+        // The title request is deliberately *not* fired here any more. It went out before the
+        // reply's own request (and Settings → システム left unconfigured means it targets the very
+        // same server and model as the chat), so a single-slot local server serialized the two: the
+        // reply had to wait out a whole non-streaming, thinking-enabled completion before it was
+        // even prefilled — which is exactly what "送信してから 考え中… が出るまで長い" was. It's now a
+        // one-shot trigger handed to generateAssistantReply, fired once the reply's stream has
+        // actually started (see onStreamStarted).
+        logSendTiming(startedAt, "user message persisted")
+        val titleTrigger: (() -> Unit)? =
+            if (isFirstMessage) ({ generateTitleInBackground(conversationId, userText) }) else null
 
-        return generateAssistantReply(conversationId, apiKey, settings, forcedSkillId)
+        return generateAssistantReply(conversationId, apiKey, settings, forcedSkillId, startedAt, titleTrigger)
     }
 
     /**
@@ -259,6 +250,7 @@ class ConversationRepository(
      * pattern used by ChatGPT/Claude.
      */
     suspend fun editMessageAndRegenerate(conversationId: Long, messageId: Long, newText: String): SendResult {
+        val startedAt = System.currentTimeMillis()
         val settings = settingsRepository.currentChatSettings()
         val apiKey = settings.apiKey
         if (apiKey.isNullOrBlank()) {
@@ -269,13 +261,16 @@ class ConversationRepository(
         messageDao.deleteMessagesAfter(conversationId, messageId)
         conversationDao.touch(conversationId, System.currentTimeMillis())
 
-        val isFirstMessage = messageDao.getMessages(conversationId).size == 1
-        if (isFirstMessage) {
-            // The edited text may describe a different topic than the original — re-title from it.
-            generateTitleInBackground(conversationId, newText)
-        }
+        // Same deferral as sendUserMessage — see the note there about title/reply request contention.
+        val titleTrigger: (() -> Unit)? =
+            if (messageDao.countMessages(conversationId) == 1) {
+                // The edited text may describe a different topic than the original — re-title from it.
+                ({ generateTitleInBackground(conversationId, newText) })
+            } else {
+                null
+            }
 
-        return generateAssistantReply(conversationId, apiKey, settings)
+        return generateAssistantReply(conversationId, apiKey, settings, startedAt = startedAt, onStreamStarted = titleTrigger)
     }
 
     /**
@@ -301,6 +296,10 @@ class ConversationRepository(
         apiKey: String,
         settings: AppSettings,
         forcedSkillId: Long? = null,
+        // Anchor for the "送信 → 推論開始" stage timings logged along this path (see logSendTiming).
+        startedAt: Long = System.currentTimeMillis(),
+        // Fired exactly once, as late as the reply's own first streamed token (see sendUserMessage).
+        onStreamStarted: (() -> Unit)? = null,
     ): SendResult {
         val placeholderId = messageDao.insert(
             MessageEntity(
@@ -310,9 +309,11 @@ class ConversationRepository(
                 createdAt = System.currentTimeMillis(),
             ),
         )
+        logSendTiming(startedAt, "assistant placeholder inserted")
 
         val allMessages = messageDao.getMessagesWithAttachments(conversationId)
             .filter { !it.message.isError && (it.message.content.isNotBlank() || it.attachments.isNotEmpty()) }
+        logSendTiming(startedAt, "history rows loaded (${allMessages.size} messages)")
 
         val history = mutableListOf<ChatMessageDto>()
         if (allMessages.isNotEmpty()) {
@@ -343,6 +344,11 @@ class ConversationRepository(
             }
             flushSegment()
         }
+        logSendTiming(
+            startedAt,
+            "history built (${history.size} messages, " +
+                "${allMessages.sumOf { it.attachments.size }} attachments re-encoded)",
+        )
 
         // Models have no internal clock and a fixed training cutoff, so without this they have no
         // way to resolve "today"/"tomorrow"/"next week", or to judge whether a piece of
@@ -354,12 +360,16 @@ class ConversationRepository(
         // every conversation, not persisted as part of any one message, added fresh as leading
         // messages on every request rather than written into message history.
         val systemPromptContents = systemPromptRepository.currentActiveContents()
+        logSendTiming(startedAt, "active system prompts loaded (${systemPromptContents.size})")
         systemPromptContents.forEachIndexed { index, content ->
             history.add(1 + index, chatMessage("system", content))
         }
         // Where the next leading system message goes — right after the date and every system
         // prompt just inserted above — tracked as a running index so skill messages below can
         // insert in a stable, readable order instead of both fighting over the same position.
+        // Keeping them as separate messages here is only about that readable order, though: the
+        // server never sees more than one of them, since the request encoder folds everything at
+        // the front into a single system message (see collapseSystemMessages).
         var leadingSystemMessageIndex = 1 + systemPromptContents.size
 
         // Chain-of-thought and tool activity, in the exact order they happen (Claude-style),
@@ -377,6 +387,7 @@ class ConversationRepository(
         // even part of the active set — see SkillDialog's "使う" action and ChatViewModel's
         // pendingForcedSkillId, the explicit, user-driven counterpart to the model's own discovery.
         val activeSkills = skillRepository.currentActiveSkills()
+        logSendTiming(startedAt, "system prompts & skills resolved")
         Log.d(TAG, "skills: forcedSkillId=$forcedSkillId active=${activeSkills.map { it.name }}")
         if (forcedSkillId != null) {
             val forcedSkill = skillRepository.getSkill(forcedSkillId)
@@ -428,6 +439,20 @@ class ConversationRepository(
             SAFETY_MAX_TOOL_ROUNDS
         } else {
             configuredMaxRounds.coerceAtMost(SAFETY_MAX_TOOL_ROUNDS)
+        }
+        // Everything the send path does before touching the network is done at this point.
+        logSendTiming(startedAt, "request prepared (${history.size} messages, tools=${tools?.size ?: 0})")
+
+        // Fires [onStreamStarted] exactly once, at the first moment this reply's own generation has
+        // demonstrably begun — see sendUserMessage for why the title request waits for that. A reply
+        // that only ever calls tools (or errors out before any token) is covered by the calls after
+        // the round loop / after the stream below, so a conversation can't end up untitled.
+        var streamStarted = false
+        fun signalStreamStarted(stage: String) {
+            if (streamStarted) return
+            streamStarted = true
+            logSendTiming(startedAt, "first streamed token ($stage)")
+            onStreamStarted?.invoke()
         }
 
         fun appendReasoning(text: String) {
@@ -756,10 +781,12 @@ class ConversationRepository(
                 ).collect { event ->
                     when (event) {
                         is StreamEvent.Delta -> {
+                            signalStreamStarted("content")
                             accumulated.append(event.text)
                             flushIfDue()
                         }
                         is StreamEvent.ReasoningDelta -> {
+                            signalStreamStarted("reasoning")
                             appendReasoning(event.text)
                             flushIfDue()
                         }
@@ -769,6 +796,9 @@ class ConversationRepository(
                 }
 
                 if (requestedToolCalls.isEmpty()) break
+                // A model that goes straight to tools streamed no text at all, but its generation has
+                // obviously started — the title must not wait for a token that isn't coming.
+                signalStreamStarted("tool round")
                 round++
 
                 // Whatever text the model streamed before deciding to call a tool is preamble
@@ -819,6 +849,11 @@ class ConversationRepository(
             Log.w(TAG, "generateAssistantReply failed with an unexpected exception", e)
             streamError = OpenAiException.Unknown(e)
         }
+
+        // A reply that produced neither text nor a tool call (an empty completion, or an error
+        // response) still leaves a conversation with a user message that deserves a title — the
+        // pre-existing behaviour was to title it too, so the trigger fires here as a last resort.
+        signalStreamStarted("stream end")
 
         val finalTimelineJson = timelineJson()
         val error = streamError
@@ -886,7 +921,12 @@ class ConversationRepository(
     private suspend fun availableTools(activeSkills: List<SkillEntity>): List<ToolDefinitionDto>? {
         val tools = mutableListOf<ToolDefinitionDto>()
 
+        // Timed because this is a chain of sequential Settings reads (each one a DataStore .first(),
+        // and the web-search key additionally an Android Keystore AES-GCM decrypt) run on every
+        // single send, before the request can even be built.
+        val probeStartedAt = System.currentTimeMillis()
         if (settingsRepository.currentBraveSearchEnabled() && !settingsRepository.currentWebSearchApiKey().isNullOrBlank()) {
+            Log.d(TAG, "web-search capability probe +${System.currentTimeMillis() - probeStartedAt}ms")
             tools += ToolDefinitionDto(
                 function = FunctionSchemaDto(
                     name = WEB_SEARCH_TOOL_NAME,
@@ -914,7 +954,8 @@ class ConversationRepository(
             )
         }
 
-        if (settingsRepository.currentLocationEnabled()) {
+        val locationEnabled = settingsRepository.currentLocationEnabled()
+        if (locationEnabled) {
             tools += ToolDefinitionDto(
                 function = FunctionSchemaDto(
                     name = GET_LOCATION_TOOL_NAME,
@@ -1042,7 +1083,11 @@ class ConversationRepository(
             )
         }
 
-        Log.d(TAG, "availableTools: ${tools.map { it.function.name }} (locationEnabled=${settingsRepository.currentLocationEnabled()})")
+        Log.d(
+            TAG,
+            "availableTools: ${tools.map { it.function.name }} " +
+                "(locationEnabled=$locationEnabled, +${System.currentTimeMillis() - probeStartedAt}ms)",
+        )
         return tools.takeIf { it.isNotEmpty() }
     }
 
@@ -1103,6 +1148,18 @@ class ConversationRepository(
      * "system" model (Settings → システム) rather than whatever's active for chat — it falls back
      * to the chat selection when no system-specific override is configured.
      */
+    /**
+     * Logs one stage of the send path as a delta from the same anchor, so "送信 → 考え中… が出るまで"
+     * can be read straight off Logcat (`logcat -v usec -s ConversationRepository:V
+     * OpenAiApiClient:V OkHttpWire:V`): the stages before "request prepared" are ours (settings +
+     * Keystore, Room reads, history/attachment encoding), the gap after it up to "first SSE line
+     * received" is connection setup plus the server's queue and prefill, and the remainder up to
+     * "first streamed token" is parsing, the Room flush and the UI's round trip.
+     */
+    private fun logSendTiming(startedAt: Long, stage: String) {
+        Log.d(TAG, "send +${System.currentTimeMillis() - startedAt}ms: $stage")
+    }
+
     private fun generateTitleInBackground(conversationId: Long, userText: String) {
         backgroundScope.launch {
             val systemSettings = settingsRepository.currentSystemSettings()
@@ -1129,7 +1186,6 @@ class ConversationRepository(
         const val TITLE_MAX_LENGTH = 40
         const val DEFAULT_TITLE = "新しい会話"
         const val STOPPED_NOTICE = "（生成を停止しました）"
-        const val RECENT_CONVERSATIONS_FOR_SUGGESTIONS = 15
         const val WEB_SEARCH_TOOL_NAME = "web_search"
         const val FETCH_WEBPAGE_TOOL_NAME = "fetch_webpage"
         const val GET_LOCATION_TOOL_NAME = "get_current_location"

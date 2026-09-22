@@ -13,8 +13,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Settings → システム: picks which (profile, model) pair background tasks (auto-titling, prompt
- * suggestions) use, independently of whatever's active for chat. Leaving nothing selected here
+ * Settings → システム: picks which (profile, model) pair background tasks (auto-titling)
+ * use, independently of whatever's active for chat. Leaving nothing selected here
  * falls back to the chat selection — see [SettingsRepository.systemSettings].
  */
 class SystemSettingsViewModel(

@@ -78,9 +78,10 @@ class AppContainer(context: Context) {
         .build()
 
     private val database = Room.databaseBuilder(appContext, AppDatabase::class.java, AppDatabase.DATABASE_NAME)
-        // No migrations written yet (still early/local development) — just recreate the DB on
-        // a schema version bump rather than crash. This wipes locally stored chat history once
-        // per schema change, which is an acceptable tradeoff at this stage.
+        // Migrations are written only where losing chat history on a schema bump would genuinely
+        // sting (currently just v15→16); any other version jump still takes the destructive
+        // fallback, which recreates the DB — an acceptable tradeoff at this stage.
+        .addMigrations(AppDatabase.MIGRATION_15_16)
         .fallbackToDestructiveMigration(dropAllTables = true)
         .build()
 

@@ -11,11 +11,14 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 /**
  * Thin OkHttp-based client for the OpenAI Chat Completions API (or any OpenAI-compatible
@@ -34,6 +37,15 @@ class OpenAiApiClient(
     private val json: Json,
 ) {
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+
+    // Capability probing (GET /props) rides a derived client with a short call timeout: the main
+    // okHttpClient deliberately has a 5-minute read timeout for streaming replies, which would
+    // hang profile registration just as long on a server that accepts connections but never
+    // answers an auxiliary endpoint. Deriving shares the connection pool/interceptors cheaply.
+    private val propsOkHttpClient = okHttpClient.newBuilder()
+        .callTimeout(PROPS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(PROPS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .build()
 
     fun streamChatCompletion(
         apiKey: String,
@@ -76,7 +88,9 @@ class OpenAiApiClient(
             ChatCompletionRequest.serializer(),
             ChatCompletionRequest(
                 model = model,
-                messages = messages,
+                // See collapseSystemMessages: one leading system message only, for servers that
+                // reject a request whose system message is anything but the single first entry.
+                messages = collapseSystemMessages(messages),
                 stream = true,
                 tools = tools,
                 reasoningEffort = reasoningEffort,
@@ -84,11 +98,13 @@ class OpenAiApiClient(
                 reasoningBudgetTokens = thinkingBudget.takeIf { it > 0 },
             ),
         )
-        // Deliberately just the tool names, not the full request body — the latter can carry a
-        // full conversation history plus base64 image/audio attachments, which would either spam
-        // Logcat across many lines or get silently truncated by its per-line limit. This is enough
-        // to answer "was this tool actually offered to the model this turn" during diagnosis.
-        Log.d(TAG, "streamChatCompletion: model=$model, tools=${tools?.map { it.function.name }}")
+        // Deliberately the tool names and the encoded body size, not the body itself — the latter can
+        // carry a full conversation history plus base64 image/audio attachments, which would either
+        // spam Logcat across many lines or get silently truncated by its per-line limit. The names
+        // answer "was this tool offered this turn"; body= is how many bytes have to be uploaded
+        // before the server can even start prefilling, i.e. the number to correlate against "how
+        // long until the first token" once a conversation has grown or carries images.
+        Log.d(TAG, "streamChatCompletion: model=$model, tools=${tools?.map { it.function.name }}, body=${requestJson.length}")
         val requestBody = requestJson.toRequestBody(jsonMediaType)
 
         val builderWithUrl = try {
@@ -136,9 +152,19 @@ class OpenAiApiClient(
                     // piece across many chunks, so everything must be reassembled before it's
                     // usable. A LinkedHashMap preserves the order calls were first seen in.
                     val toolCallAccumulators = LinkedHashMap<Int, ToolCallAccumulator>()
+                    var sawFirstLine = false
 
                     while (isActive && !source.exhausted()) {
                         val rawLine = source.readUtf8Line() ?: break
+                        // Server-side time-to-first-byte, straight from Logcat: the gap between the
+                        // repository's "request prepared" line and this one is request encoding +
+                        // connection setup + the server's queue/prefill — everything the app waits
+                        // on but does not cause. Compare "first reasoning/content delta below" to
+                        // see what parsing, Room and the UI then add on our side.
+                        if (!sawFirstLine) {
+                            sawFirstLine = true
+                            Log.d(TAG, "first SSE line received")
+                        }
                         val line = rawLine.trim()
                         if (line.isEmpty()) continue
 
@@ -234,8 +260,37 @@ class OpenAiApiClient(
             }
         }
 
-    /** Fetches the list of model ids a provider offers, to auto-populate a profile's models rather than requiring the user to type one in. */
-    suspend fun listModels(apiKey: String, baseUrl: String = DEFAULT_BASE_URL): Result<List<String>> =
+    /**
+     * Fetches the list of models a provider offers (to auto-populate a profile's models rather
+     * than requiring the user to type one in) together with, on a best-effort basis, what each
+     * model can actually be configured to do — see [ModelCapabilities].
+     *
+     * Two capability sources are consulted, both optional:
+     *  1. per-entry `supported_parameters` / `capabilities` metadata in the `/models` response
+     *     itself (OpenRouter, vLLM, some proxies...);
+     *  2. llama.cpp's `GET /props` (served at the server's root, not under `/v1`), whose
+     *     `chat_template_caps` / `chat_template` describe the loaded model — tried only for
+     *     models the first source left unresolved.
+     * A server that advertises neither yields all-null (unknown) capabilities, which downstream
+     * code treats as "offer everything" — exactly how every server behaved before this existed.
+     */
+    suspend fun listModels(apiKey: String, baseUrl: String = DEFAULT_BASE_URL): Result<List<ModelCapabilities>> =
+        withContext(Dispatchers.IO) {
+            val fetched = fetchModelList(apiKey, baseUrl)
+            if (fetched.isFailure) return@withContext Result.failure(fetched.exceptionOrNull()!!)
+            val entries = fetched.getOrNull()!!
+            val caps = entries.map(::capsFromModelEntry).toMutableList()
+            // Servers that advertise nothing (plain OpenAI shape) or only partially describe
+            // their models still get the /props fallback; fully-described ones cost zero extra
+            // requests.
+            if (caps.any(::hasUnknownCaps)) {
+                attachPropsCaps(apiKey, baseUrl, entries.map { it.id }, caps)
+            }
+            Log.d(TAG, "listModels extracted ${caps.size} model(s): $caps")
+            Result.success(caps)
+        }
+
+    private suspend fun fetchModelList(apiKey: String, baseUrl: String): Result<List<ModelInfo>> =
         withContext(Dispatchers.IO) {
             val builderWithUrl = try {
                 Request.Builder().url("${normalizeBaseUrl(baseUrl)}/models")
@@ -270,14 +325,158 @@ class OpenAiApiClient(
                         // resolve to an empty (falsely "successful") model list.
                         return@withContext Result.failure(IOException("Unable to parse the model list response"))
                     }
-                    val models = parsed.data.map { it.id }
-                    Log.d(TAG, "listModels extracted ${models.size} model(s): $models")
-                    Result.success(models)
+                    Result.success(parsed.data)
                 }
             } catch (e: IOException) {
                 Result.failure(OpenAiException.NetworkError(e))
             }
         }
+
+    /**
+     * Derives a model's capabilities from what its own `/models` entry advertises. A null result
+     * for one of the four flags means "this entry says nothing about it" (as opposed to false —
+     * "this model demonstrably can't do it"), which keeps half-describing servers from hiding
+     * controls they never actually ruled out.
+     */
+    private fun capsFromModelEntry(info: ModelInfo): ModelCapabilities {
+        var thinking: Boolean? = null
+        var effort: Boolean? = null
+        var budget: Boolean? = null
+        var memory: Boolean? = null
+        info.supportedParameters?.let { params ->
+            val names = params.map { it.lowercase() }.toSet()
+            effort = "reasoning_effort" in names
+            // A model listing any reasoning knob at all can think; the effort field additionally
+            // implies it accepts the ON side of the 思考 switch (reasoning_effort carries it).
+            thinking = effort || setOf("reasoning", "include_reasoning", "enable_thinking", "thinking").any { it in names }
+            budget = "reasoning_budget_tokens" in names || "thinking_budget" in names
+            // No known server advertises persistent memory in supported_parameters today; if one
+            // starts naming the enable_memory kwarg here, honor it.
+            memory = "enable_memory" in names
+        }
+        // OpenAI-style `capabilities: {"supports_...": true, ...}` object, tolerated per the
+        // ModelInfo.capabilities comment.
+        val capsObject = (info.capabilities as? JsonObject)
+            ?.mapNotNull { (key, value) ->
+                (value as? JsonPrimitive)?.content?.toBooleanStrictOrNull()?.let { key to it }
+            }
+            ?.toMap()
+        if (capsObject != null) {
+            thinking = thinking ?: capsObject["supports_thinking"] ?: capsObject["thinking"]
+            effort = effort ?: capsObject["supports_reasoning_effort"] ?: capsObject["reasoning_effort"]
+            budget = budget ?: capsObject["supports_reasoning_budget"]
+            memory = memory ?: capsObject["supports_memory"]
+        }
+        return ModelCapabilities(
+            modelId = info.id,
+            supportsThinking = thinking,
+            supportsReasoningEffort = effort,
+            supportsThinkingBudget = budget,
+            supportsMemory = memory,
+        )
+    }
+
+    private fun hasUnknownCaps(caps: ModelCapabilities): Boolean =
+        caps.supportsThinking == null || caps.supportsReasoningEffort == null ||
+            caps.supportsThinkingBudget == null || caps.supportsMemory == null
+
+    /**
+     * Fills the unknowns in [caps] from llama.cpp's `/props` — silently, since a non-llama.cpp
+     * server simply doesn't have that endpoint. A single-model server serves `/props` at its
+     * root and it describes the one loaded model; router mode needs `?model=` per instance (with
+     * `autoload=false` so merely *querying* capabilities never triggers loading a heavy model).
+     * Router probing is only attempted for as long as it keeps working, and capped at
+     * [MAX_PROPS_PER_MODEL_PROBES] so a server that isn't really llama.cpp still costs a couple
+     * of failed requests rather than one per model.
+     */
+    private fun attachPropsCaps(apiKey: String, baseUrl: String, modelIds: List<String>, caps: MutableList<ModelCapabilities>) {
+        if (modelIds.isEmpty()) return
+        val propsUrl = propsBaseUrl(baseUrl)
+        if (modelIds.size == 1) {
+            // Single-model server: its root /props describes exactly that model.
+            fetchProps(apiKey, propsUrl, modelId = null)?.let { mergePropsCaps(caps, 0, capsFromProps(it)) }
+            return
+        }
+        // Multi-model (llama.cpp router mode): the root /props — if it answers at all — describes
+        // one arbitrary instance rather than every listed model, so attribute per model via
+        // ?model= instead, starting with a probe of the first model to confirm the endpoint
+        // exists before spending one request per remaining model (capped regardless).
+        val firstProps = fetchProps(apiKey, propsUrl, modelId = modelIds[0]) ?: return
+        mergePropsCaps(caps, 0, capsFromProps(firstProps))
+        modelIds.drop(1).take(MAX_PROPS_PER_MODEL_PROBES).forEachIndexed { index, modelId ->
+            // A model that's currently unloaded answers nothing (autoload=false above); that's
+            // simply "unknown for now", not a reason to abandon the rest of the list.
+            val props = fetchProps(apiKey, propsUrl, modelId = modelId) ?: return@forEachIndexed
+            mergePropsCaps(caps, index + 1, capsFromProps(props))
+        }
+    }
+
+    private fun fetchProps(apiKey: String, propsUrl: String, modelId: String?): ServerPropsDto? {
+        val url = buildString {
+            append(propsUrl)
+            if (modelId != null) {
+                append("?model=").append(java.net.URLEncoder.encode(modelId, "UTF-8")).append("&autoload=false")
+            }
+        }
+        return try {
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .get()
+                .build()
+            // Capability discovery is a nicety, never worth stalling profile save on: a shared
+            // client with a long read timeout would hang for minutes on a server that accepts the
+            // connection but never answers /props.
+            propsOkHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return null
+                response.body?.string()?.let { body ->
+                    runCatching { json.decodeFromString(ServerPropsDto.serializer(), body) }
+                        .onFailure { e -> Log.w(TAG, "Failed to parse /props response: ${body.take(300)}", e) }
+                        .getOrNull()
+                }
+            }
+        } catch (e: IOException) {
+            null
+        }
+    }
+
+    /**
+     * `/props` is served at the server's root while chat/models live under `/v1` — so the `/v1`
+     * (or `/v1/`) tail users conventionally include in their baseUrl is stripped back off first.
+     */
+    private fun propsBaseUrl(baseUrl: String): String =
+        normalizeBaseUrl(baseUrl).removeSuffix("/v1") + "/props"
+
+    private fun capsFromProps(props: ServerPropsDto): ModelCapabilities {
+        val template = props.chatTemplate
+        val serverCaps = props.chatTemplateCaps
+        // An all-null /props answer (e.g. a server that implements the endpoint for something
+        // else entirely) must not flip anything to a confident true/false.
+        if (template == null && serverCaps == null) return ModelCapabilities(modelId = "")
+        return ModelCapabilities(
+            modelId = "",
+            // The 思考-OFF path is chat_template_kwargs.enable_thinking — a template that never
+            // mentions it ignores the kwarg, so its text is the ground truth.
+            supportsThinking = template?.contains("enable_thinking"),
+            supportsReasoningEffort = serverCaps?.get("supports_reasoning_effort"),
+            // reasoning_budget_tokens is a llama-server field, and /props answering means this is
+            // llama-server. (An old build that predates the field ignores it exactly as it does
+            // today — no behavior change versus before caps existed.)
+            supportsThinkingBudget = true,
+            supportsMemory = template?.contains("enable_memory"),
+        )
+    }
+
+    /** Fills only the flags [caps] leaves unknown at [index] with the /props-derived [props] values. */
+    private fun mergePropsCaps(caps: MutableList<ModelCapabilities>, index: Int, props: ModelCapabilities) {
+        val existing = caps[index]
+        caps[index] = existing.copy(
+            supportsThinking = existing.supportsThinking ?: props.supportsThinking,
+            supportsReasoningEffort = existing.supportsReasoningEffort ?: props.supportsReasoningEffort,
+            supportsThinkingBudget = existing.supportsThinkingBudget ?: props.supportsThinkingBudget,
+            supportsMemory = existing.supportsMemory ?: props.supportsMemory,
+        )
+    }
 
     /**
      * A short, non-streaming completion used purely to auto-title a conversation from the user's
@@ -299,11 +498,21 @@ class OpenAiApiClient(
         )
         val requestJson = json.encodeToString(
             ChatCompletionRequest.serializer(),
-            // A reasoning/"thinking" model (see StreamEvent.ReasoningDelta) burns tokens on its
-            // internal chain-of-thought before it ever writes the actual title, so a small budget
-            // like 20 can be exhausted before any real content comes out, silently producing an
-            // empty title. 500 gives room for that preamble on top of the few words we actually want.
-            ChatCompletionRequest(model = model, messages = messages, stream = false, maxTokens = 500),
+            // This request goes out alongside (now: just after) the real reply's, against the same
+            // server — and on a single-slot local server every token it spends is a token the reply
+            // is not producing. So thinking is explicitly suppressed here (a template that doesn't
+            // know the kwarg ignores it, see ChatTemplateKwargsDto): a title needs the topic, not a
+            // chain of thought. maxTokens stays generous rather than tight, because a server that
+            // *ignores* the kwarg above still burns its thinking preamble first, and a budget small
+            // enough to be polite would run out before any real title text came out — an empty
+            // title (see the 400 below) is a worse outcome than the few wasted tokens.
+            ChatCompletionRequest(
+                model = model,
+                messages = messages,
+                stream = false,
+                maxTokens = 500,
+                chatTemplateKwargs = ChatTemplateKwargsDto(enableThinking = false),
+            ),
         )
         Log.d(TAG, "generateTitle request: $requestJson")
 
@@ -361,93 +570,6 @@ class OpenAiApiClient(
         }
     }
 
-    /**
-     * Generates a handful of short example prompts based on the topics of the user's past
-     * conversations, for the suggestion chips shown on the empty/new-conversation screen —
-     * best-effort, so callers should fall back to static suggestions on failure.
-     */
-    suspend fun generateSuggestedPrompts(
-        apiKey: String,
-        model: String,
-        pastTopics: List<String>,
-        baseUrl: String = DEFAULT_BASE_URL,
-    ): Result<List<String>> = withContext(Dispatchers.IO) {
-        val topicsList = pastTopics.joinToString("\n") { "- $it" }
-        val messages = listOf(
-            chatMessage(role = "system", text = SUGGESTIONS_SYSTEM_PROMPT),
-            chatMessage(role = "user", text = topicsList.take(4000)),
-        )
-        val requestJson = json.encodeToString(
-            ChatCompletionRequest.serializer(),
-            // Synthesizing 4 fresh prompts across several past topics is a meaningfully harder
-            // reasoning task than generateTitle's "restate this one exchange" — confirmed via
-            // logs that a reasoning model can burn 500+ tokens of chain-of-thought on this
-            // without ever finishing (finish_reason="length", content left empty). This call is
-            // background/non-blocking (see ChatViewModel), so a generous budget just costs a
-            // little extra latency, not a stuck UI.
-            ChatCompletionRequest(model = model, messages = messages, stream = false, maxTokens = 1500),
-        )
-        Log.d(TAG, "generateSuggestedPrompts request: $requestJson")
-
-        val builderWithUrl = try {
-            Request.Builder().url("${normalizeBaseUrl(baseUrl)}/chat/completions")
-        } catch (e: IllegalArgumentException) {
-            return@withContext Result.failure(e)
-        }
-
-        val request = try {
-            builderWithUrl
-                .addHeader("Authorization", "Bearer $apiKey")
-                .post(requestJson.toRequestBody(jsonMediaType))
-                .build()
-        } catch (e: IllegalArgumentException) {
-            return@withContext Result.failure(e)
-        }
-
-        try {
-            okHttpClient.newCall(request).execute().use { response ->
-                val bodyString = response.body?.string()
-                if (!response.isSuccessful) {
-                    val exception = mapToException(null, response.code, bodyString)
-                    Log.w(TAG, "generateSuggestedPrompts failed: ${exception.userMessage}")
-                    return@withContext Result.failure(exception)
-                }
-                Log.d(TAG, "generateSuggestedPrompts raw response: $bodyString")
-                val chunk = bodyString?.let {
-                    runCatching { json.decodeFromString(ChatCompletionChunk.serializer(), it) }
-                        .onFailure { e -> Log.w(TAG, "Failed to parse generateSuggestedPrompts response: $it", e) }
-                        .getOrNull()
-                }
-                val suggestions = chunk?.choices?.firstOrNull()?.message?.content
-                    ?.lines()
-                    ?.map(::cleanSuggestionLine)
-                    ?.filter { it.isNotBlank() }
-                    ?.take(MAX_SUGGESTIONS)
-                    .orEmpty()
-                if (suggestions.isEmpty()) {
-                    Log.w(TAG, "generateSuggestedPrompts produced no usable lines for model=$model")
-                    Result.failure(OpenAiException.Unknown(null))
-                } else {
-                    Log.d(TAG, "generateSuggestedPrompts extracted: $suggestions")
-                    Result.success(suggestions)
-                }
-            }
-        } catch (e: IOException) {
-            Log.w(TAG, "generateSuggestedPrompts failed with a network error", e)
-            Result.failure(OpenAiException.NetworkError(e))
-        }
-    }
-
-    /** Strips numbering ("1.", "2)"), bullet markers ("-", "*", "・"), and surrounding quotes from one suggested-prompt line. */
-    private fun cleanSuggestionLine(line: String): String = line.trim()
-        .removePrefix("-")
-        .removePrefix("*")
-        .removePrefix("・")
-        .trim()
-        .replace(Regex("^\\d+[.)]\\s*"), "")
-        .trim('"', '「', '」', '『', '』')
-        .trim()
-
     private fun mapToException(cause: Throwable?, httpCode: Int?, bodyString: String?): OpenAiException {
         if (httpCode == null) {
             return when (cause) {
@@ -485,12 +607,12 @@ class OpenAiApiClient(
             "Reply with only a short conversation title (3 to 6 words, no quotes, no trailing " +
                 "punctuation) summarizing the topic of the following user message, in the same " +
                 "language the user is writing in."
-        private const val SUGGESTIONS_SYSTEM_PROMPT =
-            "Based on the user's past conversation topics below, suggest 4 short example " +
-                "prompts (each 3 to 8 words) the user might want to ask next. Write exactly " +
-                "one prompt per line, with no numbering, no bullet points, and no quotes. " +
-                "Reply in the same language as the topics."
-        private const val MAX_SUGGESTIONS = 4
+        // Capability probing is a best-effort nicety bolted onto registration — never let a
+        // dead-but-connected server stall it for minutes (see propsOkHttpClient).
+        private const val PROPS_TIMEOUT_SECONDS = 8L
+        // Upper bound on router-mode "/props?model=" probes during one registration, so even a
+        // server with a hundred models can't turn model registration into a hundred requests.
+        private const val MAX_PROPS_PER_MODEL_PROBES = 20
 
         /**
          * Users commonly type a bare host (e.g. "100.97.208.27:721/v1") for a self-hosted
@@ -510,6 +632,27 @@ class OpenAiApiClient(
         }
     }
 }
+
+/**
+ * What one model reported as configurable about its own thinking behavior, discovered at
+ * registration time (see [listModels]) and persisted onto [com.suzuri.lmdroid.data.db.ApiModelEntity]
+ * (ApiProfileRepository.refreshModels). Each flag maps to one control in the chat screen's model
+ * menu (see ModelSelectorButton): [supportsThinking] = the OFF side of 思考
+ * (chat_template_kwargs.enable_thinking), [supportsReasoningEffort] = the LOW/MEDIUM/XHIGH levels
+ * (reasoning_effort), [supportsThinkingBudget] = 思考予算 (reasoning_budget_tokens),
+ * [supportsMemory] = 記憶 (chat_template_kwargs.enable_memory).
+ *
+ * null means "the server said nothing about this" — deliberately distinct from false ("said it's
+ * not supported"): unknown controls stay visible, so a server that advertises nothing behaves
+ * exactly as it did before per-model capabilities existed.
+ */
+data class ModelCapabilities(
+    val modelId: String,
+    val supportsThinking: Boolean? = null,
+    val supportsReasoningEffort: Boolean? = null,
+    val supportsThinkingBudget: Boolean? = null,
+    val supportsMemory: Boolean? = null,
+)
 
 /** Mutable, in-progress reassembly of one streamed tool call — see [StreamEvent.ToolCallsRequested]. */
 private class ToolCallAccumulator {

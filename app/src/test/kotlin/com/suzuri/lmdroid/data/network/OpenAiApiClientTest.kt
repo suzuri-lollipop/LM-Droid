@@ -6,9 +6,13 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.QueueDispatcher
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -31,6 +35,13 @@ class OpenAiApiClientTest {
     fun setUp() {
         server = MockWebServer()
         server.start()
+        // listModels may follow up its /models call with a capability probe against /props —
+        // whatever a test hasn't explicitly scripted must fail fast (404 = "this server has no
+        // /props" to the client) instead of hanging on an empty response queue. Must stay a
+        // QueueDispatcher so MockWebServer.enqueue() keeps resolving into its queue.
+        val dispatcher = QueueDispatcher()
+        dispatcher.setFailFast(MockResponse().setResponseCode(404))
+        server.dispatcher = dispatcher
         client = OpenAiApiClient(
             okHttpClient = OkHttpClient.Builder().build(),
             // Must mirror AppContainer's Json config exactly: encodeDefaults = true is what
@@ -432,6 +443,69 @@ class OpenAiApiClientTest {
     }
 
     @Test
+    fun `streamChatCompletion sends one system message at the front`() = runTest {
+        // Regression test: a request carries several system messages (the date-grounding line, one
+        // per active system prompt, the forced-skill and skill-catalog lines), but LM Studio's
+        // local server rejects any request whose system message is not the single first entry with
+        // "could not encode request: System message must be at the beginning" — which the user saw
+        // as a reply that never started. They must reach the wire merged into one message, in their
+        // original order, ahead of every non-system message.
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+
+        val messages = listOf(
+            chatMessage("system", "TODAY LINE"),
+            chatMessage("user", "hi"),
+            chatMessage("system", "PERSONA LINE"),
+            chatMessage("assistant", "Sure."),
+            chatMessage("system", "SKILL CATALOG LINE"),
+            chatMessage("user", "what time is it?"),
+        )
+
+        client.streamChatCompletion("test-key", "gpt-4o-mini", messages, baseUrl).test {
+            awaitItem() // Done
+            awaitComplete()
+        }
+
+        val sent = server.takeRequest().body.readUtf8().let(Json::parseToJsonElement)
+            .jsonObject.getValue("messages").jsonArray
+        assertEquals(
+            listOf("system", "user", "assistant", "user"),
+            sent.map { it.jsonObject.getValue("role").jsonPrimitive.content },
+        )
+        val systemContent = sent[0].jsonObject.getValue("content").jsonPrimitive.content
+        assertTrue(systemContent.contains("TODAY LINE"))
+        assertTrue(systemContent.indexOf("TODAY LINE") < systemContent.indexOf("PERSONA LINE"))
+        assertTrue(systemContent.indexOf("PERSONA LINE") < systemContent.indexOf("SKILL CATALOG LINE"))
+    }
+
+    @Test
+    fun `streamChatCompletion leaves a system-message-free request alone`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n"),
+        )
+
+        val messages = listOf(chatMessage("user", "hi"), chatMessage("assistant", "yo"), chatMessage("user", "again"))
+
+        client.streamChatCompletion("test-key", "gpt-4o-mini", messages, baseUrl).test {
+            awaitItem() // Done
+            awaitComplete()
+        }
+
+        val sent = server.takeRequest().body.readUtf8().let(Json::parseToJsonElement)
+            .jsonObject.getValue("messages").jsonArray
+        assertEquals(
+            listOf("user", "assistant", "user"),
+            sent.map { it.jsonObject.getValue("role").jsonPrimitive.content },
+        )
+    }
+
+    @Test
     fun `streamChatCompletion ignores malformed chunk and continues`() = runTest {
         server.enqueue(
             MockResponse()
@@ -548,7 +622,16 @@ class OpenAiApiClientTest {
         val result = client.listModels("test-key", baseUrl)
 
         assertTrue(result.isSuccess)
-        assertEquals(listOf("gpt-4o-mini", "gpt-4o"), result.getOrNull())
+        // No server advertises capabilities in this plain shape, and the /props probe never
+        // succeeds here — every capability stays null (unknown), which downstream means "offer
+        // all controls", exactly the pre-capabilities behavior.
+        assertEquals(
+            listOf(
+                ModelCapabilities("gpt-4o-mini"),
+                ModelCapabilities("gpt-4o"),
+            ),
+            result.getOrNull(),
+        )
     }
 
     @Test
@@ -558,7 +641,101 @@ class OpenAiApiClientTest {
         val result = client.listModels("test-key", baseUrl)
 
         assertTrue(result.isSuccess)
-        assertEquals(emptyList<String>(), result.getOrNull())
+        assertEquals(emptyList<ModelCapabilities>(), result.getOrNull())
+    }
+
+    @Test
+    fun `listModels reads per-model supported_parameters without any props probe`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                "{\"data\":[" +
+                    "{\"id\":\"reasoning-model\",\"supported_parameters\":[\"temperature\",\"reasoning\",\"reasoning_effort\",\"reasoning_budget_tokens\"]}," +
+                    "{\"id\":\"plain-model\",\"supported_parameters\":[\"temperature\",\"tools\"]}" +
+                    "]}",
+            ),
+        )
+
+        val result = client.listModels("test-key", baseUrl)
+
+        val (reasoning, plain) = result.getOrThrow()
+        assertEquals(
+            ModelCapabilities(
+                modelId = "reasoning-model",
+                supportsThinking = true,
+                supportsReasoningEffort = true,
+                supportsThinkingBudget = true,
+                supportsMemory = false,
+            ),
+            reasoning,
+        )
+        // A server that lists parameters and demonstrably excludes reasoning knobs yields false
+        // (hide the controls), not null — this is the whole point of registering capabilities.
+        assertEquals(
+            ModelCapabilities(
+                modelId = "plain-model",
+                supportsThinking = false,
+                supportsReasoningEffort = false,
+                supportsThinkingBudget = false,
+                supportsMemory = false,
+            ),
+            plain,
+        )
+        // Fully-described models must not cost an extra /props request per registration.
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `listModels falls back to a single-model server props chat template capabilities`() = runTest {
+        // llama.cpp shape: /models says nothing about capabilities, but the server's root /props
+        // describes the one loaded model's template.
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                "{\"data\":[{\"id\":\"qwen3.8\"}]}",
+            ),
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                "{\"model_path\":\"/models/qwen3.8.gguf\"," +
+                    "\"chat_template\":\"{% if enable_thinking %}think{% elif enable_memory %}mem{% endif %}\"," +
+                    "\"chat_template_caps\":{\"supports_tools\":true,\"supports_reasoning_effort\":true}}",
+            ),
+        )
+
+        val result = client.listModels("test-key", baseUrl)
+
+        assertEquals(
+            listOf(
+                ModelCapabilities(
+                    modelId = "qwen3.8",
+                    supportsThinking = true,
+                    supportsReasoningEffort = true,
+                    supportsThinkingBudget = true,
+                    supportsMemory = true,
+                ),
+            ),
+            result.getOrThrow(),
+        )
+        // chat/models live under /v1 (the baseUrl's tail), but /props is served at the server root.
+        assertEquals("/v1/models", server.takeRequest().path)
+        assertEquals("/props", server.takeRequest().path)
+    }
+
+    @Test
+    fun `listModels keeps capabilities unknown when neither models nor props describe them`() = runTest {
+        // Two models means router-mode /props probing, which starts with a per-model probe; the
+        // unscripted fail response stands in for a server that simply has no /props endpoint.
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                "{\"data\":[{\"id\":\"a\"},{\"id\":\"b\"}]}",
+            ),
+        )
+
+        val result = client.listModels("test-key", baseUrl)
+
+        assertEquals(
+            listOf(ModelCapabilities("a"), ModelCapabilities("b")),
+            result.getOrThrow(),
+        )
     }
 
     @Test

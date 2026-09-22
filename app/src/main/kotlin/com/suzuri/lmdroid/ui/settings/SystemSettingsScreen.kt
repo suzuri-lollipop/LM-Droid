@@ -21,8 +21,8 @@ import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.ui.settings.components.SettingsMenuRow
 
 /**
- * Settings → システム: choose which (profile, model) generates conversation titles and the
- * empty-state prompt suggestions, independently of the model used for chat itself, plus the
+ * Settings → システム: choose which (profile, model) generates conversation titles,
+ * independently of the model used for chat itself, plus the
  * settings backup actions (export/import a YAML snapshot of every setting).
  */
 @Composable

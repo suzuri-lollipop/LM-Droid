@@ -100,6 +100,43 @@ class ApiModelDaoTest {
     }
 
     @Test
+    fun `observeEnabledModelOptions carries the registered model capabilities`() = runTest {
+        val profileId = apiProfileDao.insert(newProfile("ローカルサーバー"))
+        apiModelDao.insertAll(
+            listOf(
+                // A fully-described reasoning model and a legacy row whose caps are all unknown
+                // (null) — the latter is what pre-capability/imported models look like, and the
+                // flat nulls must survive the join untouched for the UI's "null = show everything"
+                // rule to work.
+                ApiModelEntity(
+                    profileId = profileId,
+                    modelId = "qwen3.8",
+                    supportsThinking = true,
+                    supportsReasoningEffort = true,
+                    supportsThinkingBudget = true,
+                    supportsMemory = false,
+                ),
+                ApiModelEntity(profileId = profileId, modelId = "gemma-2"),
+            ),
+        )
+
+        apiModelDao.observeEnabledModelOptions().test {
+            val options = awaitItem()
+            val qwen = options.first { it.modelId == "qwen3.8" }
+            assertEquals(true, qwen.supportsThinking)
+            assertEquals(true, qwen.supportsReasoningEffort)
+            assertEquals(true, qwen.supportsThinkingBudget)
+            assertEquals(false, qwen.supportsMemory)
+            val gemma = options.first { it.modelId == "gemma-2" }
+            assertEquals(null, gemma.supportsThinking)
+            assertEquals(null, gemma.supportsReasoningEffort)
+            assertEquals(null, gemma.supportsThinkingBudget)
+            assertEquals(null, gemma.supportsMemory)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun `deleting a profile cascades to its models`() = runTest {
         val profileId = apiProfileDao.insert(newProfile("ローカルサーバー"))
         apiModelDao.insertAll(listOf(ApiModelEntity(profileId = profileId, modelId = "llama-3")))

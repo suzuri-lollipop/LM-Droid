@@ -167,12 +167,28 @@ class ApiProfileRepository(
         return runCatching { cipher.decrypt(ciphertext, iv) }.getOrNull()
     }
 
-    /** Replaces the profile's stored model list with whatever the provider's `/models` endpoint currently reports. */
+    /**
+     * Replaces the profile's stored model list with whatever the provider's `/models` endpoint
+     * currently reports — including, where the server says so, each model's thinking-control
+     * capabilities (see [com.suzuri.lmdroid.data.network.ModelCapabilities]), persisted onto the
+     * model rows so the chat screen only offers what each model can actually do.
+     */
     suspend fun refreshModels(profileId: Long, apiKey: String, baseUrl: String): Result<Int> {
         return openAiApiClient.listModels(apiKey, baseUrl).map { models ->
             apiModelDao.deleteAllForProfile(profileId)
             if (models.isNotEmpty()) {
-                apiModelDao.insertAll(models.map { modelId -> ApiModelEntity(profileId = profileId, modelId = modelId) })
+                apiModelDao.insertAll(
+                    models.map { model ->
+                        ApiModelEntity(
+                            profileId = profileId,
+                            modelId = model.modelId,
+                            supportsThinking = model.supportsThinking,
+                            supportsReasoningEffort = model.supportsReasoningEffort,
+                            supportsThinkingBudget = model.supportsThinkingBudget,
+                            supportsMemory = model.supportsMemory,
+                        )
+                    },
+                )
             }
             models.size
         }

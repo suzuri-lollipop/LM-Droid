@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -41,13 +43,13 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.suzuri.lmdroid.R
 import com.suzuri.lmdroid.ui.chat.components.ChatInputBar
 import com.suzuri.lmdroid.ui.chat.components.EmptyConversationGreeting
-import com.suzuri.lmdroid.ui.chat.components.EmptyConversationSuggestions
 import com.suzuri.lmdroid.ui.chat.components.ImagePreviewDialog
 import com.suzuri.lmdroid.ui.chat.components.MessageBubble
 import com.suzuri.lmdroid.ui.chat.components.SkillDialog
@@ -243,15 +245,35 @@ fun ChatScreen(
                     )
 
                     if (isEmpty) {
+                        // A Column hands each of its children only the vertical space the children
+                        // above it didn't use. Above the composer sits the greeting and its gap, so
+                        // while the keyboard is animating in — and on any screen where the space
+                        // left above it is tight — the composer was measured against the leftover
+                        // and collapsed: the pill lost its toolbar row and the field itself shrank,
+                        // which read as the input getting small exactly when the user tapped into it
+                        // to type. The two pieces on this screen are decoration (the greeting is the
+                        // splash above the field, the examples only exist to fill an *empty* field),
+                        // so while the keyboard is up they step aside and nothing competes with the
+                        // composer for height. Plain `if`s rather than AnimatedVisibility: an exit
+                        // animation keeps the outgoing content laid out while it fades, which would
+                        // squeeze the composer all over again for the length of that animation.
+                        val isKeyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(horizontal = 24.dp),
-                            verticalArrangement = Arrangement.Center,
+                            // Centered as a block while the landing screen is at rest; once the
+                            // keyboard is up and the decoration has stepped aside, the composer
+                            // docks directly above it instead of floating in the middle of what's
+                            // left — which is also where the conversation view docks it, so sending
+                            // the first message doesn't have to travel.
+                            verticalArrangement = if (isKeyboardOpen) Arrangement.Bottom else Arrangement.Center,
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            EmptyConversationGreeting()
-                            Spacer(modifier = Modifier.height(20.dp))
+                            if (!isKeyboardOpen) {
+                                EmptyConversationGreeting()
+                                Spacer(modifier = Modifier.height(20.dp))
+                            }
                             if (uiState.apiKeyMissing) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(stringResource(R.string.chat_api_key_missing_message))
@@ -295,11 +317,6 @@ fun ChatScreen(
                                     onStartVoiceRecording = onStartVoiceRecording,
                                     onStopVoiceRecording = onStopVoiceRecording,
                                     modifier = inputBarModifier.fillMaxWidth(),
-                                )
-                                Spacer(modifier = Modifier.height(20.dp))
-                                EmptyConversationSuggestions(
-                                    onSuggestionClick = viewModel::onInputChange,
-                                    state = uiState.suggestionsState,
                                 )
                             }
                         }
